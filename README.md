@@ -614,9 +614,21 @@ direnv allow
 
 Now the development environment loads automatically when you `cd` into the project!
 
-For detailed information about the development environment and component-specific dependencies, see:
-- [Component 00: Project Development Environment](.ai-workflow/implementation-planning/components/00-project-development-environment.md)
-- Component-specific documentation in `.ai-workflow/implementation-planning/components/`
+#### Editor Configuration
+
+ZERB uses EditorConfig to maintain consistent coding styles:
+
+- **Go files**: Use tabs (community standard). Set your preferred tab display width in your editor.
+- **Other files** (YAML, JSON, Markdown, Nix): Use 2 spaces.
+
+**For Neovim users:**
+- If you use `vim-sleuth`, it will automatically detect the project's indentation style
+- Set your personal tab display width preference in your config:
+  ```lua
+  vim.opt.tabstop = 2       -- Display tabs as 2 spaces wide (adjust to your preference)
+  vim.opt.shiftwidth = 2    -- Indent by 2 spaces when using >> or <<
+  ```
+- Ensure EditorConfig support is enabled (built-in for Neovim 0.9+, or use `editorconfig/editorconfig-vim` plugin)
 
 ### AI-Assisted Development
 

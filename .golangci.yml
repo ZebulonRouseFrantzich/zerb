@@ -1,0 +1,40 @@
+# golangci-lint configuration for ZERB
+# See: https://golangci-lint.run/usage/configuration/
+
+version: 2
+
+run:
+  timeout: 5m
+  tests: true
+  skip-dirs:
+    - .test-tmp
+    - vendor
+
+linters:
+  enable:
+    - errcheck      # Check error handling
+    - govet         # Go vet
+    - ineffassign   # Detect ineffectual assignments
+    - staticcheck   # Staticcheck
+    - unused        # Detect unused code
+    - misspell      # Fix common spelling mistakes
+    - gocyclo       # Cyclomatic complexity
+    - gosec         # Security issues
+
+linters-settings:
+  govet:
+    check-shadowing: true
+  
+  gocyclo:
+    min-complexity: 15
+
+issues:
+  exclude-use-default: false
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  
+  # Exclude some linters from running on tests
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - gocyclo
