@@ -60,6 +60,11 @@
             echo "  https://github.com/ZebulonRouseFrantzich/zerb#readme"
             echo ""
 
+            # Create a temporary file in the current directory or a temp directory
+            # For simplicity, we create it in the current directory as a hidden file.
+            echo "--no-ignore-vcs" > .rgignore_config
+            export RIPGREP_CONFIG_PATH="$PWD/.rgignore_config"
+
             # Set up Go environment
             export GOPATH="$HOME/go"
             export PATH="$GOPATH/bin:$PATH"

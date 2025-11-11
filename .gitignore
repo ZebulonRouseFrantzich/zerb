@@ -1,5 +1,6 @@
 # AI Workflow (planning docs)
 .ai-workflow/
+.rgignore_config
 
 # Direnv
 .direnv/
