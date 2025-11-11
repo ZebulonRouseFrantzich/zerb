@@ -332,7 +332,7 @@ func TestVerifyFile(t *testing.T) {
 				Binary: tt.binary,
 			}
 
-			result, err := verifier.VerifyFile(tt.binaryPath, tt.signaturePath, tt.checksumPath, info)
+			result, err := verifier.VerifyFile(tt.binaryPath, tt.signaturePath, tt.checksumPath, "", info)
 
 			if tt.wantError {
 				if err == nil {
@@ -423,6 +423,7 @@ func TestVerificationResultString(t *testing.T) {
 	}{
 		{VerificationNone, "None"},
 		{VerificationGPG, "GPG"},
+		{VerificationCosign, "Cosign"},
 		{VerificationSHA256, "SHA256"},
 	}
 
@@ -455,5 +456,50 @@ func TestFindChecksum_MalformedFile(t *testing.T) {
 
 	if !strings.Contains(err.Error(), "not found") {
 		t.Errorf("expected 'not found' error, got: %v", err)
+	}
+}
+
+func TestGetCertificateIdentity(t *testing.T) {
+	tests := []struct {
+		name    string
+		binary  Binary
+		wantErr bool
+	}{
+		{
+			name:    "chezmoi_has_identity",
+			binary:  BinaryChezmoi,
+			wantErr: false,
+		},
+		{
+			name:    "mise_no_identity",
+			binary:  BinaryMise,
+			wantErr: true,
+		},
+		{
+			name:    "unknown_binary",
+			binary:  "unknown",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			identity, err := getCertificateIdentity(tt.binary)
+
+			if tt.wantErr {
+				if err == nil {
+					t.Error("expected error but got none")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+			}
+
+			// For chezmoi, verify the identity was created successfully
+			// (we can't easily inspect the internal fields)
+			_ = identity
+		})
 	}
 }

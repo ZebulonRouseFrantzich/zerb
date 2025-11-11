@@ -75,8 +75,11 @@ func constructChezmoiDownloadInfo(info *DownloadInfo, version string) (*Download
 	binaryName := fmt.Sprintf("chezmoi-%s-%s-%s.tar.gz", version, archName, osName)
 
 	info.URL = fmt.Sprintf("%s/%s", baseURL, binaryName)
-	info.SignatureURL = fmt.Sprintf("%s/%s.sig", baseURL, binaryName)
-	info.ChecksumURL = fmt.Sprintf("%s/checksums.txt", baseURL)
+	// chezmoi uses cosign, not traditional GPG signatures
+	info.SignatureURL = ""
+	info.ChecksumURL = fmt.Sprintf("%s/chezmoi_%s_checksums.txt", baseURL, version)
+	// Cosign bundle - signs the checksums file, not the binary directly
+	info.BundleURL = fmt.Sprintf("%s/chezmoi_%s_checksums.txt.sig", baseURL, version)
 
 	return info, nil
 }

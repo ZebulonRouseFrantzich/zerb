@@ -94,44 +94,48 @@ func TestConstructMiseDownloadInfo(t *testing.T) {
 
 func TestConstructChezmoiDownloadInfo(t *testing.T) {
 	tests := []struct {
-		name        string
-		version     string
-		os          string
-		arch        string
-		expectedURL string
-		expectedSig string
-		expectedSum string
-		wantErr     bool
+		name           string
+		version        string
+		os             string
+		arch           string
+		expectedURL    string
+		expectedSig    string
+		expectedSum    string
+		expectedBundle string
+		wantErr        bool
 	}{
 		{
-			name:        "linux_amd64",
-			version:     "2.46.1",
-			os:          "linux",
-			arch:        "amd64",
-			expectedURL: "https://github.com/twpayne/chezmoi/releases/download/v2.46.1/chezmoi-2.46.1-x86_64-linux.tar.gz",
-			expectedSig: "https://github.com/twpayne/chezmoi/releases/download/v2.46.1/chezmoi-2.46.1-x86_64-linux.tar.gz.sig",
-			expectedSum: "https://github.com/twpayne/chezmoi/releases/download/v2.46.1/checksums.txt",
-			wantErr:     false,
+			name:           "linux_amd64",
+			version:        "2.46.1",
+			os:             "linux",
+			arch:           "amd64",
+			expectedURL:    "https://github.com/twpayne/chezmoi/releases/download/v2.46.1/chezmoi-2.46.1-x86_64-linux.tar.gz",
+			expectedSig:    "", // chezmoi uses cosign, not GPG signatures
+			expectedSum:    "https://github.com/twpayne/chezmoi/releases/download/v2.46.1/chezmoi_2.46.1_checksums.txt",
+			expectedBundle: "https://github.com/twpayne/chezmoi/releases/download/v2.46.1/chezmoi_2.46.1_checksums.txt.sig",
+			wantErr:        false,
 		},
 		{
-			name:        "linux_arm64",
-			version:     "2.46.1",
-			os:          "linux",
-			arch:        "arm64",
-			expectedURL: "https://github.com/twpayne/chezmoi/releases/download/v2.46.1/chezmoi-2.46.1-aarch64-linux.tar.gz",
-			expectedSig: "https://github.com/twpayne/chezmoi/releases/download/v2.46.1/chezmoi-2.46.1-aarch64-linux.tar.gz.sig",
-			expectedSum: "https://github.com/twpayne/chezmoi/releases/download/v2.46.1/checksums.txt",
-			wantErr:     false,
+			name:           "linux_arm64",
+			version:        "2.46.1",
+			os:             "linux",
+			arch:           "arm64",
+			expectedURL:    "https://github.com/twpayne/chezmoi/releases/download/v2.46.1/chezmoi-2.46.1-aarch64-linux.tar.gz",
+			expectedSig:    "",
+			expectedSum:    "https://github.com/twpayne/chezmoi/releases/download/v2.46.1/chezmoi_2.46.1_checksums.txt",
+			expectedBundle: "https://github.com/twpayne/chezmoi/releases/download/v2.46.1/chezmoi_2.46.1_checksums.txt.sig",
+			wantErr:        false,
 		},
 		{
-			name:        "linux_386",
-			version:     "2.46.1",
-			os:          "linux",
-			arch:        "386",
-			expectedURL: "https://github.com/twpayne/chezmoi/releases/download/v2.46.1/chezmoi-2.46.1-i686-linux.tar.gz",
-			expectedSig: "https://github.com/twpayne/chezmoi/releases/download/v2.46.1/chezmoi-2.46.1-i686-linux.tar.gz.sig",
-			expectedSum: "https://github.com/twpayne/chezmoi/releases/download/v2.46.1/checksums.txt",
-			wantErr:     false,
+			name:           "linux_386",
+			version:        "2.46.1",
+			os:             "linux",
+			arch:           "386",
+			expectedURL:    "https://github.com/twpayne/chezmoi/releases/download/v2.46.1/chezmoi-2.46.1-i686-linux.tar.gz",
+			expectedSig:    "",
+			expectedSum:    "https://github.com/twpayne/chezmoi/releases/download/v2.46.1/chezmoi_2.46.1_checksums.txt",
+			expectedBundle: "https://github.com/twpayne/chezmoi/releases/download/v2.46.1/chezmoi_2.46.1_checksums.txt.sig",
+			wantErr:        false,
 		},
 		{
 			name:    "unsupported_arch",
@@ -181,6 +185,10 @@ func TestConstructChezmoiDownloadInfo(t *testing.T) {
 
 			if result.ChecksumURL != tt.expectedSum {
 				t.Errorf("ChecksumURL mismatch:\ngot:  %s\nwant: %s", result.ChecksumURL, tt.expectedSum)
+			}
+
+			if result.BundleURL != tt.expectedBundle {
+				t.Errorf("BundleURL mismatch:\ngot:  %s\nwant: %s", result.BundleURL, tt.expectedBundle)
 			}
 		})
 	}

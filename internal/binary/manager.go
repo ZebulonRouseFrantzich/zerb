@@ -59,7 +59,13 @@ func NewManager(config Config) (*Manager, error) {
 }
 
 // EnsureKeyrings extracts embedded GPG keyrings to disk
+// This is idempotent - safe to call multiple times
 func (m *Manager) EnsureKeyrings() error {
+	// Check if keyrings already exist (idempotent operation)
+	if keyringExists(m.keyringDir, BinaryMise) {
+		return nil // Already extracted
+	}
+
 	// Extract all embedded keyrings
 	if err := extractAllKeyrings(m.keyringDir); err != nil {
 		return fmt.Errorf("extract keyrings: %w", err)
@@ -146,7 +152,7 @@ func (m *Manager) Download(ctx context.Context, opts DownloadOptions) (*Download
 	}
 
 	// Download verification files based on binary type
-	var signaturePath, checksumPath string
+	var signaturePath, checksumPath, bundlePath string
 
 	switch opts.Binary {
 	case BinaryMise:
@@ -168,7 +174,15 @@ func (m *Manager) Download(ctx context.Context, opts DownloadOptions) (*Download
 		}
 
 	case BinaryChezmoi:
-		// chezmoi uses SHA256 checksums (TODO: add cosign verification)
+		// chezmoi uses cosign verification
+		if downloadInfo.BundleURL != "" {
+			bundlePath, err = m.downloader.DownloadBundle(ctx, downloadInfo)
+			if err != nil {
+				return nil, fmt.Errorf("failed to download required cosign bundle for chezmoi: %w", err)
+			}
+		}
+
+		// Also download checksums (cosign signs the checksum file)
 		if downloadInfo.ChecksumURL != "" {
 			checksumPath, err = m.downloader.DownloadChecksums(ctx, downloadInfo)
 			if err != nil {
@@ -181,7 +195,7 @@ func (m *Manager) Download(ctx context.Context, opts DownloadOptions) (*Download
 	}
 
 	// Verify binary
-	verifyResult, err := m.verifier.VerifyFile(binaryPath, signaturePath, checksumPath, downloadInfo)
+	verifyResult, err := m.verifier.VerifyFile(binaryPath, signaturePath, checksumPath, bundlePath, downloadInfo)
 	if err != nil {
 		return nil, fmt.Errorf("verify binary: %w", err)
 	}

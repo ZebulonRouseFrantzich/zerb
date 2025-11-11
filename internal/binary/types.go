@@ -52,6 +52,8 @@ const (
 	VerificationGPG
 	// VerificationSHA256 indicates SHA256 checksum verification was used
 	VerificationSHA256
+	// VerificationCosign indicates cosign (Sigstore) verification was used
+	VerificationCosign
 )
 
 // String returns the string representation of the verification method
@@ -61,6 +63,8 @@ func (v VerificationMethod) String() string {
 		return "GPG"
 	case VerificationSHA256:
 		return "SHA256"
+	case VerificationCosign:
+		return "Cosign"
 	case VerificationNone:
 		return "None"
 	default:
@@ -86,6 +90,7 @@ type DownloadInfo struct {
 	URL          string // Constructed download URL
 	SignatureURL string // GPG signature URL (may be empty)
 	ChecksumURL  string // SHA256 checksum URL (may be empty)
+	BundleURL    string // Cosign bundle URL (may be empty)
 }
 
 // VerificationResult contains the outcome of a verification attempt

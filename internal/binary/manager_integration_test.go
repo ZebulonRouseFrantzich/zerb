@@ -150,7 +150,7 @@ func TestManagerDownload_Complete(t *testing.T) {
 	}
 
 	// Verify checksums
-	result, err := manager.verifier.VerifyFile(binaryPath, "", checksumPath, downloadInfo)
+	result, err := manager.verifier.VerifyFile(binaryPath, "", checksumPath, "", downloadInfo)
 	if err != nil {
 		t.Fatalf("verification failed: %v", err)
 	}
@@ -232,7 +232,7 @@ func TestManagerInstall_Complete(t *testing.T) {
 	}
 
 	// Verify
-	_, err = manager.verifier.VerifyFile(binaryPath, "", checksumPath, downloadInfo)
+	_, err = manager.verifier.VerifyFile(binaryPath, "", checksumPath, "", downloadInfo)
 	if err != nil {
 		t.Fatalf("verification failed: %v", err)
 	}

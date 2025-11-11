@@ -51,6 +51,11 @@ func (d *Downloader) DownloadToFile(ctx context.Context, url, destPath string) e
 	var lastErr error
 
 	for attempt := 0; attempt <= d.retries; attempt++ {
+		// Check context before each attempt
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+
 		if attempt > 0 {
 			// Exponential backoff: 1s, 2s, 4s
 			backoff := time.Duration(1<<uint(attempt-1)) * time.Second
@@ -206,6 +211,29 @@ func (d *Downloader) DownloadChecksums(ctx context.Context, info *DownloadInfo) 
 	// Download checksums
 	if err := d.DownloadToFile(ctx, info.ChecksumURL, cachePath); err != nil {
 		return "", fmt.Errorf("download checksums: %w", err)
+	}
+
+	return cachePath, nil
+}
+
+// DownloadBundle downloads a cosign bundle file
+func (d *Downloader) DownloadBundle(ctx context.Context, info *DownloadInfo) (string, error) {
+	if info == nil || info.BundleURL == "" {
+		return "", fmt.Errorf("no bundle URL available")
+	}
+
+	// Construct cache path for bundle
+	filename := filepath.Base(info.BundleURL)
+	cachePath := filepath.Join(d.cacheDir, info.Binary.String(), info.Version, filename)
+
+	// Check if already cached
+	if fileExists(cachePath) {
+		return cachePath, nil
+	}
+
+	// Download bundle
+	if err := d.DownloadToFile(ctx, info.BundleURL, cachePath); err != nil {
+		return "", fmt.Errorf("download bundle: %w", err)
 	}
 
 	return cachePath, nil
