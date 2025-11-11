@@ -98,7 +98,7 @@ func TestRoundTripWithExamples(t *testing.T) {
 			}
 
 			// Generate Lua from parsed config
-			generated, err := generator.Generate(original)
+			generated, err := generator.Generate(context.Background(), original)
 			if err != nil {
 				t.Fatalf("Generate() error = %v", err)
 			}
@@ -154,7 +154,7 @@ func TestGenerateAndParse(t *testing.T) {
 
 	// Generate Lua
 	gen := NewGenerator()
-	lua, err := gen.Generate(config)
+	lua, err := gen.Generate(context.Background(), config)
 	if err != nil {
 		t.Fatalf("Generate() error = %v", err)
 	}
@@ -187,7 +187,7 @@ func TestTimestampedConfigGeneration(t *testing.T) {
 	}
 
 	gen := NewGenerator()
-	filename, content, err := gen.GenerateTimestamped(config, "test-commit-abc123")
+	filename, content, err := gen.GenerateTimestamped(context.Background(), config, "test-commit-abc123")
 	if err != nil {
 		t.Fatalf("GenerateTimestamped() error = %v", err)
 	}

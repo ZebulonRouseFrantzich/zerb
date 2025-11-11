@@ -4,26 +4,93 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/ZebulonRouseFrantzich/zerb/internal/platform"
 	lua "github.com/yuin/gopher-lua"
 )
 
+// Configuration limits for security and resource management.
+const (
+	// MaxConfigSize is the maximum allowed size for a config file (10MB).
+	MaxConfigSize = 10 * 1024 * 1024
+
+	// MaxToolCount is the maximum number of tools allowed in a config.
+	MaxToolCount = 1000
+
+	// MaxConfigFileCount is the maximum number of config files allowed.
+	MaxConfigFileCount = 500
+
+	// DefaultParseTimeout is the default timeout for parsing a config (5 seconds).
+	DefaultParseTimeout = 5 * time.Second
+)
+
 // Parser represents a Lua config parser with platform detection.
 type Parser struct {
 	detector platform.Detector
+	logger   Logger
 }
 
 // NewParser creates a new config parser with the given platform detector.
+// Pass nil for detector to skip platform detection.
 func NewParser(detector platform.Detector) *Parser {
-	return &Parser{detector: detector}
+	return &Parser{
+		detector: detector,
+		logger:   defaultLogger(),
+	}
+}
+
+// WithLogger returns a new Parser with the specified logger.
+func (p *Parser) WithLogger(logger Logger) *Parser {
+	if logger == nil {
+		logger = defaultLogger()
+	}
+	return &Parser{
+		detector: p.detector,
+		logger:   logger,
+	}
 }
 
 // ParseString parses a Lua config from a string.
 // This is useful for testing and in-memory config generation.
+//
+// Security limits enforced:
+//   - Config size: Maximum 10MB
+//   - Parse timeout: 5 seconds (configurable via context)
+//   - Resource limits: Call stack depth, memory usage
 func (p *Parser) ParseString(ctx context.Context, luaCode string) (*Config, error) {
+	p.logger.Debug("parsing config", "size", len(luaCode))
+	start := time.Now()
+	defer func() {
+		p.logger.Debug("parse complete", "duration", time.Since(start))
+	}()
+
+	// Validate input size before parsing
+	if len(luaCode) > MaxConfigSize {
+		p.logger.Error("config file too large", "size", len(luaCode), "max", MaxConfigSize)
+		return nil, &ParseError{
+			Message: "config file too large",
+			Detail:  fmt.Sprintf("size %d bytes exceeds maximum %d bytes", len(luaCode), MaxConfigSize),
+		}
+	}
+
+	// Check if context is already cancelled
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("context cancelled before parsing: %w", err)
+	}
+
+	// Create timeout context if the provided context doesn't have a deadline
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, DefaultParseTimeout)
+		defer cancel()
+	}
+
 	L := newSandboxedVM()
 	defer L.Close()
+
+	// Set context on Lua VM for timeout enforcement
+	L.SetContext(ctx)
 
 	// Detect platform and inject platform table
 	if p.detector != nil {
@@ -36,11 +103,18 @@ func (p *Parser) ParseString(ctx context.Context, luaCode string) (*Config, erro
 		}
 	}
 
-	// Execute Lua code
+	// Execute Lua code with timeout protection
 	if err := L.DoString(luaCode); err != nil {
+		// Check if timeout occurred
+		if ctx.Err() == context.DeadlineExceeded {
+			return nil, &ParseError{
+				Message: "config parsing timeout",
+				Detail:  "parsing took longer than allowed time limit (possible infinite loop)",
+			}
+		}
 		return nil, &ParseError{
 			Message: "Lua syntax error",
-			Detail:  err.Error(),
+			Detail:  sanitizeLuaError(err),
 		}
 	}
 
@@ -244,6 +318,23 @@ func extractOptions(table *lua.LTable) (Options, error) {
 	return options, nil
 }
 
+// sanitizeLuaError sanitizes Lua VM error messages for user display.
+// It removes stack traces and internal implementation details.
+func sanitizeLuaError(err error) string {
+	errStr := err.Error()
+
+	// Remove stack traces (they leak internal implementation details)
+	if idx := strings.Index(errStr, "stack traceback"); idx > 0 {
+		errStr = strings.TrimSpace(errStr[:idx])
+	}
+
+	// Replace internal references with user-friendly terms
+	errStr = strings.ReplaceAll(errStr, "<string>", "config")
+	errStr = strings.ReplaceAll(errStr, "gopher-lua", "Lua")
+
+	return strings.TrimSpace(errStr)
+}
+
 // FormatError formats a ParseError for user display.
 // In verbose mode, show the raw Lua error. Otherwise, show friendly message.
 func FormatError(err error, verbose bool) string {
@@ -251,12 +342,8 @@ func FormatError(err error, verbose bool) string {
 		if verbose {
 			return fmt.Sprintf("%s\n\nDetails:\n%s", parseErr.Message, parseErr.Detail)
 		}
-		// Extract the most relevant part of the error
-		detail := parseErr.Detail
-		if idx := strings.Index(detail, "stack traceback"); idx > 0 {
-			detail = strings.TrimSpace(detail[:idx])
-		}
-		return fmt.Sprintf("%s: %s", parseErr.Message, detail)
+		// Detail is already sanitized, just return it
+		return fmt.Sprintf("%s: %s", parseErr.Message, parseErr.Detail)
 	}
 	return err.Error()
 }

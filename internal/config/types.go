@@ -5,7 +5,15 @@
 // integration. Configs are versioned using Git-tracked timestamped snapshots.
 package config
 
-import "time"
+import (
+	"fmt"
+	"net/url"
+	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
+	"time"
+)
 
 // Config represents the complete ZERB configuration.
 // This matches the Lua schema defined in the design document.
@@ -101,17 +109,49 @@ type Override struct {
 
 // Validate performs basic validation on a Config.
 func (c *Config) Validate() error {
+	// Tool count validation
+	if len(c.Tools) > MaxToolCount {
+		return &ValidationError{
+			Field:   "tools",
+			Message: fmt.Sprintf("too many tools (%d), maximum is %d", len(c.Tools), MaxToolCount),
+		}
+	}
+
 	// Tool validation
-	for _, tool := range c.Tools {
+	for i, tool := range c.Tools {
 		if err := validateToolString(tool); err != nil {
-			return err
+			return &ValidationError{
+				Field:   fmt.Sprintf("tools[%d]", i),
+				Message: err.Error(),
+			}
+		}
+	}
+
+	// Config file count validation
+	if len(c.Configs) > MaxConfigFileCount {
+		return &ValidationError{
+			Field:   "configs",
+			Message: fmt.Sprintf("too many config files (%d), maximum is %d", len(c.Configs), MaxConfigFileCount),
 		}
 	}
 
 	// Config file validation
-	for _, cf := range c.Configs {
+	for i, cf := range c.Configs {
 		if cf.Path == "" {
-			return &ValidationError{Field: "configs", Message: "path cannot be empty"}
+			return &ValidationError{Field: fmt.Sprintf("configs[%d]", i), Message: "path cannot be empty"}
+		}
+		if err := validateConfigPath(cf.Path); err != nil {
+			return &ValidationError{
+				Field:   fmt.Sprintf("configs[%d].path", i),
+				Message: err.Error(),
+			}
+		}
+	}
+
+	// Git config validation
+	if c.Git.Remote != "" {
+		if err := validateGitRemote(c.Git.Remote); err != nil {
+			return &ValidationError{Field: "git.remote", Message: err.Error()}
 		}
 	}
 
@@ -131,12 +171,86 @@ func (e *ValidationError) Error() string {
 	return "config validation failed: " + e.Message
 }
 
+// toolStringPattern matches valid tool strings: name@version, backend:name, backend:name@version
+var toolStringPattern = regexp.MustCompile(`^([a-z0-9_-]+:)?[a-z0-9_/-]+(@[a-z0-9._-]+)?$`)
+
 // validateToolString validates a tool string format (name@version or backend:name).
 func validateToolString(tool string) error {
 	if tool == "" {
-		return &ValidationError{Field: "tools", Message: "tool string cannot be empty"}
+		return fmt.Errorf("tool string cannot be empty")
 	}
-	// Basic validation - tool must have content
-	// More specific validation (e.g., @version format) can be added post-MVP
+
+	// Check length
+	if len(tool) > 256 {
+		return fmt.Errorf("tool string too long (%d chars, max 256)", len(tool))
+	}
+
+	// Validate format
+	if !toolStringPattern.MatchString(tool) {
+		return fmt.Errorf("invalid tool string format: %q (expected: name@version or backend:name)", tool)
+	}
+
+	return nil
+}
+
+// validateConfigPath validates a config file path for security.
+// It prevents path traversal attacks and restricts to home directory.
+func validateConfigPath(path string) error {
+	if path == "" {
+		return fmt.Errorf("path cannot be empty")
+	}
+
+	// Expand tilde for validation
+	expanded := path
+	if strings.HasPrefix(path, "~/") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("cannot determine home directory: %w", err)
+		}
+		expanded = filepath.Join(home, path[2:])
+	}
+
+	// Clean path and check for traversal
+	cleaned := filepath.Clean(expanded)
+
+	// Reject absolute paths outside home (unless explicitly allowed)
+	if filepath.IsAbs(path) && !strings.HasPrefix(path, "~/") {
+		return fmt.Errorf("absolute paths outside home directory not allowed: %s", path)
+	}
+
+	// Check for path traversal attempts
+	if strings.Contains(cleaned, "..") {
+		return fmt.Errorf("path traversal not allowed: %s", path)
+	}
+
+	return nil
+}
+
+// validateGitRemote validates a Git remote URL.
+// Supports both HTTPS and SSH formats.
+func validateGitRemote(remote string) error {
+	if remote == "" {
+		return fmt.Errorf("git remote cannot be empty")
+	}
+
+	// Support SSH format: git@github.com:user/repo.git
+	if strings.HasPrefix(remote, "git@") {
+		parts := strings.Split(remote, ":")
+		if len(parts) != 2 {
+			return fmt.Errorf("invalid SSH git URL format")
+		}
+		return nil
+	}
+
+	// HTTPS format
+	u, err := url.Parse(remote)
+	if err != nil {
+		return fmt.Errorf("invalid git URL: %w", err)
+	}
+
+	if u.Scheme != "https" && u.Scheme != "http" {
+		return fmt.Errorf("git URL must use https:// or http:// scheme (got: %s)", u.Scheme)
+	}
+
 	return nil
 }

@@ -2,6 +2,7 @@ package config
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -10,18 +11,41 @@ import (
 // Generator generates Lua configuration code from Go structs.
 type Generator struct {
 	indent string // Indentation string (default: two spaces)
+	logger Logger
 }
 
 // NewGenerator creates a new Lua config generator.
 func NewGenerator() *Generator {
 	return &Generator{
 		indent: "  ", // Two spaces
+		logger: defaultLogger(),
+	}
+}
+
+// WithLogger returns a new Generator with the specified logger.
+func (g *Generator) WithLogger(logger Logger) *Generator {
+	if logger == nil {
+		logger = defaultLogger()
+	}
+	return &Generator{
+		indent: g.indent,
+		logger: logger,
 	}
 }
 
 // Generate generates Lua code from a Config struct.
 // The output is formatted and human-readable.
-func (g *Generator) Generate(config *Config) (string, error) {
+func (g *Generator) Generate(ctx context.Context, config *Config) (string, error) {
+	g.logger.Debug("generating lua config")
+	start := time.Now()
+	defer func() {
+		g.logger.Debug("generation complete", "duration", time.Since(start))
+	}()
+
+	// Check if context is cancelled
+	if err := ctx.Err(); err != nil {
+		return "", fmt.Errorf("context cancelled: %w", err)
+	}
 	var buf bytes.Buffer
 
 	// Write header comment
@@ -64,7 +88,11 @@ func (g *Generator) Generate(config *Config) (string, error) {
 }
 
 // GenerateTimestamped generates a timestamped config with metadata.
-func (g *Generator) GenerateTimestamped(config *Config, gitCommit string) (filename, content string, err error) {
+func (g *Generator) GenerateTimestamped(ctx context.Context, config *Config, gitCommit string) (filename, content string, err error) {
+	// Check if context is cancelled
+	if err := ctx.Err(); err != nil {
+		return "", "", fmt.Errorf("context cancelled: %w", err)
+	}
 	var buf bytes.Buffer
 
 	// Generate timestamp
@@ -92,7 +120,7 @@ func (g *Generator) GenerateTimestamped(config *Config, gitCommit string) (filen
 	buf.WriteString("}\n\n")
 
 	// Generate main config
-	configCode, err := g.Generate(config)
+	configCode, err := g.Generate(ctx, config)
 	if err != nil {
 		return "", "", err
 	}
@@ -247,13 +275,42 @@ func (g *Generator) writeOptions(buf *bytes.Buffer, options Options) {
 	buf.WriteString("},\n")
 }
 
-// quoteLuaString quotes a string for Lua, handling special characters.
+// quoteLuaString quotes a string for Lua, handling all special characters.
+// It properly escapes control characters and ensures the generated Lua is valid.
 func (g *Generator) quoteLuaString(s string) string {
-	// Use double quotes and escape special characters
-	s = strings.ReplaceAll(s, "\\", "\\\\") // Escape backslashes first
-	s = strings.ReplaceAll(s, "\"", "\\\"") // Escape double quotes
-	s = strings.ReplaceAll(s, "\n", "\\n")  // Escape newlines
-	s = strings.ReplaceAll(s, "\r", "\\r")  // Escape carriage returns
-	s = strings.ReplaceAll(s, "\t", "\\t")  // Escape tabs
-	return "\"" + s + "\""
+	var buf strings.Builder
+	buf.WriteByte('"')
+
+	for _, r := range s {
+		switch r {
+		case '\\':
+			buf.WriteString("\\\\")
+		case '"':
+			buf.WriteString("\\\"")
+		case '\n':
+			buf.WriteString("\\n")
+		case '\r':
+			buf.WriteString("\\r")
+		case '\t':
+			buf.WriteString("\\t")
+		case '\b':
+			buf.WriteString("\\b")
+		case '\f':
+			buf.WriteString("\\f")
+		case '\v':
+			buf.WriteString("\\v")
+		case '\a':
+			buf.WriteString("\\a")
+		default:
+			if r < 32 || r == 127 {
+				// Escape other control characters with numeric escape
+				buf.WriteString(fmt.Sprintf("\\%03d", r))
+			} else {
+				buf.WriteRune(r)
+			}
+		}
+	}
+
+	buf.WriteByte('"')
+	return buf.String()
 }
