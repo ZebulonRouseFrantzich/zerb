@@ -18,7 +18,9 @@ bin/
 
 # Output of the go coverage tool
 coverage.out
+coverage*.out
 coverage.html
+coverage*.html
 
 # Test temp directories
 .test-tmp/
