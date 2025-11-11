@@ -5,6 +5,23 @@ import (
 	"strings"
 )
 
+// familyMap maps distribution names to their canonical family names.
+// This is used to normalize variations of family strings from gopsutil.
+var familyMap = map[string]string{
+	"debian":   FamilyDebian,
+	"ubuntu":   FamilyDebian, // gopsutil might return ubuntu as family
+	"rhel":     FamilyRHEL,
+	"centos":   FamilyRHEL,
+	"rocky":    FamilyRHEL,
+	"fedora":   FamilyFedora,
+	"suse":     FamilySUSE,
+	"opensuse": FamilySUSE,
+	"arch":     FamilyArch,
+	"manjaro":  FamilyArch,
+	"alpine":   FamilyAlpine,
+	"gentoo":   FamilyGentoo,
+}
+
 // normalizeArch converts GOARCH values to normalized architecture names.
 // MVP supports only amd64 and arm64.
 func normalizeArch(arch string) (string, error) {
@@ -23,29 +40,14 @@ func normalizePlatform(platform string) string {
 	return strings.ToLower(strings.TrimSpace(platform))
 }
 
-// mapFamily maps gopsutil family strings to canonical family names.
-// Uses a lookup table for explicit mapping.
+// mapFamily maps distribution family strings to canonical family names.
+// Uses a package-level lookup table for explicit mapping.
 func mapFamily(family string) string {
-	familyMap := map[string]string{
-		"debian":   "debian",
-		"ubuntu":   "debian", // gopsutil might return ubuntu as family
-		"rhel":     "rhel",
-		"centos":   "rhel",
-		"rocky":    "rhel",
-		"fedora":   "fedora",
-		"suse":     "suse",
-		"opensuse": "suse",
-		"arch":     "arch",
-		"manjaro":  "arch",
-		"alpine":   "alpine",
-		"gentoo":   "gentoo",
-	}
-
 	normalized := strings.ToLower(strings.TrimSpace(family))
 	if canonical, ok := familyMap[normalized]; ok {
 		return canonical
 	}
 
 	// Return "unknown" for unrecognized families
-	return "unknown"
+	return FamilyUnknown
 }

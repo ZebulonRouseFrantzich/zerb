@@ -52,15 +52,9 @@ func TestRealDetector_Detect(t *testing.T) {
 	// On Linux, verify distro fields (may be empty if detection fails)
 	if runtime.GOOS == "linux" {
 		// Platform may be set or empty (graceful fallback)
-		// If platform is set, family should also be set
+		// If platform is set, family should also be set (at minimum "unknown")
 		if info.Platform != "" && info.Family == "" {
-			t.Error("If Platform is set, Family should also be set")
-		}
-
-		// Family should never be empty string if Platform is set
-		// It should be "unknown" at minimum
-		if info.Platform != "" && info.Family == "" {
-			t.Error("Family should be set when Platform is set")
+			t.Error("Family should be set when Platform is set (expected at minimum 'unknown')")
 		}
 	}
 

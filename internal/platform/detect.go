@@ -41,9 +41,12 @@ func (d *RealDetector) Detect(ctx context.Context) (*Info, error) {
 	if runtime.GOOS == "linux" {
 		platform, family, version, err := host.PlatformInformationWithContext(ctx)
 		if err != nil {
-			// Graceful fallback: Continue with OS/arch only
-			// Most configs won't need distro-specific logic
-			// Users can still write cross-platform configs
+			// Check if context was cancelled - this is a hard failure
+			if ctx.Err() != nil {
+				return nil, fmt.Errorf("platform detection cancelled: %w", ctx.Err())
+			}
+			// Graceful fallback for detection failures only
+			// Continue with OS/arch only - most configs won't need distro-specific logic
 			return info, nil
 		}
 
