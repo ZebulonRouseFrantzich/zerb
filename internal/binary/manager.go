@@ -145,19 +145,39 @@ func (m *Manager) Download(ctx context.Context, opts DownloadOptions) (*Download
 		return nil, fmt.Errorf("download binary: %w", err)
 	}
 
-	// Download verification files
+	// Download verification files based on binary type
 	var signaturePath, checksumPath string
 
-	if downloadInfo.SignatureURL != "" && !opts.SkipGPG {
-		signaturePath, _ = m.downloader.DownloadSignature(ctx, downloadInfo)
-		// Ignore error - we'll fall back to SHA256 if signature download fails
-	}
-
-	if downloadInfo.ChecksumURL != "" {
-		checksumPath, err = m.downloader.DownloadChecksums(ctx, downloadInfo)
-		if err != nil {
-			return nil, fmt.Errorf("download checksums: %w", err)
+	switch opts.Binary {
+	case BinaryMise:
+		// mise REQUIRES GPG signature - don't silently ignore errors
+		if downloadInfo.SignatureURL != "" && !opts.SkipGPG {
+			signaturePath, err = m.downloader.DownloadSignature(ctx, downloadInfo)
+			if err != nil {
+				return nil, fmt.Errorf("failed to download required GPG signature for mise: %w", err)
+			}
 		}
+
+		// Also download checksums for mise (used in addition to GPG)
+		if downloadInfo.ChecksumURL != "" {
+			checksumPath, err = m.downloader.DownloadChecksums(ctx, downloadInfo)
+			if err != nil {
+				// Checksums are optional for mise (GPG is primary)
+				checksumPath = ""
+			}
+		}
+
+	case BinaryChezmoi:
+		// chezmoi uses SHA256 checksums (TODO: add cosign verification)
+		if downloadInfo.ChecksumURL != "" {
+			checksumPath, err = m.downloader.DownloadChecksums(ctx, downloadInfo)
+			if err != nil {
+				return nil, fmt.Errorf("failed to download required checksums for chezmoi: %w", err)
+			}
+		}
+
+	default:
+		return nil, fmt.Errorf("unknown binary: %s", opts.Binary)
 	}
 
 	// Verify binary

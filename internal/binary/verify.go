@@ -28,31 +28,53 @@ func NewVerifier(keyringDir string) *Verifier {
 }
 
 // VerifyFile verifies a downloaded binary file
-// It tries GPG verification first, then falls back to SHA256 if GPG fails
+// It uses the appropriate verification method based on the binary type:
+// - mise: REQUIRES GPG verification (no fallback)
+// - chezmoi: Uses SHA256 verification (cosign TODO)
 func (v *Verifier) VerifyFile(binaryPath, signaturePath, checksumPath string, info *DownloadInfo) (*VerificationResult, error) {
 	if info == nil {
 		return nil, fmt.Errorf("download info is required")
 	}
 
-	// Try GPG verification first
-	if signaturePath != "" && !v.skipGPG {
-		result, err := v.verifyGPG(binaryPath, signaturePath, info.Binary)
-		if err == nil && result.Success {
-			return result, nil
+	// Route verification based on binary type
+	switch info.Binary {
+	case BinaryMise:
+		// mise REQUIRES GPG verification - no fallback
+		if signaturePath == "" || v.skipGPG {
+			return nil, fmt.Errorf("GPG signature required for mise but not available")
 		}
-		// Log GPG verification failure but continue to SHA256
-	}
 
-	// Fallback to SHA256 verification
-	if checksumPath != "" {
-		return v.verifySHA256(binaryPath, checksumPath)
-	}
+		result, err := v.verifyGPG(binaryPath, signaturePath, info.Binary)
+		if err != nil {
+			return nil, fmt.Errorf("GPG verification failed for mise: %w", err)
+		}
 
-	return &VerificationResult{
-		Method:  VerificationNone,
-		Success: false,
-		Error:   fmt.Errorf("no verification method available"),
-	}, nil
+		if !result.Success {
+			return nil, fmt.Errorf("GPG verification failed: %v", result.Error)
+		}
+
+		return result, nil
+
+	case BinaryChezmoi:
+		// chezmoi: Use SHA256 for now (TODO: add cosign verification)
+		if checksumPath == "" {
+			return nil, fmt.Errorf("checksum file required for chezmoi but not available")
+		}
+
+		result, err := v.verifySHA256(binaryPath, checksumPath)
+		if err != nil {
+			return nil, fmt.Errorf("SHA256 verification failed for chezmoi: %w", err)
+		}
+
+		if !result.Success {
+			return nil, fmt.Errorf("checksum verification failed: %v", result.Error)
+		}
+
+		return result, nil
+
+	default:
+		return nil, fmt.Errorf("unknown binary type: %s", info.Binary)
+	}
 }
 
 // verifyGPG verifies a file using GPG signature
@@ -215,7 +237,14 @@ func findChecksum(checksumPath, filename string) (string, error) {
 		}
 
 		// Check if this line is for our file
-		if parts[1] == filename || strings.HasSuffix(parts[1], filename) {
+		// Use exact match first, then basename comparison for files with paths
+		checksumFilename := parts[1]
+		if checksumFilename == filename {
+			return parts[0], nil
+		}
+
+		// Also check basename (for checksums like "/path/to/file.tar.gz")
+		if filepath.Base(checksumFilename) == filename {
 			return parts[0], nil
 		}
 	}

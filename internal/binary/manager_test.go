@@ -436,3 +436,59 @@ func TestManagerInstallAll(t *testing.T) {
 		}
 	}
 }
+
+func TestManagerDownload_RequireGPGForMise(t *testing.T) {
+	// This test verifies that GPG verification is REQUIRED for mise
+	// and signature download failures cause the entire download to fail
+
+	tmpDir := t.TempDir()
+
+	config := Config{
+		ZerbDir: tmpDir,
+		PlatformInfo: &platform.Info{
+			OS:   "linux",
+			Arch: "amd64",
+		},
+	}
+
+	manager, err := NewManager(config)
+	if err != nil {
+		t.Fatalf("NewManager failed: %v", err)
+	}
+
+	// Extract keyrings first
+	if err := manager.EnsureKeyrings(); err != nil {
+		t.Fatalf("EnsureKeyrings failed: %v", err)
+	}
+
+	// Create a mock server that returns 404 for signature file
+	// but succeeds for binary and checksums
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, ".sig") {
+			// Signature file - return 404
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if strings.HasSuffix(r.URL.Path, "SHA256SUMS") {
+			// Checksums file - return valid content
+			w.WriteHeader(http.StatusOK)
+			// Return a fake checksum (this would normally match the binary)
+			w.Write([]byte("abc123def456 mise-2024.12.7-linux-amd64.tar.gz\n"))
+			return
+		}
+		// Binary file - return minimal tar.gz
+		w.WriteHeader(http.StatusOK)
+		// Would return binary content here
+	}))
+	defer server.Close()
+
+	// Override URLs to point to our mock server
+	// Note: We can't easily override URLs in the current implementation
+	// This test demonstrates the SHOULD behavior
+
+	// For now, this test documents expected behavior:
+	// When signature download fails for mise, the Download() should fail
+	// rather than silently falling back to SHA256
+
+	t.Skip("TODO: Implement URL override mechanism for testing, or refactor to make URLs injectable")
+}

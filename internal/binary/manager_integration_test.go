@@ -78,9 +78,9 @@ func calculateFileSHA256(t *testing.T, path string) string {
 }
 
 func TestManagerDownload_Complete(t *testing.T) {
-	// Create a real tar.gz with mise binary
-	binaryContent := "#!/bin/sh\necho 'Mock mise binary'\n"
-	archivePath := createBinaryTarGz(t, "mise", binaryContent)
+	// Create a real tar.gz with chezmoi binary (uses SHA256 verification)
+	binaryContent := "#!/bin/sh\necho 'Mock chezmoi binary'\n"
+	archivePath := createBinaryTarGz(t, "chezmoi", binaryContent)
 
 	// Calculate checksum
 	checksum := calculateFileSHA256(t, archivePath)
@@ -123,7 +123,7 @@ func TestManagerDownload_Complete(t *testing.T) {
 	// Override download URLs to point to our test server
 	// We'll construct the download info manually
 	downloadInfo := &DownloadInfo{
-		Binary:      BinaryMise,
+		Binary:      BinaryChezmoi,
 		Version:     "test",
 		OS:          "linux",
 		Arch:        "amd64",
@@ -165,9 +165,9 @@ func TestManagerDownload_Complete(t *testing.T) {
 }
 
 func TestManagerInstall_Complete(t *testing.T) {
-	// Create a real tar.gz with mise binary
-	binaryContent := "#!/bin/sh\necho 'Mock mise binary'\n"
-	archivePath := createBinaryTarGz(t, "mise", binaryContent)
+	// Create a real tar.gz with chezmoi binary (uses SHA256 verification)
+	binaryContent := "#!/bin/sh\necho 'Mock chezmoi binary'\n"
+	archivePath := createBinaryTarGz(t, "chezmoi", binaryContent)
 
 	// Calculate checksum
 	checksum := calculateFileSHA256(t, archivePath)
@@ -209,7 +209,7 @@ func TestManagerInstall_Complete(t *testing.T) {
 
 	// Manually construct download info for our test server
 	downloadInfo := &DownloadInfo{
-		Binary:      BinaryMise,
+		Binary:      BinaryChezmoi,
 		Version:     "test",
 		OS:          "linux",
 		Arch:        "amd64",
@@ -238,13 +238,13 @@ func TestManagerInstall_Complete(t *testing.T) {
 	}
 
 	// Extract to bin directory
-	destPath := manager.GetBinaryPath(BinaryMise)
-	if err := manager.extractor.ExtractBinary(binaryPath, destPath, "mise"); err != nil {
+	destPath := manager.GetBinaryPath(BinaryChezmoi)
+	if err := manager.extractor.ExtractBinary(binaryPath, destPath, "chezmoi"); err != nil {
 		t.Fatalf("extraction failed: %v", err)
 	}
 
 	// Verify installed
-	installed, err := manager.IsInstalled(BinaryMise)
+	installed, err := manager.IsInstalled(BinaryChezmoi)
 	if err != nil {
 		t.Fatalf("IsInstalled check failed: %v", err)
 	}

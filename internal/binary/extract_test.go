@@ -235,13 +235,78 @@ func TestExtractBinary(t *testing.T) {
 }
 
 func TestExtractTarGz_PathTraversal(t *testing.T) {
-	// Create an archive with a path traversal attempt
-	tmpDir := t.TempDir()
-	archivePath := filepath.Join(tmpDir, "malicious.tar.gz")
+	tests := []struct {
+		name        string
+		fileName    string
+		shouldFail  bool
+		description string
+	}{
+		{
+			name:        "obvious traversal",
+			fileName:    "../../../etc/passwd",
+			shouldFail:  true,
+			description: "Simple parent directory traversal",
+		},
+		{
+			name:        "absolute path",
+			fileName:    "/etc/passwd",
+			shouldFail:  false, // filepath.Join makes this relative, becomes <destdir>/etc/passwd
+			description: "Absolute path (filepath.Join makes it relative)",
+		},
+		{
+			name:        "symlink traversal",
+			fileName:    "link/../../../etc/passwd",
+			shouldFail:  true,
+			description: "Traversal via symlink path component",
+		},
 
+		{
+			name:        "valid subdirectory",
+			fileName:    "subdir/file.txt",
+			shouldFail:  false,
+			description: "Valid file in subdirectory",
+		},
+		{
+			name:        "valid file",
+			fileName:    "file.txt",
+			shouldFail:  false,
+			description: "Valid file in root",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			archivePath := filepath.Join(tmpDir, "test.tar.gz")
+
+			// Create archive with the test file
+			if err := createTestArchiveWithFile(archivePath, tt.fileName, "test content"); err != nil {
+				t.Fatalf("failed to create test archive: %v", err)
+			}
+
+			// Attempt extraction
+			destDir := filepath.Join(tmpDir, "extract")
+			extractor := NewExtractor()
+			err := extractor.ExtractTarGz(archivePath, destDir)
+
+			if tt.shouldFail {
+				if err == nil {
+					t.Errorf("expected error for %s, but extraction succeeded", tt.description)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("unexpected error for %s: %v", tt.description, err)
+				}
+			}
+		})
+	}
+}
+
+// createTestArchiveWithFile creates a tar.gz with a single file
+func createTestArchiveWithFile(archivePath, fileName, content string) error {
 	archiveFile, err := os.Create(archivePath)
 	if err != nil {
-		t.Fatalf("failed to create archive: %v", err)
+		return err
 	}
 	defer archiveFile.Close()
 
@@ -251,34 +316,119 @@ func TestExtractTarGz_PathTraversal(t *testing.T) {
 	tarWriter := tar.NewWriter(gzipWriter)
 	defer tarWriter.Close()
 
-	// Add file with path traversal
 	header := &tar.Header{
-		Name: "../../../etc/passwd",
+		Name: fileName,
 		Mode: 0644,
-		Size: 4,
+		Size: int64(len(content)),
 	}
 
-	tarWriter.WriteHeader(header)
-	tarWriter.Write([]byte("bad\n"))
-
-	tarWriter.Close()
-	gzipWriter.Close()
-	archiveFile.Close()
-
-	// Attempt extraction
-	destDir := filepath.Join(tmpDir, "extract")
-	extractor := NewExtractor()
-	err = extractor.ExtractTarGz(archivePath, destDir)
-
-	// Should fail due to path traversal protection
-	if err == nil {
-		t.Error("expected error for path traversal attempt")
+	if err := tarWriter.WriteHeader(header); err != nil {
+		return err
 	}
 
-	// Verify malicious file was not created
-	maliciousPath := filepath.Join(tmpDir, "etc", "passwd")
-	if fileExists(maliciousPath) {
-		t.Error("path traversal protection failed - malicious file was created")
+	if _, err := tarWriter.Write([]byte(content)); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func TestExtractTarGz_SymlinkTraversal(t *testing.T) {
+	tests := []struct {
+		name        string
+		linkName    string
+		linkTarget  string
+		shouldFail  bool
+		description string
+	}{
+		{
+			name:        "absolute symlink",
+			linkName:    "link",
+			linkTarget:  "/etc/passwd",
+			shouldFail:  true,
+			description: "Symlink to absolute path outside destDir",
+		},
+		{
+			name:        "relative traversal symlink",
+			linkName:    "link",
+			linkTarget:  "../../../etc/passwd",
+			shouldFail:  true,
+			description: "Symlink with relative path traversal",
+		},
+		{
+			name:        "valid relative symlink",
+			linkName:    "link",
+			linkTarget:  "target.txt",
+			shouldFail:  false,
+			description: "Valid symlink within destDir",
+		},
+		{
+			name:        "valid subdir symlink",
+			linkName:    "subdir/link",
+			linkTarget:  "../target.txt",
+			shouldFail:  false,
+			description: "Valid symlink in subdirectory pointing to parent",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpDir := t.TempDir()
+			archivePath := filepath.Join(tmpDir, "test.tar.gz")
+
+			// Create archive with symlink
+			archiveFile, err := os.Create(archivePath)
+			if err != nil {
+				t.Fatalf("failed to create archive: %v", err)
+			}
+			defer archiveFile.Close()
+
+			gzipWriter := gzip.NewWriter(archiveFile)
+			defer gzipWriter.Close()
+
+			tarWriter := tar.NewWriter(gzipWriter)
+			defer tarWriter.Close()
+
+			// Add a target file first (for valid tests)
+			if !tt.shouldFail {
+				header := &tar.Header{
+					Name: "target.txt",
+					Mode: 0644,
+					Size: 4,
+				}
+				tarWriter.WriteHeader(header)
+				tarWriter.Write([]byte("test"))
+			}
+
+			// Add symlink
+			header := &tar.Header{
+				Name:     tt.linkName,
+				Typeflag: tar.TypeSymlink,
+				Linkname: tt.linkTarget,
+			}
+			if err := tarWriter.WriteHeader(header); err != nil {
+				t.Fatalf("failed to write symlink header: %v", err)
+			}
+
+			tarWriter.Close()
+			gzipWriter.Close()
+			archiveFile.Close()
+
+			// Attempt extraction
+			destDir := filepath.Join(tmpDir, "extract")
+			extractor := NewExtractor()
+			err = extractor.ExtractTarGz(archivePath, destDir)
+
+			if tt.shouldFail {
+				if err == nil {
+					t.Errorf("expected error for %s, but extraction succeeded", tt.description)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("unexpected error for %s: %v", tt.description, err)
+				}
+			}
+		})
 	}
 }
 

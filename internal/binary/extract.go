@@ -56,8 +56,9 @@ func (e *Extractor) ExtractTarGz(archivePath, destDir string) error {
 		target := filepath.Join(destDir, header.Name)
 
 		// Security check: prevent path traversal
-		if !strings.HasPrefix(target, filepath.Clean(destDir)+string(os.PathSeparator)) {
-			return fmt.Errorf("illegal file path: %s", header.Name)
+		// Use robust validation that handles edge cases
+		if err := validateExtractPath(target, destDir); err != nil {
+			return fmt.Errorf("illegal file path %s: %w", header.Name, err)
 		}
 
 		// Handle different file types
@@ -83,12 +84,23 @@ func (e *Extractor) ExtractTarGz(archivePath, destDir string) error {
 			// Copy file contents
 			if _, err := io.Copy(outFile, tarReader); err != nil {
 				outFile.Close()
+				os.Remove(target) // Clean up partial file on error
 				return fmt.Errorf("write file %s: %w", target, err)
 			}
 
 			outFile.Close()
 
 		case tar.TypeSymlink:
+			// Validate symlink target doesn't escape destDir
+			if err := validateSymlinkTarget(target, header.Linkname, destDir); err != nil {
+				return fmt.Errorf("illegal symlink %s -> %s: %w", header.Name, header.Linkname, err)
+			}
+
+			// Create parent directory if needed
+			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+				return fmt.Errorf("create parent dir for symlink %s: %w", target, err)
+			}
+
 			// Create symlink
 			if err := os.Symlink(header.Linkname, target); err != nil {
 				return fmt.Errorf("create symlink %s: %w", target, err)
@@ -150,6 +162,7 @@ func (e *Extractor) ExtractBinary(archivePath, destPath, binaryName string) erro
 			// Copy binary contents
 			if _, err := io.Copy(outFile, tarReader); err != nil {
 				outFile.Close()
+				os.Remove(destPath) // Clean up partial file on error
 				return fmt.Errorf("write file: %w", err)
 			}
 
@@ -165,5 +178,62 @@ func SetExecutable(path string) error {
 	if err := os.Chmod(path, 0755); err != nil {
 		return fmt.Errorf("set executable: %w", err)
 	}
+	return nil
+}
+
+// validateExtractPath ensures a file path is within the destination directory
+// This prevents path traversal attacks (zip-slip vulnerability)
+func validateExtractPath(targetPath, destDir string) error {
+	// Clean both paths to resolve any . or .. components
+	cleanTarget := filepath.Clean(targetPath)
+	cleanDest := filepath.Clean(destDir)
+
+	// Ensure target is within destDir or equal to destDir
+	// We check three conditions:
+	// 1. Exact match (target == destDir) - OK for "." entry
+	// 2. Has prefix with separator - target is inside destDir
+	// 3. Not an absolute path that differs from destDir
+	if cleanTarget == cleanDest {
+		return nil // Root directory is OK
+	}
+
+	if !strings.HasPrefix(cleanTarget, cleanDest+string(os.PathSeparator)) {
+		return fmt.Errorf("path traversal attempt detected")
+	}
+
+	// Additional check: reject absolute paths outside destDir
+	if filepath.IsAbs(cleanTarget) && !strings.HasPrefix(cleanTarget, cleanDest) {
+		return fmt.Errorf("absolute path outside destination")
+	}
+
+	return nil
+}
+
+// validateSymlinkTarget ensures a symlink target doesn't escape the destination directory
+func validateSymlinkTarget(symlinkPath, linkTarget, destDir string) error {
+	// Clean paths
+	cleanDest := filepath.Clean(destDir)
+
+	// Resolve the symlink target relative to its location
+	symlinkDir := filepath.Dir(symlinkPath)
+	var resolvedTarget string
+
+	if filepath.IsAbs(linkTarget) {
+		// Absolute symlink target
+		resolvedTarget = filepath.Clean(linkTarget)
+	} else {
+		// Relative symlink target - resolve relative to symlink location
+		resolvedTarget = filepath.Clean(filepath.Join(symlinkDir, linkTarget))
+	}
+
+	// Check if resolved target is within destDir
+	if resolvedTarget == cleanDest {
+		return nil // Pointing to root is OK
+	}
+
+	if !strings.HasPrefix(resolvedTarget, cleanDest+string(os.PathSeparator)) {
+		return fmt.Errorf("symlink points outside destination directory")
+	}
+
 	return nil
 }

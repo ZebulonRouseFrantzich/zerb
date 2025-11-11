@@ -202,6 +202,23 @@ def456  /tmp/file2.tar.gz`,
 			wantErr:          false,
 		},
 		{
+			name: "ambiguous_suffix_match",
+			checksumContent: `abc123  foo-mise.tar.gz
+def456  mise.tar.gz
+789xyz  bar-mise.tar.gz`,
+			filename:         "mise.tar.gz",
+			expectedChecksum: "def456", // Should match exact, not first suffix match
+			wantErr:          false,
+		},
+		{
+			name: "basename_match_with_path",
+			checksumContent: `abc123  /path/to/mise.tar.gz
+def456  another/path/mise.tar.gz`,
+			filename:         "mise.tar.gz",
+			expectedChecksum: "abc123", // Should match first basename match
+			wantErr:          false,
+		},
+		{
 			name: "not_found",
 			checksumContent: `abc123  file1.tar.gz
 def456  file2.tar.gz`,
@@ -259,45 +276,70 @@ func TestVerifyFile(t *testing.T) {
 
 	tests := []struct {
 		name           string
+		binary         Binary
 		binaryPath     string
 		signaturePath  string
 		checksumPath   string
 		expectedMethod VerificationMethod
 		wantSuccess    bool
+		wantError      bool
 	}{
 		{
-			name:           "gpg_success",
+			name:           "mise_gpg_success",
+			binary:         BinaryMise,
 			binaryPath:     "testdata/test-binary",
 			signaturePath:  "testdata/test-binary.asc",
 			checksumPath:   "testdata/checksums.txt",
 			expectedMethod: VerificationGPG,
 			wantSuccess:    true,
+			wantError:      false,
 		},
 		{
-			name:           "sha256_fallback",
+			name:           "mise_requires_gpg",
+			binary:         BinaryMise,
 			binaryPath:     "testdata/test-binary",
-			signaturePath:  "", // No GPG signature
+			signaturePath:  "", // No GPG signature - should fail for mise
+			checksumPath:   "testdata/checksums.txt",
+			expectedMethod: VerificationNone,
+			wantSuccess:    false,
+			wantError:      true, // mise REQUIRES GPG
+		},
+		{
+			name:           "chezmoi_sha256_success",
+			binary:         BinaryChezmoi,
+			binaryPath:     "testdata/test-binary",
+			signaturePath:  "", // chezmoi doesn't use GPG
 			checksumPath:   "testdata/checksums.txt",
 			expectedMethod: VerificationSHA256,
 			wantSuccess:    true,
+			wantError:      false,
 		},
 		{
-			name:           "no_verification_available",
+			name:           "chezmoi_requires_checksum",
+			binary:         BinaryChezmoi,
 			binaryPath:     "testdata/test-binary",
 			signaturePath:  "",
-			checksumPath:   "",
+			checksumPath:   "", // No checksum - should fail
 			expectedMethod: VerificationNone,
 			wantSuccess:    false,
+			wantError:      true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			info := &DownloadInfo{
-				Binary: BinaryMise,
+				Binary: tt.binary,
 			}
 
 			result, err := verifier.VerifyFile(tt.binaryPath, tt.signaturePath, tt.checksumPath, info)
+
+			if tt.wantError {
+				if err == nil {
+					t.Error("expected error, got nil")
+				}
+				return
+			}
 
 			if tt.wantSuccess {
 				if err != nil {
@@ -310,9 +352,8 @@ func TestVerifyFile(t *testing.T) {
 					t.Errorf("expected method %v, got %v", tt.expectedMethod, result.Method)
 				}
 			} else {
-				// For no verification available, we don't return an error but success=false
-				if result == nil || result.Success {
-					t.Error("expected verification to fail")
+				if err == nil {
+					t.Error("expected verification to fail with error")
 				}
 			}
 		})

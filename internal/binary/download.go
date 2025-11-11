@@ -111,9 +111,14 @@ func (d *Downloader) downloadOnce(ctx context.Context, url, destPath string) err
 	if err != nil {
 		return fmt.Errorf("create temp file: %w", err)
 	}
+
+	// Track whether we need to clean up the temp file
+	cleanupNeeded := true
 	defer func() {
 		tmpFile.Close()
-		os.Remove(tmpPath) // Clean up on error
+		if cleanupNeeded {
+			os.Remove(tmpPath) // Clean up on error
+		}
 	}()
 
 	// Copy response body to file
@@ -132,6 +137,8 @@ func (d *Downloader) downloadOnce(ctx context.Context, url, destPath string) err
 		return fmt.Errorf("rename temp file: %w", err)
 	}
 
+	// Success - don't clean up the temp file (it's been renamed)
+	cleanupNeeded = false
 	return nil
 }
 
