@@ -1,0 +1,7 @@
+%no-protection
+Key-Type: RSA
+Key-Length: 2048
+Name-Real: ZERB Test Key
+Name-Email: test@zerb.dev
+Expire-Date: 0
+%commit
