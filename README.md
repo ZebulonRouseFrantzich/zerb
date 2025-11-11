@@ -263,13 +263,15 @@ $ zerb pull
 - [ ] Config rollback
 
 #### Platform Detection
-- [ ] Linux distro detection (Ubuntu, Arch, Fedora, Alpine, etc.)
-- [ ] Linux family detection (Debian, RHEL, Arch, Alpine, etc.)
-- [ ] macOS detection (basic GOOS/GOARCH)
-- [ ] Windows detection (basic GOOS/GOARCH)
-- [ ] Architecture detection (amd64, arm64, Apple Silicon)
+- [ ] Linux distro detection (Ubuntu, Arch, Fedora, Alpine, RHEL/CentOS, openSUSE, Gentoo)
+- [ ] Linux family detection (Debian, RHEL, Fedora, Arch, Alpine, SUSE, Gentoo)
+- [ ] Architecture detection and normalization (amd64, arm64 only in MVP)
+- [ ] Graceful fallback if distro detection fails
 - [ ] Platform-aware conditionals in Lua
-- [ ] Read-only platform table injection
+- [ ] Read-only platform table injection at VM initialization
+- [ ] `zerb platform` command for debugging
+- [ ] macOS detection (basic GOOS/GOARCH, post-MVP)
+- [ ] Windows detection (basic GOOS/GOARCH, post-MVP)
 
 #### Git Integration
 - [ ] Automatic git initialization
@@ -335,15 +337,19 @@ $ zerb pull
 
 ### MVP (v1.0)
 - **Linux**: Linux Mint (primary target)
-  - Full distro detection (Ubuntu, Arch, Fedora, Alpine, etc.)
-  - Family detection (Debian, RHEL, Arch, Alpine, etc.)
-  - Platform-aware conditionals
+  - Full distro detection (Ubuntu, Arch, Fedora, Alpine, RHEL/CentOS, openSUSE, Gentoo)
+  - Family detection (Debian, RHEL, Fedora, Arch, Alpine, SUSE, Gentoo)
+  - Platform-aware conditionals in Lua config
+  - Architectures: amd64 and arm64 only (error on i386, arm 32-bit)
+  - Graceful fallback if distro detection fails (continues with OS/arch only)
 
 ### Post-MVP
 - **macOS**: Basic support (GOOS/GOARCH only)
-  - WSL/WSL2 detection deferred
-  - Rosetta detection deferred
+  - No distro detection (distro field will be nil)
+  - Apple Silicon detection via runtime.GOARCH
+  - Rosetta 2: Reports binary's compiled architecture
 - **Windows**: Basic support (GOOS/GOARCH only)
+  - No distro detection (distro field will be nil)
 
 ---
 
@@ -494,10 +500,10 @@ zerb = {
 
 - **Language**: Go 1.21+ (single binary)
 - **CLI**: spf13/cobra, spf13/viper
-- **Lua**: yuin/gopher-lua
+- **Lua**: yuin/gopher-lua (pure Go, no CGO)
 - **Git**: go-git/go-git
 - **Security**: x/crypto/openpgp
-- **Platform**: github.com/shirou/gopsutil/v4/host (scoped)
+- **Platform**: github.com/shirou/gopsutil/v4/host (scoped to host package only)
 
 ---
 
