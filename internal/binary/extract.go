@@ -25,20 +25,20 @@ func (e *Extractor) ExtractTarGz(archivePath, destDir string) error {
 	if err != nil {
 		return fmt.Errorf("open archive: %w", err)
 	}
-	defer archiveFile.Close()
+	defer func() { _ = archiveFile.Close() }()
 
 	// Create gzip reader
 	gzipReader, err := gzip.NewReader(archiveFile)
 	if err != nil {
 		return fmt.Errorf("create gzip reader: %w", err)
 	}
-	defer gzipReader.Close()
+	defer func() { _ = gzipReader.Close() }()
 
 	// Create tar reader
 	tarReader := tar.NewReader(gzipReader)
 
 	// Create destination directory
-	if err := os.MkdirAll(destDir, 0755); err != nil {
+	if err := os.MkdirAll(destDir, 0750); err != nil {
 		return fmt.Errorf("create dest dir: %w", err)
 	}
 
@@ -65,13 +65,13 @@ func (e *Extractor) ExtractTarGz(archivePath, destDir string) error {
 		switch header.Typeflag {
 		case tar.TypeDir:
 			// Create directory
-			if err := os.MkdirAll(target, 0755); err != nil {
+			if err := os.MkdirAll(target, 0750); err != nil {
 				return fmt.Errorf("create directory %s: %w", target, err)
 			}
 
 		case tar.TypeReg:
 			// Create parent directory if needed
-			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+			if err := os.MkdirAll(filepath.Dir(target), 0750); err != nil {
 				return fmt.Errorf("create parent dir for %s: %w", target, err)
 			}
 
@@ -81,14 +81,17 @@ func (e *Extractor) ExtractTarGz(archivePath, destDir string) error {
 				return fmt.Errorf("create file %s: %w", target, err)
 			}
 
-			// Copy file contents
-			if _, err := io.Copy(outFile, tarReader); err != nil {
-				outFile.Close()
-				os.Remove(target) // Clean up partial file on error
+			// Copy file contents with size limit to prevent decompression bombs
+			lr := &io.LimitedReader{R: tarReader, N: header.Size}
+			if _, err := io.Copy(outFile, lr); err != nil {
+				_ = outFile.Close()
+				_ = os.Remove(target) // Clean up partial file on error
 				return fmt.Errorf("write file %s: %w", target, err)
 			}
 
-			outFile.Close()
+			if err := outFile.Close(); err != nil {
+				return fmt.Errorf("close file %s: %w", target, err)
+			}
 
 		case tar.TypeSymlink:
 			// Validate symlink target doesn't escape destDir
@@ -97,7 +100,7 @@ func (e *Extractor) ExtractTarGz(archivePath, destDir string) error {
 			}
 
 			// Create parent directory if needed
-			if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+			if err := os.MkdirAll(filepath.Dir(target), 0750); err != nil {
 				return fmt.Errorf("create parent dir for symlink %s: %w", target, err)
 			}
 
@@ -123,14 +126,14 @@ func (e *Extractor) ExtractBinary(archivePath, destPath, binaryName string) erro
 	if err != nil {
 		return fmt.Errorf("open archive: %w", err)
 	}
-	defer archiveFile.Close()
+	defer func() { _ = archiveFile.Close() }()
 
 	// Create gzip reader
 	gzipReader, err := gzip.NewReader(archiveFile)
 	if err != nil {
 		return fmt.Errorf("create gzip reader: %w", err)
 	}
-	defer gzipReader.Close()
+	defer func() { _ = gzipReader.Close() }()
 
 	// Create tar reader
 	tarReader := tar.NewReader(gzipReader)
@@ -149,7 +152,7 @@ func (e *Extractor) ExtractBinary(archivePath, destPath, binaryName string) erro
 		if header.Typeflag == tar.TypeReg && filepath.Base(header.Name) == binaryName {
 			// Create parent directory if needed
 			destDir := filepath.Dir(destPath)
-			if err := os.MkdirAll(destDir, 0755); err != nil {
+			if err := os.MkdirAll(destDir, 0750); err != nil {
 				return fmt.Errorf("create dest dir: %w", err)
 			}
 
@@ -159,14 +162,17 @@ func (e *Extractor) ExtractBinary(archivePath, destPath, binaryName string) erro
 				return fmt.Errorf("create file: %w", err)
 			}
 
-			// Copy binary contents
-			if _, err := io.Copy(outFile, tarReader); err != nil {
-				outFile.Close()
-				os.Remove(destPath) // Clean up partial file on error
+			// Copy binary contents with size limit
+			lr := &io.LimitedReader{R: tarReader, N: header.Size}
+			if _, err := io.Copy(outFile, lr); err != nil {
+				_ = outFile.Close()
+				_ = os.Remove(destPath) // Clean up partial file on error
 				return fmt.Errorf("write file: %w", err)
 			}
 
-			outFile.Close()
+			if err := outFile.Close(); err != nil {
+				return fmt.Errorf("close file: %w", err)
+			}
 			return nil
 		}
 	}

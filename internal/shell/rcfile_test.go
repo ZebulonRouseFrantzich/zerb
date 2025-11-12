@@ -174,15 +174,15 @@ func TestHasActivationLine(t *testing.T) {
 
 	// Create file without activation
 	noActivation := filepath.Join(tmpDir, "no-activation.rc")
-	os.WriteFile(noActivation, []byte("# Just a comment\nexport PATH=/usr/bin\n"), 0644)
+	_ = os.WriteFile(noActivation, []byte("# Just a comment\nexport PATH=/usr/bin\n"), 0644)
 
 	// Create file with activation
 	withActivation := filepath.Join(tmpDir, "with-activation.rc")
-	os.WriteFile(withActivation, []byte("# Config\neval \"$(zerb activate bash)\"\n"), 0644)
+	_ = os.WriteFile(withActivation, []byte("# Config\neval \"$(zerb activate bash)\"\n"), 0644)
 
 	// Create file with activation in comment
 	activationComment := filepath.Join(tmpDir, "activation-comment.rc")
-	os.WriteFile(activationComment, []byte("# Add: zerb activate bash\nexport PATH=/usr/bin\n"), 0644)
+	_ = os.WriteFile(activationComment, []byte("# Add: zerb activate bash\nexport PATH=/usr/bin\n"), 0644)
 
 	tests := []struct {
 		name    string

@@ -267,10 +267,10 @@ func TestVerifyFile(t *testing.T) {
 	// Setup keyring
 	tmpDir := t.TempDir()
 	keyringDir := filepath.Join(tmpDir, "keyrings")
-	os.MkdirAll(keyringDir, 0755)
+	_ = os.MkdirAll(keyringDir, 0755)
 
 	testKeyData, _ := os.ReadFile("testdata/test-key.gpg")
-	os.WriteFile(filepath.Join(keyringDir, "mise.gpg"), testKeyData, 0644)
+	_ = os.WriteFile(filepath.Join(keyringDir, "mise.gpg"), testKeyData, 0644)
 
 	verifier := NewVerifier(keyringDir)
 
@@ -447,7 +447,7 @@ func TestFindChecksum_MalformedFile(t *testing.T) {
 
 	// Create malformed checksum file (missing filename)
 	malformedContent := "abc123\ndef456"
-	os.WriteFile(checksumPath, []byte(malformedContent), 0644)
+	_ = os.WriteFile(checksumPath, []byte(malformedContent), 0644)
 
 	_, err := findChecksum(checksumPath, "test.txt")
 	if err == nil {

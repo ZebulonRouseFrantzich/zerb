@@ -90,6 +90,7 @@ func runActivate(args []string) error {
 
 	// Execute internal activation and pass through output
 	// This is the key step: we call mise internally but users never see it
+	//nolint:gosec // G204: Command args are generated internally by GetMiseActivationCommand with validated zerbDir path
 	cmd := exec.CommandContext(ctx, miseArgs[0], miseArgs[1:]...)
 
 	// Set up environment variables

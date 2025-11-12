@@ -28,11 +28,11 @@ func TestAddActivationLine_SecurityValidation(t *testing.T) {
 	t.Run("Rejects symlink target", func(t *testing.T) {
 		// Create a real file
 		realFile := filepath.Join(tmpDir, "real.rc")
-		os.WriteFile(realFile, []byte("content"), 0644)
+		_ = os.WriteFile(realFile, []byte("content"), 0644)
 
 		// Create symlink
 		symlinkFile := filepath.Join(tmpDir, "symlink.rc")
-		os.Symlink(realFile, symlinkFile)
+		_ = os.Symlink(realFile, symlinkFile)
 
 		// Try to add to symlink
 		err := AddActivationLine(symlinkFile, `eval "$(zerb activate bash)"`)
@@ -179,7 +179,7 @@ func TestRCFileExists_SymlinkHandling(t *testing.T) {
 
 	t.Run("Detects regular file correctly", func(t *testing.T) {
 		regularFile := filepath.Join(tmpDir, "regular.rc")
-		os.WriteFile(regularFile, []byte("content"), 0644)
+		_ = os.WriteFile(regularFile, []byte("content"), 0644)
 
 		exists, err := RCFileExists(regularFile)
 		if err != nil {
@@ -194,11 +194,11 @@ func TestRCFileExists_SymlinkHandling(t *testing.T) {
 	t.Run("Returns error for symlink", func(t *testing.T) {
 		// Create a real file
 		realFile := filepath.Join(tmpDir, "real.rc")
-		os.WriteFile(realFile, []byte("content"), 0644)
+		_ = os.WriteFile(realFile, []byte("content"), 0644)
 
 		// Create symlink
 		symlinkFile := filepath.Join(tmpDir, "symlink.rc")
-		os.Symlink(realFile, symlinkFile)
+		_ = os.Symlink(realFile, symlinkFile)
 
 		// RCFileExists should reject symlinks for security
 		// (Though currently it doesn't - this is a note for future improvement)
