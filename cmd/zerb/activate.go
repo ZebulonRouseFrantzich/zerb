@@ -1,10 +1,14 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/ZebulonRouseFrantzich/zerb/internal/shell"
 )
@@ -12,6 +16,16 @@ import (
 // runActivate handles the `zerb activate <shell>` subcommand
 // This is the key abstraction layer that hides mise from users
 func runActivate(args []string) error {
+	// Create context with timeout (30 seconds should be plenty for activation)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Setup logger (only logs in debug mode via ZERB_DEBUG env var)
+	logger := slog.Default()
+	if os.Getenv(shell.EnvZerbDebug) != "" {
+		logger.Debug("activating shell", "args", args)
+	}
+
 	// Validate arguments
 	if len(args) < 1 {
 		return fmt.Errorf("usage: zerb activate <shell>\nSupported shells: bash, zsh, fish")
@@ -19,6 +33,7 @@ func runActivate(args []string) error {
 
 	// Parse shell type
 	shellName := args[0]
+	logger.Debug("parsed shell type", "shell", shellName)
 	var shellType shell.ShellType
 	switch shellName {
 	case "bash":
@@ -41,44 +56,62 @@ func runActivate(args []string) error {
 	if err != nil {
 		return fmt.Errorf("get ZERB directory: %w", err)
 	}
+	logger.Debug("using ZERB directory", "dir", zerbDir)
 
-	// Construct mise binary path
+	// Validate ZERB directory path (security: prevent command injection)
+	if !filepath.IsAbs(zerbDir) {
+		logger.Error("invalid ZERB directory", "dir", zerbDir, "error", "not absolute")
+		return fmt.Errorf("invalid ZERB directory: path must be absolute")
+	}
+
+	// Construct internal binary path
 	miseBinaryPath := filepath.Join(zerbDir, "bin", "mise")
 
-	// Check if mise binary exists
+	// Check if ZERB environment is initialized
 	if _, err := os.Stat(miseBinaryPath); err != nil {
 		if os.IsNotExist(err) {
-			return fmt.Errorf("mise binary not found at %s\nRun 'zerb init' to install ZERB first", miseBinaryPath)
+			return fmt.Errorf("ZERB environment not initialized\nRun 'zerb init' to set up ZERB first")
 		}
-		return fmt.Errorf("check mise binary: %w", err)
+		return fmt.Errorf("failed to access ZERB environment: %w", err)
 	}
 
-	// Get mise activation command
+	// Additional security: verify path is within expected ZERB directory
+	cleanPath := filepath.Clean(miseBinaryPath)
+	expectedPrefix := filepath.Clean(filepath.Join(zerbDir, "bin")) + string(filepath.Separator)
+	if !strings.HasPrefix(cleanPath+string(filepath.Separator), expectedPrefix) {
+		return fmt.Errorf("security error: invalid binary path")
+	}
+
+	// Get internal activation command
 	miseArgs, err := shell.GetMiseActivationCommand(shellType, miseBinaryPath)
 	if err != nil {
-		return fmt.Errorf("get mise activation command: %w", err)
+		return fmt.Errorf("prepare shell activation: %w", err)
 	}
 
-	// Execute mise activate and pass through output
+	// Execute internal activation and pass through output
 	// This is the key step: we call mise internally but users never see it
-	cmd := exec.Command(miseArgs[0], miseArgs[1:]...)
+	cmd := exec.CommandContext(ctx, miseArgs[0], miseArgs[1:]...)
 
-	// Set up environment variables for mise
+	// Set up environment variables
 	cmd.Env = append(os.Environ(),
-		"ZERB_ACTIVE=1",
-		fmt.Sprintf("ZERB_DIR=%s", zerbDir),
+		shell.EnvZerbActive+"=1",
+		fmt.Sprintf("%s=%s", shell.EnvZerbDir, zerbDir),
 	)
 
 	// Capture stdout and stderr
 	output, err := cmd.Output()
 	if err != nil {
+		logger.Error("activation command failed", "error", err)
 		if exitErr, ok := err.(*exec.ExitError); ok {
-			return fmt.Errorf("mise activate failed: %s\nStderr: %s", err, string(exitErr.Stderr))
+			logger.Debug("activation stderr", "stderr", string(exitErr.Stderr))
+			return fmt.Errorf("shell activation failed: %s\nDetails: %s\n\nRun 'zerb init' to repair your installation", err, string(exitErr.Stderr))
 		}
-		return fmt.Errorf("execute mise activate: %w", err)
+		return fmt.Errorf("failed to activate shell environment: %w\n\nRun 'zerb init' to repair your installation", err)
 	}
 
-	// Write mise's output to stdout (this is what the shell will eval)
+	logger.Debug("activation successful", "output_length", len(output))
+
+	// Write activation output to stdout (this is what the shell will eval)
 	fmt.Print(string(output))
 
 	return nil
@@ -88,7 +121,7 @@ func runActivate(args []string) error {
 // First checks ZERB_DIR environment variable, then falls back to ~/.config/zerb
 func getZerbDir() (string, error) {
 	// Check environment variable
-	if zerbDir := os.Getenv("ZERB_DIR"); zerbDir != "" {
+	if zerbDir := os.Getenv(shell.EnvZerbDir); zerbDir != "" {
 		return zerbDir, nil
 	}
 

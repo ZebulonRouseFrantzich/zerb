@@ -41,6 +41,7 @@ func TestExampleConfigs(t *testing.T) {
 			path := filepath.Join(examplesDir, ex.filename)
 
 			// Read the file
+			// #nosec G304 -- path is built from a trusted examplesDir and fixed filenames
 			content, err := os.ReadFile(path)
 			if err != nil {
 				t.Fatalf("ReadFile(%s) error = %v", path, err)
@@ -87,6 +88,7 @@ func TestRoundTripWithExamples(t *testing.T) {
 			path := filepath.Join(examplesDir, filename)
 
 			// Read and parse original
+			// #nosec G304 -- path is built from a trusted examplesDir and fixed filenames
 			content, err := os.ReadFile(path)
 			if err != nil {
 				t.Fatalf("ReadFile(%s) error = %v", path, err)

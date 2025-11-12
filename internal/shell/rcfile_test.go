@@ -246,10 +246,15 @@ func TestBackupRCFile(t *testing.T) {
 		t.Fatalf("BackupRCFile() error = %v", err)
 	}
 
-	// Verify backup path
-	expectedBackup := rcFile + ".zerb-backup"
-	if backupPath != expectedBackup {
-		t.Errorf("BackupRCFile() path = %v, want %v", backupPath, expectedBackup)
+	// Verify backup path has timestamp format: .zerb-backup.YYYYMMDD-HHMMSS
+	expectedPrefix := rcFile + BackupSuffix + "."
+	if !strings.HasPrefix(backupPath, expectedPrefix) {
+		t.Errorf("BackupRCFile() path = %v, want prefix %v", backupPath, expectedPrefix)
+	}
+	// Verify timestamp format (8 digits + dash + 6 digits)
+	timestampPart := strings.TrimPrefix(backupPath, expectedPrefix)
+	if len(timestampPart) != 15 || timestampPart[8] != '-' {
+		t.Errorf("BackupRCFile() timestamp format = %v, want YYYYMMDD-HHMMSS", timestampPart)
 	}
 
 	// Verify backup exists

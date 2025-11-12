@@ -1,6 +1,9 @@
 package shell
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+)
 
 // Manager orchestrates shell integration setup
 type Manager struct {
@@ -19,7 +22,11 @@ func NewManager(config Config) (*Manager, error) {
 }
 
 // SetupIntegration sets up shell integration for the user's shell
-func (m *Manager) SetupIntegration(shell ShellType, opts SetupOptions) (*SetupResult, error) {
+func (m *Manager) SetupIntegration(ctx context.Context, shell ShellType, opts SetupOptions) (*SetupResult, error) {
+	// Check context cancellation
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("context cancelled: %w", err)
+	}
 	// Validate shell
 	if err := ValidateShell(shell); err != nil {
 		return nil, err
@@ -82,6 +89,15 @@ func (m *Manager) SetupIntegration(shell ShellType, opts SetupOptions) (*SetupRe
 		if err := AddActivationLine(rcPath, activationCmd); err != nil {
 			return nil, fmt.Errorf("add activation line: %w", err)
 		}
+
+		// Verify the activation line was added successfully
+		verified, err := HasActivationLine(rcPath)
+		if err != nil {
+			return nil, fmt.Errorf("verify activation line: %w", err)
+		}
+		if !verified {
+			return nil, fmt.Errorf("verification failed: activation line not found after adding")
+		}
 	}
 
 	return &SetupResult{
@@ -95,7 +111,11 @@ func (m *Manager) SetupIntegration(shell ShellType, opts SetupOptions) (*SetupRe
 }
 
 // DetectAndSetup detects the user's shell and sets up integration
-func (m *Manager) DetectAndSetup(opts SetupOptions) (*SetupResult, error) {
+func (m *Manager) DetectAndSetup(ctx context.Context, opts SetupOptions) (*SetupResult, error) {
+	// Check context cancellation
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("context cancelled: %w", err)
+	}
 	// Detect shell
 	detection, err := DetectShell()
 	if err != nil {
@@ -108,5 +128,5 @@ func (m *Manager) DetectAndSetup(opts SetupOptions) (*SetupResult, error) {
 	}
 
 	// Setup integration
-	return m.SetupIntegration(detection.Shell, opts)
+	return m.SetupIntegration(ctx, detection.Shell, opts)
 }

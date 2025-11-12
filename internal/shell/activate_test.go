@@ -49,9 +49,9 @@ func TestGenerateActivationCommand(t *testing.T) {
 				t.Errorf("GenerateActivationCommand() = %v, want %v", got, tt.want)
 			}
 
-			// Verify command contains "zerb activate" (not "mise activate")
-			if !tt.wantErr && !strings.Contains(got, "zerb activate") {
-				t.Errorf("GenerateActivationCommand() should contain 'zerb activate', got: %v", got)
+			// Verify command contains activation marker (not "mise activate")
+			if !tt.wantErr && !strings.Contains(got, ActivationMarker) {
+				t.Errorf("GenerateActivationCommand() should contain '%s', got: %v", ActivationMarker, got)
 			}
 
 			// Verify command does NOT contain "mise" (abstraction test)
@@ -150,8 +150,8 @@ func TestActivationCommandAbstraction(t *testing.T) {
 			}
 
 			// Verify abstraction
-			if !strings.Contains(userCmd, "zerb activate") {
-				t.Errorf("User-facing command missing 'zerb activate': %q", userCmd)
+			if !strings.Contains(userCmd, ActivationMarker) {
+				t.Errorf("User-facing command missing '%s': %q", ActivationMarker, userCmd)
 			}
 
 			if strings.Contains(userCmd, "mise") {
