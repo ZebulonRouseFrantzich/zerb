@@ -2,9 +2,13 @@ package binary
 
 import (
 	"bufio"
-	"bytes"
+	"crypto"
+	"crypto/ecdsa"
 	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/hex"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"os"
@@ -12,9 +16,7 @@ import (
 	"strings"
 
 	"github.com/ProtonMail/go-crypto/openpgp" //nolint:staticcheck // Using ProtonMail's maintained fork
-	"github.com/sigstore/sigstore-go/pkg/bundle"
-	"github.com/sigstore/sigstore-go/pkg/root"
-	"github.com/sigstore/sigstore-go/pkg/verify"
+	"github.com/sigstore/sigstore/pkg/signature"
 )
 
 // Verifier handles cryptographic verification of binaries
@@ -60,16 +62,16 @@ func (v *Verifier) VerifyFile(binaryPath, signaturePath, checksumPath, bundlePat
 		return result, nil
 
 	case BinaryChezmoi:
-		// chezmoi: Prefer cosign verification, fallback to SHA256
-		if bundlePath != "" {
-			result, err := v.verifyCosign(binaryPath, bundlePath, checksumPath, info)
+		// chezmoi: Use cosign verification (key-based) with embedded public key
+		if signaturePath != "" && checksumPath != "" {
+			result, err := v.verifyCosign(binaryPath, signaturePath, checksumPath, info)
 			if err != nil {
 				return nil, fmt.Errorf("cosign verification failed for chezmoi: %w", err)
 			}
 			return result, nil
 		}
 
-		// Fallback to SHA256 if no bundle (backward compatibility)
+		// Fallback to SHA256 if no signature (backward compatibility)
 		if checksumPath == "" {
 			return nil, fmt.Errorf("checksum file required for chezmoi but not available")
 		}
@@ -189,15 +191,15 @@ func (v *Verifier) verifySHA256(binaryPath, checksumPath string) (*VerificationR
 	}, nil
 }
 
-// verifyCosign verifies a checksums file using a cosign bundle,
+// verifyCosign verifies a checksums file using a cosign signature (key-based),
 // then verifies the binary checksum against the verified checksums file
-func (v *Verifier) verifyCosign(binaryPath, bundlePath, checksumPath string, info *DownloadInfo) (*VerificationResult, error) {
-	// Step 1: Verify the bundle signature on the checksums file
-	if err := v.verifyCosignBundle(bundlePath, checksumPath, info.Binary); err != nil {
+func (v *Verifier) verifyCosign(binaryPath, signaturePath, checksumPath string, info *DownloadInfo) (*VerificationResult, error) {
+	// Step 1: Verify the cosign signature on the checksums file
+	if err := v.verifyCosignSignature(signaturePath, checksumPath, info.Binary); err != nil {
 		return &VerificationResult{
 			Method:  VerificationCosign,
 			Success: false,
-			Error:   fmt.Errorf("bundle verification failed: %w", err),
+			Error:   fmt.Errorf("cosign signature verification failed: %w", err),
 		}, err
 	}
 
@@ -211,7 +213,7 @@ func (v *Verifier) verifyCosign(binaryPath, bundlePath, checksumPath string, inf
 		}, err
 	}
 
-	// Success: Both bundle signature and binary checksum verified
+	// Success: Both cosign signature and binary checksum verified
 	return &VerificationResult{
 		Method:  VerificationCosign,
 		Success: true,
@@ -219,18 +221,25 @@ func (v *Verifier) verifyCosign(binaryPath, bundlePath, checksumPath string, inf
 	}, nil
 }
 
-// verifyCosignBundle verifies a cosign bundle against an artifact (checksums file)
-func (v *Verifier) verifyCosignBundle(bundlePath, artifactPath string, binary Binary) error {
-	// Fetch trusted root from Sigstore's TUF repository
-	trustedRoot, err := root.FetchTrustedRoot()
+// verifyCosignSignature verifies a cosign signature (key-based) against an artifact
+// This uses the embedded public key for the binary
+func (v *Verifier) verifyCosignSignature(signaturePath, artifactPath string, binary Binary) error {
+	// Load public key for this binary
+	publicKey, err := v.loadCosignPublicKey(binary)
 	if err != nil {
-		return fmt.Errorf("fetch trusted root: %w", err)
+		return fmt.Errorf("load public key: %w", err)
 	}
 
-	// Load bundle from file
-	b, err := bundle.LoadJSONFromPath(bundlePath)
+	// Read signature file (base64-encoded ECDSA signature)
+	sigBytes, err := os.ReadFile(signaturePath)
 	if err != nil {
-		return fmt.Errorf("load bundle: %w", err)
+		return fmt.Errorf("read signature: %w", err)
+	}
+
+	// Decode base64 signature
+	sig, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(sigBytes)))
+	if err != nil {
+		return fmt.Errorf("decode signature: %w", err)
 	}
 
 	// Read artifact (checksums file)
@@ -239,53 +248,50 @@ func (v *Verifier) verifyCosignBundle(bundlePath, artifactPath string, binary Bi
 		return fmt.Errorf("read artifact: %w", err)
 	}
 
-	// Get certificate identity policy for this binary
-	certIdentity, err := getCertificateIdentity(binary)
-	if err != nil {
-		return fmt.Errorf("get certificate identity: %w", err)
-	}
-
-	// Create verifier
-	verifier, err := verify.NewVerifier(trustedRoot)
+	// Create verifier with public key
+	verifier, err := signature.LoadVerifier(publicKey, crypto.SHA256)
 	if err != nil {
 		return fmt.Errorf("create verifier: %w", err)
 	}
 
-	// Verify bundle with certificate identity check
-	policy := verify.NewPolicy(
-		verify.WithArtifact(bytes.NewReader(artifactData)),
-		verify.WithCertificateIdentity(certIdentity),
-	)
-
-	result, err := verifier.Verify(b, policy)
-	if err != nil {
-		return fmt.Errorf("verify bundle: %w", err)
-	}
-
-	// Verify we have verified timestamps (from transparency log)
-	if result.VerifiedTimestamps == nil || len(result.VerifiedTimestamps) == 0 {
-		return fmt.Errorf("no verified timestamps in transparency log")
+	// Verify signature
+	if err := verifier.VerifySignature(strings.NewReader(string(sig)), strings.NewReader(string(artifactData))); err != nil {
+		return fmt.Errorf("verify signature: %w", err)
 	}
 
 	return nil
 }
 
-// getCertificateIdentity returns the expected certificate identity for a binary
-func getCertificateIdentity(binary Binary) (verify.CertificateIdentity, error) {
-	switch binary {
-	case BinaryChezmoi:
-		// Use NewShortCertificateIdentity for convenience
-		// - issuer: GitHub Actions OIDC provider (exact match)
-		// - sanRegex: Match any workflow in twpayne/chezmoi repository
-		return verify.NewShortCertificateIdentity(
-			"https://token.actions.githubusercontent.com", // issuer (exact)
-			"",                                     // issuer regex (not used)
-			"",                                     // SAN value (not used)
-			"^https://github.com/twpayne/chezmoi/", // SAN regex (match repo)
-		)
-	default:
-		return verify.CertificateIdentity{}, fmt.Errorf("no certificate identity configured for binary: %s", binary)
+// loadCosignPublicKey loads the embedded cosign public key for a binary
+func (v *Verifier) loadCosignPublicKey(binary Binary) (crypto.PublicKey, error) {
+	// Get keyring path
+	keyPath := filepath.Join(v.keyringDir, binary.String()+".pub")
+
+	// Read PEM-encoded public key
+	keyData, err := os.ReadFile(keyPath)
+	if err != nil {
+		return nil, fmt.Errorf("read public key: %w", err)
 	}
+
+	// Decode PEM
+	block, _ := pem.Decode(keyData)
+	if block == nil {
+		return nil, fmt.Errorf("failed to decode PEM block")
+	}
+
+	// Parse public key
+	pubKey, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("parse public key: %w", err)
+	}
+
+	// Verify it's an ECDSA key (cosign uses ECDSA)
+	ecdsaKey, ok := pubKey.(*ecdsa.PublicKey)
+	if !ok {
+		return nil, fmt.Errorf("public key is not ECDSA (got %T)", pubKey)
+	}
+
+	return ecdsaKey, nil
 }
 
 // loadKeyring loads a GPG keyring from the keyring directory

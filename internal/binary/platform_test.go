@@ -109,10 +109,10 @@ func TestConstructChezmoiDownloadInfo(t *testing.T) {
 			version:        "2.46.1",
 			os:             "linux",
 			arch:           "amd64",
-			expectedURL:    "https://github.com/twpayne/chezmoi/releases/download/v2.46.1/chezmoi-2.46.1-x86_64-linux.tar.gz",
-			expectedSig:    "", // chezmoi uses cosign, not GPG signatures
+			expectedURL:    "https://github.com/twpayne/chezmoi/releases/download/v2.46.1/chezmoi_2.46.1_linux-glibc_amd64.tar.gz",
+			expectedSig:    "https://github.com/twpayne/chezmoi/releases/download/v2.46.1/chezmoi_2.46.1_checksums.txt.sig", // key-based cosign signature
 			expectedSum:    "https://github.com/twpayne/chezmoi/releases/download/v2.46.1/chezmoi_2.46.1_checksums.txt",
-			expectedBundle: "https://github.com/twpayne/chezmoi/releases/download/v2.46.1/chezmoi_2.46.1_checksums.txt.sig",
+			expectedBundle: "", // Not using bundles for key-based cosign
 			wantErr:        false,
 		},
 		{
@@ -120,10 +120,10 @@ func TestConstructChezmoiDownloadInfo(t *testing.T) {
 			version:        "2.46.1",
 			os:             "linux",
 			arch:           "arm64",
-			expectedURL:    "https://github.com/twpayne/chezmoi/releases/download/v2.46.1/chezmoi-2.46.1-aarch64-linux.tar.gz",
-			expectedSig:    "",
+			expectedURL:    "https://github.com/twpayne/chezmoi/releases/download/v2.46.1/chezmoi_2.46.1_linux-glibc_arm64.tar.gz",
+			expectedSig:    "https://github.com/twpayne/chezmoi/releases/download/v2.46.1/chezmoi_2.46.1_checksums.txt.sig",
 			expectedSum:    "https://github.com/twpayne/chezmoi/releases/download/v2.46.1/chezmoi_2.46.1_checksums.txt",
-			expectedBundle: "https://github.com/twpayne/chezmoi/releases/download/v2.46.1/chezmoi_2.46.1_checksums.txt.sig",
+			expectedBundle: "",
 			wantErr:        false,
 		},
 		{
@@ -131,10 +131,10 @@ func TestConstructChezmoiDownloadInfo(t *testing.T) {
 			version:        "2.46.1",
 			os:             "linux",
 			arch:           "386",
-			expectedURL:    "https://github.com/twpayne/chezmoi/releases/download/v2.46.1/chezmoi-2.46.1-i686-linux.tar.gz",
-			expectedSig:    "",
+			expectedURL:    "https://github.com/twpayne/chezmoi/releases/download/v2.46.1/chezmoi_2.46.1_linux-glibc_i386.tar.gz",
+			expectedSig:    "https://github.com/twpayne/chezmoi/releases/download/v2.46.1/chezmoi_2.46.1_checksums.txt.sig",
 			expectedSum:    "https://github.com/twpayne/chezmoi/releases/download/v2.46.1/chezmoi_2.46.1_checksums.txt",
-			expectedBundle: "https://github.com/twpayne/chezmoi/releases/download/v2.46.1/chezmoi_2.46.1_checksums.txt.sig",
+			expectedBundle: "",
 			wantErr:        false,
 		},
 		{

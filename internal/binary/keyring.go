@@ -7,14 +7,14 @@ import (
 	"path/filepath"
 )
 
-// Embedded GPG public keys for mise and chezmoi
+// Embedded public keys for binary verification
 // These are embedded at compile time and extracted to ~/.config/zerb/keyrings/ at runtime
 
 //go:embed keyrings/mise.gpg
 var miseKeyring []byte
 
-// Note: chezmoi does not provide GPG signatures for releases, only SHA256 checksums
-// var chezmoiKeyring []byte - not embedded
+//go:embed keyrings/chezmoi.pub
+var chezmoiCosignKey []byte
 
 // getKeyring returns the embedded GPG keyring for a binary
 func getKeyring(binary Binary) ([]byte, error) {
@@ -53,15 +53,45 @@ func extractKeyring(keyringDir string, binary Binary) error {
 	return nil
 }
 
+// extractCosignKey extracts an embedded cosign public key to disk
+func extractCosignKey(keyringDir string, binary Binary) error {
+	// Get the embedded cosign key
+	var keyData []byte
+	switch binary {
+	case BinaryChezmoi:
+		keyData = chezmoiCosignKey
+	default:
+		return fmt.Errorf("no cosign key available for %s", binary)
+	}
+
+	if len(keyData) == 0 {
+		return fmt.Errorf("cosign key data is empty for %s", binary)
+	}
+
+	// Create keyring directory if it doesn't exist
+	if err := os.MkdirAll(keyringDir, 0755); err != nil {
+		return fmt.Errorf("create keyring dir: %w", err)
+	}
+
+	// Write public key file
+	keyPath := filepath.Join(keyringDir, fmt.Sprintf("%s.pub", binary))
+	if err := os.WriteFile(keyPath, keyData, 0644); err != nil {
+		return fmt.Errorf("write cosign key file: %w", err)
+	}
+
+	return nil
+}
+
 // extractAllKeyrings extracts all embedded keyrings to the keyring directory
 func extractAllKeyrings(keyringDir string) error {
-	// Only extract keyrings for binaries that support GPG
-	binaries := []Binary{BinaryMise}
+	// Extract GPG keyring for mise
+	if err := extractKeyring(keyringDir, BinaryMise); err != nil {
+		return fmt.Errorf("extract mise keyring: %w", err)
+	}
 
-	for _, binary := range binaries {
-		if err := extractKeyring(keyringDir, binary); err != nil {
-			return fmt.Errorf("extract %s keyring: %w", binary, err)
-		}
+	// Extract cosign public key for chezmoi
+	if err := extractCosignKey(keyringDir, BinaryChezmoi); err != nil {
+		return fmt.Errorf("extract chezmoi cosign key: %w", err)
 	}
 
 	return nil

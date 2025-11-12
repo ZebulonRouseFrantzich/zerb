@@ -56,7 +56,8 @@ func constructMiseDownloadInfo(info *DownloadInfo, version string) (*DownloadInf
 }
 
 // constructChezmoiDownloadInfo constructs chezmoi download URLs
-// Pattern: https://github.com/twpayne/chezmoi/releases/download/v{version}/chezmoi-{version}-{arch}-{os}.tar.gz
+// Pattern: https://github.com/twpayne/chezmoi/releases/download/v{version}/chezmoi_{version}_{os}_{arch}.tar.gz
+// Note: Linux builds use "-glibc" suffix (e.g., linux-glibc_amd64)
 func constructChezmoiDownloadInfo(info *DownloadInfo, version string) (*DownloadInfo, error) {
 	// Map Go arch to chezmoi arch naming
 	archName, err := mapChezmoiArch(info.Arch)
@@ -64,22 +65,27 @@ func constructChezmoiDownloadInfo(info *DownloadInfo, version string) (*Download
 		return nil, err
 	}
 
-	// Map Go OS to chezmoi OS naming
+	// Map Go OS to chezmoi OS naming (and add Linux variants)
 	osName, err := mapChezmoiOS(info.OS)
 	if err != nil {
 		return nil, err
 	}
 
+	// Linux uses "-glibc" suffix for compatibility (chezmoi also has -musl variant)
+	if info.OS == "linux" {
+		osName = "linux-glibc"
+	}
+
 	baseURL := fmt.Sprintf("https://github.com/twpayne/chezmoi/releases/download/v%s", version)
-	// Note: chezmoi uses {arch}-{os} order (reversed from mise)
-	binaryName := fmt.Sprintf("chezmoi-%s-%s-%s.tar.gz", version, archName, osName)
+	// chezmoi filename format: chezmoi_{version}_{os}_{arch}.tar.gz
+	binaryName := fmt.Sprintf("chezmoi_%s_%s_%s.tar.gz", version, osName, archName)
 
 	info.URL = fmt.Sprintf("%s/%s", baseURL, binaryName)
-	// chezmoi uses cosign, not traditional GPG signatures
-	info.SignatureURL = ""
+	// chezmoi uses key-based cosign signatures (not bundles)
+	// The signature signs the checksums file, not the binary directly
+	info.SignatureURL = fmt.Sprintf("%s/chezmoi_%s_checksums.txt.sig", baseURL, version)
 	info.ChecksumURL = fmt.Sprintf("%s/chezmoi_%s_checksums.txt", baseURL, version)
-	// Cosign bundle - signs the checksums file, not the binary directly
-	info.BundleURL = fmt.Sprintf("%s/chezmoi_%s_checksums.txt.sig", baseURL, version)
+	info.BundleURL = "" // Not used for key-based cosign
 
 	return info, nil
 }
@@ -116,13 +122,13 @@ func mapMiseOS(goos string) (string, error) {
 func mapChezmoiArch(goarch string) (string, error) {
 	switch goarch {
 	case "amd64":
-		return "x86_64", nil
+		return "amd64", nil
 	case "arm64":
-		return "aarch64", nil
+		return "arm64", nil
 	case "arm":
 		return "arm", nil
 	case "386":
-		return "i686", nil
+		return "i386", nil
 	default:
 		return "", fmt.Errorf("unsupported architecture for chezmoi: %s", goarch)
 	}

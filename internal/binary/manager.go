@@ -174,11 +174,11 @@ func (m *Manager) Download(ctx context.Context, opts DownloadOptions) (*Download
 		}
 
 	case BinaryChezmoi:
-		// chezmoi uses cosign verification
-		if downloadInfo.BundleURL != "" {
-			bundlePath, err = m.downloader.DownloadBundle(ctx, downloadInfo)
+		// chezmoi uses key-based cosign verification
+		if downloadInfo.SignatureURL != "" {
+			signaturePath, err = m.downloader.DownloadSignature(ctx, downloadInfo)
 			if err != nil {
-				return nil, fmt.Errorf("failed to download required cosign bundle for chezmoi: %w", err)
+				return nil, fmt.Errorf("failed to download required cosign signature for chezmoi: %w", err)
 			}
 		}
 

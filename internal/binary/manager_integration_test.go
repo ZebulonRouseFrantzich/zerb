@@ -345,3 +345,107 @@ func TestManagerInstall_RespectsSkipGPG(t *testing.T) {
 	// The actual behavior is tested in the download/verify tests
 	// This just ensures the option is available
 }
+
+// TestManager_VerifyRealChezmoi validates cosign verification against a real chezmoi release
+//
+// NETWORK REQUIREMENTS:
+// - Downloads chezmoi v2.46.1 binary (~12MB tar.gz)
+// - Downloads checksums file (~2KB)
+// - Downloads cosign bundle (~10KB)
+// - Fetches Sigstore TUF trusted root (~100KB)
+//
+// CACHING:
+// - All downloads cached in $TMPDIR after first run
+// - Subsequent runs use cache (fast, no network)
+//
+// RUN:
+//
+//	go test -v -run TestManager_VerifyRealChezmoi
+//
+// SKIP:
+//
+//	go test -short  (skips this test)
+func TestManager_VerifyRealChezmoi(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping integration test (requires network, downloads ~12MB)")
+	}
+
+	// Use a pinned version known to have cosign bundles
+	testVersion := "2.46.1"
+
+	// Create manager with temp directory
+	tmpDir := t.TempDir()
+	config := Config{
+		ZerbDir: tmpDir,
+		PlatformInfo: &platform.Info{
+			OS:   "linux",
+			Arch: "amd64",
+		},
+	}
+
+	manager, err := NewManager(config)
+	if err != nil {
+		t.Fatalf("failed to create manager: %v", err)
+	}
+
+	// Ensure keyrings are extracted (includes chezmoi cosign public key)
+	if err := manager.EnsureKeyrings(); err != nil {
+		t.Fatalf("failed to ensure keyrings: %v", err)
+	}
+
+	// Download and verify chezmoi with cosign
+	ctx := context.Background()
+	result, err := manager.Download(ctx, DownloadOptions{
+		Binary:  BinaryChezmoi,
+		Version: testVersion,
+	})
+
+	if err != nil {
+		t.Fatalf("download failed: %v", err)
+	}
+
+	// Verify the download succeeded
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+
+	if result.Binary != BinaryChezmoi {
+		t.Errorf("expected binary %v, got %v", BinaryChezmoi, result.Binary)
+	}
+
+	if result.Version != testVersion {
+		t.Errorf("expected version %s, got %s", testVersion, result.Version)
+	}
+
+	// CRITICAL: Verify that cosign verification was used (not SHA256 fallback)
+	if result.Verified != VerificationCosign {
+		t.Errorf("expected Cosign verification, got %v", result.Verified)
+		t.Error("This means the cosign bundle was not used - security downgrade!")
+	}
+
+	// Verify the binary file exists
+	if !fileExists(result.Path) {
+		t.Errorf("binary file does not exist at %s", result.Path)
+	}
+
+	// Verify downloaded files exist in cache
+	downloadInfo, err := constructDownloadInfo(BinaryChezmoi, testVersion, manager.platformInfo)
+	if err != nil {
+		t.Fatalf("failed to construct download info: %v", err)
+	}
+
+	// Check that signature (cosign) was downloaded
+	if downloadInfo.SignatureURL == "" {
+		t.Error("expected SignatureURL to be set for chezmoi")
+	}
+
+	// Check that checksums were downloaded
+	if downloadInfo.ChecksumURL == "" {
+		t.Error("expected ChecksumURL to be set for chezmoi")
+	}
+
+	t.Logf("✓ Successfully verified chezmoi %s with cosign", testVersion)
+	t.Logf("✓ Verification method: %v", result.Verified)
+	t.Logf("✓ Binary path: %s", result.Path)
+	t.Logf("✓ Download time: %v", result.DownloadTime)
+}
