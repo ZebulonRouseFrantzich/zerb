@@ -49,6 +49,30 @@ $ zerb sync  # Install tools, apply configs, sync across machines
 
 ---
 
+## Table of Contents
+
+**Getting Started:**
+- **[What is ZERB?](#what-is-zerb)**
+- **[Why ZERB?](#why-zerb)**
+- **[Why Not Nix?](#why-not-nix)**
+- **[Key Concepts](#key-concepts)**
+- **[Quick Start](#quick-start)**
+
+**Documentation:**
+- [Features](#features)
+- [Platform Support](#platform-support)
+- [Configuration](#configuration)
+- [Architecture Overview](#architecture-overview)
+
+**Project Information:**
+- [Development Status & Roadmap](#development-status--roadmap)
+- [Contributing](#contributing)
+- [License](#license)
+- [Acknowledgments](#acknowledgments)
+- [Contact](#contact)
+
+---
+
 ## Why ZERB?
 
 ### The Problem
@@ -205,6 +229,213 @@ Interactive resolution with three modes:
 
 ---
 
+## Why Not Nix?
+
+**TL;DR:** Nix and Home Manager are powerful and excellent for their use case, but they have a steep learning curve. ZERB prioritizes simplicity and wraps mature tools you may already know, making it accessible to developers who want declarative environment management without learning a new language and ecosystem.
+
+### When to Choose Nix/Home Manager
+
+Nix is the better choice if you need:
+
+- ✅ **System-level package management** - Managing system packages, services, and kernel modules
+- ✅ **Project-specific development environments** - Nix dev shells provide isolated, reproducible environments per-project with declarative dependencies (e.g., `nix develop`, `direnv` integration)
+- ✅ **Binary reproducibility** - Bit-for-bit reproducible builds with cryptographic guarantees
+- ✅ **Complex dependency graphs** - Managing intricate package dependencies with precise control
+- ✅ **Custom package definitions** - Building packages from source with custom patches
+- ✅ **NixOS integration** - Full system configuration management on NixOS
+- ✅ **Declarative system state** - Managing everything from bootloader to desktop environment
+- ✅ **Multi-user environments** - Isolated environments for multiple users on the same system
+- ✅ **Advanced rollback** - Atomic system upgrades with instant rollback capability
+
+### When to Choose ZERB
+
+ZERB is the better choice if you want:
+
+- ✅ **Minimal learning curve** - Familiar Lua syntax, wraps tools you may already use (mise, chezmoi)
+- ✅ **User-space only** - No system-level changes, no root required, no conflicts with system packages
+- ✅ **Quick setup** - Single binary, one config file, works in minutes, uses configuration files you already use
+- ✅ **Git-native workflow** - Standard git operations for versioning and syncing
+- ✅ **Interactive UX** - Smart prompts for version selection and drift resolution
+- ✅ **Cross-distro portability** - Works on any Linux distro without distro-specific knowledge (macos and windows coming soon!)
+- ✅ **Lightweight configs** - Small, readable Lua files vs. large Nix expressions
+- ✅ **Tool-focused** - Primarily for development tools and dotfiles, not system management
+
+### Key Differences
+
+| Aspect | Nix/Home Manager | ZERB |
+|--------|------------------|------|
+| **Learning Curve** | Steep (new language, concepts) | Gentle (Lua, familiar tools) |
+| **Scope** | System + user packages | User-space tools + dotfiles only |
+| **Config Size** | Large expressions (100s of lines) | Small Lua files (10s of lines) |
+| **Tool Installation** | Nix packages (may build from source) | mise backends (cargo, npm, ubi, github) |
+| **Dotfile Management** | Home Manager modules | chezmoi (templates, secrets) |
+| **Platform Detection** | NixOS-centric | Cross-distro Linux focus (macos and windows coming soon!)|
+| **Drift Detection** | Declarative state enforcement | Interactive three-way comparison |
+| **Philosophy** | Pure functional, reproducible | Pragmatic, wrapping mature tools |
+| **Setup Time** | Hours to days (learning required) | Minutes (familiar concepts) |
+| **Root Required** | No (but system integration available) | No (strictly user-space) |
+
+### Example Comparison
+
+**Task:** Install Node.js 20.11.0 and track your `.zshrc` file
+
+**Nix Home Manager:**
+
+```nix
+# ~/.config/home-manager/home.nix
+{ config, pkgs, ... }:
+
+{
+  home.username = "yourname";
+  home.homeDirectory = "/home/yourname";
+  home.stateVersion = "25.05";
+
+  programs.home-manager.enable = true;
+
+  home.packages = with pkgs; [
+    nodejs_20
+  ];
+
+  # Maintain the .zshrc file yourself
+  home.file.".zshrc".source = ./dotfiles/zshrc;
+  # You could also use the pure nix way of setting the zsh home-manager options:
+  # Example: programs.zsh.initContent = let zshConfigEarlyInit = lib.mkOrder 500 "do something"; zshConfig = lib.mkOrder 1000 "do something"; in lib.mkMerge [ zshConfigEarlyInit zshConfig ];
+
+  # Optional: Use specific Node.js version
+  # Requires overlay or custom package definition
+}
+```
+
+Then run:
+```bash
+home-manager switch
+```
+
+**ZERB:**
+
+```lua
+-- ~/.config/zerb/zerb.lua
+zerb = {
+  tools = {
+    "node@20.11.0",
+  },
+  
+  configs = {
+    "~/.zshrc",
+  },
+  
+  git = {
+    remote = "https://github.com/username/dotfiles",
+    branch = "main",
+  },
+}
+```
+
+Then run:
+```bash
+zerb sync
+```
+
+### Why ZERB Uses Nix for Development
+
+But... **ZERB itself uses Nix for its development environment** (via `flake.nix`). Why?
+
+- **Developer reproducibility** - Ensures all contributors have identical toolchains (Go 1.22, golangci-lint, etc.)
+- **CI/CD consistency** - Same environment locally and in CI pipelines
+- **Dependency management** - Handles complex build-time dependencies (GPG tools, test utilities)
+- **Zero setup friction** - New contributors run `nix develop` and have everything they need
+
+But here's the key difference: **ZERB developers choose to use Nix because they value its power for development workflows**. ZERB users don't need to learn Nix to get similar benefits for their own environments—ZERB provides declarative environment management, versioning, and reproducibility without requiring Nix knowledge.
+
+Think of it this way: ZERB is built *with* Nix but doesn't *require* Nix. It's like how many Go programs are built with Make, but users don't need Make to run the compiled binary.
+
+### Can I Use Both?
+
+**Yes!** Nix and ZERB can coexist peacefully:
+
+- **Nix for system packages** - Use Nix/Home Manager for system-level tools, services, and packages
+- **ZERB for user-space tools** - Use ZERB for development tools and dotfiles
+- **No conflicts** - ZERB maintains complete isolation in `~/.config/zerb/` and never touches system packages
+
+Example hybrid setup:
+```nix
+# Nix manages system tools
+home.packages = with pkgs; [
+  firefox
+  alacritty
+  docker
+];
+```
+
+```lua
+-- ZERB manages dev tools
+zerb = {
+  tools = {
+    "node@20.11.0",
+    "python@3.12.1",
+    "cargo:ripgrep",
+  },
+  configs = {
+    "~/.zshrc",
+    "~/.config/nvim/",
+  },
+}
+```
+
+### Future: Enhanced Nix Awareness (Post-MVP)
+
+**Note on Project-Specific Environments:** ZERB may explore project-specific environment support (similar to Nix dev shells or mise's `.mise.toml` project configs) in future versions, but the MVP focuses exclusively on global user-space tool and configuration management. For now, users needing per-project isolated environments should use Nix dev shells, mise's project-local configs, or similar tools.
+
+After the MVP, ZERB will add **Nix-aware drift detection** to better support hybrid setups:
+
+**The Problem:** Currently, if you have Node.js installed via Nix and also declare it in ZERB, drift detection will flag it as a conflict.
+
+**The Solution:** Enhanced drift detection that recognizes Nix-managed tools and offers intelligent options:
+
+```bash
+$ zerb drift
+
+Drift detected:
+
+  node@20.11.0
+    Declared:  node@20.11.0 (in zerb.lua)
+    Managed:   not installed (ZERB)
+    Active:    node@20.11.0 (detected: Nix/Home Manager)
+
+What would you like to do?
+  1. Acknowledge (mark as externally managed, skip in future checks)
+  2. Take over (install via ZERB, may conflict with Nix)
+  3. Ignore this time (ask again next drift check)
+
+Choice [1-3]: 1
+
+✓ Marked node@20.11.0 as externally managed (Nix)
+```
+
+**Optional Config Syntax:**
+
+```lua
+zerb = {
+  tools = {
+    -- Explicitly mark as externally managed
+    { name = "node@20.11.0", source = "nix" },
+    
+    -- Or let drift detection discover it
+    "python@3.12.1",  -- ZERB will install this
+  },
+}
+```
+
+**Benefits:**
+- ✅ **No Nix dependency** - ZERB users who don't use Nix are unaffected
+- ✅ **Hybrid-friendly** - Acknowledges that some users want both tools
+- ✅ **Keeps ZERB simple** - No Nix integration, just smarter drift detection
+- ✅ **User choice** - You decide which tool manages what
+
+This feature respects ZERB's philosophy: **simple, pragmatic, and user-focused**—while acknowledging that power users may want to combine tools for different purposes.
+
+---
+
 ## Quick Start
 
 > **Note:** ZERB is not yet ready for installation. This section is a preview of the planned workflow.
@@ -243,9 +474,9 @@ $ zerb pull
 ### v1.0 Roadmap
 
 #### Core Tool Management
-- [ ] Download and verify mise/chezmoi binaries (GPG + SHA256)
+- [x] Download and verify mise/chezmoi binaries (GPG + SHA256)
 - [ ] Install tools via mise (all backends: cargo, npm, ubi, github, core)
-- [ ] Complete isolation (environment variables + CLI flags)
+- [x] Complete isolation (environment variables + CLI flags)
 - [ ] Shell integration (`mise activate`)
 - [ ] Interactive version selection with caching (24-hour TTL)
 - [ ] Non-interactive version flags (`@version`, `--latest`)
@@ -263,12 +494,12 @@ $ zerb pull
 - [ ] Config rollback
 
 #### Platform Detection
-- [ ] Linux distro detection (Ubuntu, Arch, Fedora, Alpine, RHEL/CentOS, openSUSE, Gentoo)
-- [ ] Linux family detection (Debian, RHEL, Fedora, Arch, Alpine, SUSE, Gentoo)
-- [ ] Architecture detection and normalization (amd64, arm64 only in MVP)
-- [ ] Graceful fallback if distro detection fails
-- [ ] Platform-aware conditionals in Lua
-- [ ] Read-only platform table injection at VM initialization
+- [x] Linux distro detection (Ubuntu, Arch, Fedora, Alpine, RHEL/CentOS, openSUSE, Gentoo)
+- [x] Linux family detection (Debian, RHEL, Fedora, Arch, Alpine, SUSE, Gentoo)
+- [x] Architecture detection and normalization (amd64, arm64 only in MVP)
+- [x] Graceful fallback if distro detection fails
+- [x] Platform-aware conditionals in Lua
+- [x] Read-only platform table injection at VM initialization
 - [ ] `zerb platform` command for debugging
 - [ ] macOS detection (basic GOOS/GOARCH, post-MVP)
 - [ ] Windows detection (basic GOOS/GOARCH, post-MVP)
@@ -311,11 +542,11 @@ $ zerb pull
 - [ ] Log management and auto-cleanup (7-day retention)
 
 #### Security Features
-- [ ] GPG signature verification (preferred)
-- [ ] SHA256 checksum verification (fallback)
-- [ ] Embedded GPG keyrings
+- [x] GPG signature verification (preferred)
+- [x] SHA256 checksum verification (fallback)
+- [x] Embedded GPG keyrings
 - [ ] No mirror fallback (security-first)
-- [ ] Hard-coded binary versions (reproducible builds)
+- [x] Hard-coded binary versions (reproducible builds)
 - [ ] Secret detection in pre-commit hook
 - [ ] Comprehensive .gitignore (prevent credential leaks)
 - [ ] Active secret redaction in logs
