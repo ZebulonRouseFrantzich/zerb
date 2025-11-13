@@ -211,10 +211,7 @@ func TestPlatformTable_ReadOnly(t *testing.T) {
 			if err == nil {
 				t.Error("expected error when modifying read-only table, got nil")
 			}
-			if err != nil && err.Error() != "" {
-				// Error message should mention read-only
-				// This is expected behavior
-			}
+			// Expected: error message mentions read-only protection
 		})
 	}
 }

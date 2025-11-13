@@ -214,7 +214,7 @@ func TestDownloaderDownloadSignature(t *testing.T) {
 	mockSig := "-----BEGIN PGP SIGNATURE-----\ntest signature\n-----END PGP SIGNATURE-----"
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(r.URL.Path, ".sig") {
+		if strings.HasSuffix(r.URL.Path, ".asc") || strings.HasSuffix(r.URL.Path, ".sig") {
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte(mockSig))
 			return

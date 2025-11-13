@@ -135,7 +135,7 @@ func (e *ParseError) Error() string {
 // extractConfig extracts the config from a Lua state.
 // It expects a global "zerb" table with the config structure.
 func extractConfig(L *lua.LState) (*Config, error) {
-	zerbTable := L.GetGlobal("zerb")
+	zerbTable := L.GetGlobal(luaGlobalZerb)
 	if zerbTable.Type() != lua.LTTable {
 		return nil, &ParseError{
 			Message: "missing or invalid 'zerb' table",
@@ -147,7 +147,7 @@ func extractConfig(L *lua.LState) (*Config, error) {
 	table := zerbTable.(*lua.LTable)
 
 	// Extract meta
-	if metaVal := table.RawGetString("meta"); metaVal.Type() == lua.LTTable {
+	if metaVal := table.RawGetString(luaFieldMeta); metaVal.Type() == lua.LTTable {
 		meta, err := extractMeta(metaVal.(*lua.LTable))
 		if err != nil {
 			return nil, err
@@ -156,7 +156,7 @@ func extractConfig(L *lua.LState) (*Config, error) {
 	}
 
 	// Extract tools
-	if toolsVal := table.RawGetString("tools"); toolsVal.Type() == lua.LTTable {
+	if toolsVal := table.RawGetString(luaFieldTools); toolsVal.Type() == lua.LTTable {
 		tools, err := extractTools(toolsVal.(*lua.LTable))
 		if err != nil {
 			return nil, err
@@ -165,7 +165,7 @@ func extractConfig(L *lua.LState) (*Config, error) {
 	}
 
 	// Extract configs
-	if configsVal := table.RawGetString("configs"); configsVal.Type() == lua.LTTable {
+	if configsVal := table.RawGetString(luaFieldConfigs); configsVal.Type() == lua.LTTable {
 		configs, err := extractConfigFiles(configsVal.(*lua.LTable))
 		if err != nil {
 			return nil, err
@@ -174,7 +174,7 @@ func extractConfig(L *lua.LState) (*Config, error) {
 	}
 
 	// Extract git
-	if gitVal := table.RawGetString("git"); gitVal.Type() == lua.LTTable {
+	if gitVal := table.RawGetString(luaFieldGit); gitVal.Type() == lua.LTTable {
 		git, err := extractGitConfig(gitVal.(*lua.LTable))
 		if err != nil {
 			return nil, err
@@ -183,7 +183,7 @@ func extractConfig(L *lua.LState) (*Config, error) {
 	}
 
 	// Extract options (or config, depending on schema)
-	if optionsVal := table.RawGetString("config"); optionsVal.Type() == lua.LTTable {
+	if optionsVal := table.RawGetString(luaFieldConfig); optionsVal.Type() == lua.LTTable {
 		options, err := extractOptions(optionsVal.(*lua.LTable))
 		if err != nil {
 			return nil, err
@@ -206,11 +206,11 @@ func extractConfig(L *lua.LState) (*Config, error) {
 func extractMeta(table *lua.LTable) (Meta, error) {
 	meta := Meta{}
 
-	if nameVal := table.RawGetString("name"); nameVal.Type() == lua.LTString {
+	if nameVal := table.RawGetString(luaFieldName); nameVal.Type() == lua.LTString {
 		meta.Name = nameVal.String()
 	}
 
-	if descVal := table.RawGetString("description"); descVal.Type() == lua.LTString {
+	if descVal := table.RawGetString(luaFieldDesc); descVal.Type() == lua.LTString {
 		meta.Description = descVal.String()
 	}
 
@@ -261,27 +261,27 @@ func extractConfigFiles(table *lua.LTable) ([]ConfigFile, error) {
 			cf := ConfigFile{}
 
 			// Required: path
-			if pathVal := cfTable.RawGetString("path"); pathVal.Type() == lua.LTString {
+			if pathVal := cfTable.RawGetString(luaFieldPath); pathVal.Type() == lua.LTString {
 				cf.Path = pathVal.String()
 			}
 
 			// Optional: recursive
-			if recVal := cfTable.RawGetString("recursive"); recVal.Type() == lua.LTBool {
+			if recVal := cfTable.RawGetString(luaFieldRecursive); recVal.Type() == lua.LTBool {
 				cf.Recursive = bool(recVal.(lua.LBool))
 			}
 
 			// Optional: template
-			if tmplVal := cfTable.RawGetString("template"); tmplVal.Type() == lua.LTBool {
+			if tmplVal := cfTable.RawGetString(luaFieldTemplate); tmplVal.Type() == lua.LTBool {
 				cf.Template = bool(tmplVal.(lua.LBool))
 			}
 
 			// Optional: secrets
-			if secVal := cfTable.RawGetString("secrets"); secVal.Type() == lua.LTBool {
+			if secVal := cfTable.RawGetString(luaFieldSecrets); secVal.Type() == lua.LTBool {
 				cf.Secrets = bool(secVal.(lua.LBool))
 			}
 
 			// Optional: private
-			if privVal := cfTable.RawGetString("private"); privVal.Type() == lua.LTBool {
+			if privVal := cfTable.RawGetString(luaFieldPrivate); privVal.Type() == lua.LTBool {
 				cf.Private = bool(privVal.(lua.LBool))
 			}
 
@@ -296,11 +296,11 @@ func extractConfigFiles(table *lua.LTable) ([]ConfigFile, error) {
 func extractGitConfig(table *lua.LTable) (GitConfig, error) {
 	git := GitConfig{}
 
-	if remoteVal := table.RawGetString("remote"); remoteVal.Type() == lua.LTString {
+	if remoteVal := table.RawGetString(luaFieldRemote); remoteVal.Type() == lua.LTString {
 		git.Remote = remoteVal.String()
 	}
 
-	if branchVal := table.RawGetString("branch"); branchVal.Type() == lua.LTString {
+	if branchVal := table.RawGetString(luaFieldBranch); branchVal.Type() == lua.LTString {
 		git.Branch = branchVal.String()
 	}
 
@@ -311,7 +311,7 @@ func extractGitConfig(table *lua.LTable) (GitConfig, error) {
 func extractOptions(table *lua.LTable) (Options, error) {
 	options := Options{}
 
-	if retentionVal := table.RawGetString("backup_retention"); retentionVal.Type() == lua.LTNumber {
+	if retentionVal := table.RawGetString(luaFieldBackupRetention); retentionVal.Type() == lua.LTNumber {
 		options.BackupRetention = int(lua.LVAsNumber(retentionVal))
 	}
 

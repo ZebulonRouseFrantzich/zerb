@@ -2,6 +2,7 @@ package binary
 
 import (
 	"bufio"
+	"bytes"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/sha256"
@@ -16,6 +17,7 @@ import (
 	"strings"
 
 	"github.com/ProtonMail/go-crypto/openpgp" //nolint:staticcheck // Using ProtonMail's maintained fork
+	"github.com/ProtonMail/go-crypto/openpgp/clearsign"
 	"github.com/sigstore/sigstore/pkg/signature"
 )
 
@@ -45,21 +47,43 @@ func (v *Verifier) VerifyFile(binaryPath, signaturePath, checksumPath, bundlePat
 	// Route verification based on binary type
 	switch info.Binary {
 	case BinaryMise:
-		// mise REQUIRES GPG verification - no fallback
+		// mise uses a clearsigned SHASUMS256.asc file containing both:
+		// - The checksums data (embedded)
+		// - The GPG signature
+		// We verify the clearsigned message and extract checksums from it
 		if signaturePath == "" || v.skipGPG {
 			return nil, fmt.Errorf("GPG signature required for mise but not available")
 		}
 
-		result, err := v.verifyGPG(binaryPath, signaturePath, info.Binary)
+		// Step 1: Verify and extract checksums from clearsigned SHASUMS256.asc
+		checksums, err := v.verifyAndExtractClearsigned(signaturePath, info.Binary)
 		if err != nil {
-			return nil, fmt.Errorf("GPG verification failed for mise: %w", err)
+			return nil, fmt.Errorf("GPG verification of clearsigned checksums failed for mise: %w", err)
 		}
 
-		if !result.Success {
-			return nil, fmt.Errorf("GPG verification failed: %v", result.Error)
+		// Step 2: Find the checksum for our specific binary
+		binaryFilename := info.BinaryFilename
+		if binaryFilename == "" {
+			binaryFilename = filepath.Base(binaryPath)
 		}
 
-		return result, nil
+		expectedHash, err := findChecksumInData(checksums, binaryFilename)
+		if err != nil {
+			return nil, fmt.Errorf("find checksum for %s: %w", binaryFilename, err)
+		}
+
+		// Step 3: Verify binary's SHA256 matches
+		actualHash, err := calculateSHA256(binaryPath)
+		if err != nil {
+			return nil, fmt.Errorf("calculate binary hash: %w", err)
+		}
+
+		if !strings.EqualFold(actualHash, expectedHash) {
+			return nil, fmt.Errorf("checksum mismatch: got %s, want %s", actualHash, expectedHash)
+		}
+
+		// Success: GPG-signed checksums verified, binary hash matches
+		return &VerificationResult{Method: VerificationGPG, Success: true, Error: nil}, nil
 
 	case BinaryChezmoi:
 		// chezmoi: Use cosign verification (key-based) with embedded public key
@@ -93,6 +117,7 @@ func (v *Verifier) VerifyFile(binaryPath, signaturePath, checksumPath, bundlePat
 }
 
 // verifyGPG verifies a file using GPG signature
+// This handles both detached signatures and clearsigned messages
 func (v *Verifier) verifyGPG(binaryPath, signaturePath string, binary Binary) (*VerificationResult, error) {
 	// Load keyring for this binary
 	keyring, err := v.loadKeyring(binary)
@@ -104,18 +129,7 @@ func (v *Verifier) verifyGPG(binaryPath, signaturePath string, binary Binary) (*
 		}, err
 	}
 
-	// Open binary file
-	binaryFile, err := os.Open(binaryPath)
-	if err != nil {
-		return &VerificationResult{
-			Method:  VerificationGPG,
-			Success: false,
-			Error:   fmt.Errorf("open binary: %w", err),
-		}, err
-	}
-	defer binaryFile.Close()
-
-	// Open signature file
+	// Open signature file to check format
 	sigFile, err := os.Open(signaturePath)
 	if err != nil {
 		return &VerificationResult{
@@ -126,16 +140,76 @@ func (v *Verifier) verifyGPG(binaryPath, signaturePath string, binary Binary) (*
 	}
 	defer sigFile.Close()
 
-	// Reset binary file to beginning
-	binaryFile.Seek(0, io.SeekStart)
+	// Check if it's a clearsigned message (contains "BEGIN PGP SIGNED MESSAGE")
+	sigData, err := io.ReadAll(sigFile)
+	if err != nil {
+		return &VerificationResult{
+			Method:  VerificationGPG,
+			Success: false,
+			Error:   fmt.Errorf("read signature: %w", err),
+		}, err
+	}
 
-	// Verify signature (try armored first)
-	_, err = openpgp.CheckArmoredDetachedSignature(keyring, binaryFile, sigFile, nil)
+	isClearsigned := strings.Contains(string(sigData), "BEGIN PGP SIGNED MESSAGE")
+
+	if isClearsigned {
+		// Handle clearsigned message using helper (reuses logic for mise)
+		// Note: For clearsigned, we need to write sigData to a temp file first
+		// since verifyAndExtractClearsigned expects a file path
+		tmpFile, err := os.CreateTemp("", "clearsigned-*.asc")
+		if err != nil {
+			return &VerificationResult{
+				Method:  VerificationGPG,
+				Success: false,
+				Error:   fmt.Errorf("create temp file: %w", err),
+			}, err
+		}
+		defer os.Remove(tmpFile.Name())
+		defer tmpFile.Close()
+
+		if _, err := tmpFile.Write(sigData); err != nil {
+			return &VerificationResult{
+				Method:  VerificationGPG,
+				Success: false,
+				Error:   fmt.Errorf("write temp file: %w", err),
+			}, err
+		}
+		tmpFile.Close()
+
+		// Verify clearsigned message
+		_, err = v.verifyAndExtractClearsigned(tmpFile.Name(), binary)
+		if err != nil {
+			return &VerificationResult{
+				Method:  VerificationGPG,
+				Success: false,
+				Error:   fmt.Errorf("verify clearsigned: %w", err),
+			}, err
+		}
+
+		return &VerificationResult{
+			Method:  VerificationGPG,
+			Success: true,
+			Error:   nil,
+		}, nil
+	}
+
+	// Handle detached signature (traditional format)
+	binaryFile, err := os.Open(binaryPath)
+	if err != nil {
+		return &VerificationResult{
+			Method:  VerificationGPG,
+			Success: false,
+			Error:   fmt.Errorf("open binary: %w", err),
+		}, err
+	}
+	defer binaryFile.Close()
+
+	// Verify detached signature (try armored first)
+	_, err = openpgp.CheckArmoredDetachedSignature(keyring, binaryFile, strings.NewReader(string(sigData)), nil)
 	if err != nil {
 		// Try non-armored signature
 		binaryFile.Seek(0, io.SeekStart)
-		sigFile.Seek(0, io.SeekStart)
-		_, err = openpgp.CheckDetachedSignature(keyring, binaryFile, sigFile, nil)
+		_, err = openpgp.CheckDetachedSignature(keyring, binaryFile, strings.NewReader(string(sigData)), nil)
 	}
 	if err != nil {
 		return &VerificationResult{
@@ -319,6 +393,68 @@ func (v *Verifier) loadKeyring(binary Binary) (openpgp.EntityList, error) {
 	}
 
 	return keyring, nil
+}
+
+// verifyAndExtractClearsigned verifies a GPG clearsigned message and extracts the plain text content
+// Clearsigned format: plain text data wrapped with GPG signature (e.g., mise's SHASUMS256.asc)
+func (v *Verifier) verifyAndExtractClearsigned(clearsignedPath string, binary Binary) (string, error) {
+	// Load keyring for this binary
+	keyring, err := v.loadKeyring(binary)
+	if err != nil {
+		return "", fmt.Errorf("load keyring: %w", err)
+	}
+
+	// Read clearsigned file
+	clearsignedData, err := os.ReadFile(clearsignedPath)
+	if err != nil {
+		return "", fmt.Errorf("read clearsigned file: %w", err)
+	}
+
+	// Decode clearsigned message
+	block, _ := clearsign.Decode(clearsignedData)
+	if block == nil {
+		return "", fmt.Errorf("failed to decode clearsigned message")
+	}
+
+	// Verify signature using keyring
+	_, err = openpgp.CheckDetachedSignature(keyring, bytes.NewReader(block.Bytes), block.ArmoredSignature.Body, nil)
+	if err != nil {
+		return "", fmt.Errorf("signature verification failed: %w", err)
+	}
+
+	// Return the plain text content
+	return string(block.Plaintext), nil
+}
+
+// findChecksumInData finds the checksum for a specific filename in checksum data (string)
+// Format: "abc123def456  filename.tar.gz" (one per line)
+func findChecksumInData(checksumData, filename string) (string, error) {
+	scanner := bufio.NewScanner(strings.NewReader(checksumData))
+	for scanner.Scan() {
+		line := scanner.Text()
+		parts := strings.Fields(line)
+		if len(parts) < 2 {
+			continue
+		}
+
+		// Check if this line is for our file
+		// Use exact match first, then basename comparison for files with paths
+		checksumFilename := parts[1]
+		if checksumFilename == filename {
+			return parts[0], nil
+		}
+
+		// Also check basename (for checksums like "./mise-latest-linux-amd64")
+		if filepath.Base(checksumFilename) == filename {
+			return parts[0], nil
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return "", fmt.Errorf("scan checksum data: %w", err)
+	}
+
+	return "", fmt.Errorf("checksum not found for %s", filename)
 }
 
 // calculateSHA256 calculates the SHA256 checksum of a file

@@ -20,15 +20,15 @@ func createTestTarGz(t *testing.T, files map[string]string) string {
 	if err != nil {
 		t.Fatalf("failed to create archive: %v", err)
 	}
-	defer archiveFile.Close()
+	defer func() { _ = archiveFile.Close() }()
 
 	// Create gzip writer
 	gzipWriter := gzip.NewWriter(archiveFile)
-	defer gzipWriter.Close()
+	defer func() { _ = gzipWriter.Close() }()
 
 	// Create tar writer
 	tarWriter := tar.NewWriter(gzipWriter)
-	defer tarWriter.Close()
+	defer func() { _ = tarWriter.Close() }()
 
 	// Add files to archive
 	for name, content := range files {
@@ -308,13 +308,13 @@ func createTestArchiveWithFile(archivePath, fileName, content string) error {
 	if err != nil {
 		return err
 	}
-	defer archiveFile.Close()
+	defer func() { _ = archiveFile.Close() }()
 
 	gzipWriter := gzip.NewWriter(archiveFile)
-	defer gzipWriter.Close()
+	defer func() { _ = gzipWriter.Close() }()
 
 	tarWriter := tar.NewWriter(gzipWriter)
-	defer tarWriter.Close()
+	defer func() { _ = tarWriter.Close() }()
 
 	header := &tar.Header{
 		Name: fileName,
@@ -381,13 +381,13 @@ func TestExtractTarGz_SymlinkTraversal(t *testing.T) {
 			if err != nil {
 				t.Fatalf("failed to create archive: %v", err)
 			}
-			defer archiveFile.Close()
+			defer func() { _ = archiveFile.Close() }()
 
 			gzipWriter := gzip.NewWriter(archiveFile)
-			defer gzipWriter.Close()
+			defer func() { _ = gzipWriter.Close() }()
 
 			tarWriter := tar.NewWriter(gzipWriter)
-			defer tarWriter.Close()
+			defer func() { _ = tarWriter.Close() }()
 
 			// Add a target file first (for valid tests)
 			if !tt.shouldFail {
@@ -396,8 +396,8 @@ func TestExtractTarGz_SymlinkTraversal(t *testing.T) {
 					Mode: 0644,
 					Size: 4,
 				}
-				tarWriter.WriteHeader(header)
-				tarWriter.Write([]byte("test"))
+				_ = tarWriter.WriteHeader(header)
+				_, _ = tarWriter.Write([]byte("test"))
 			}
 
 			// Add symlink
@@ -410,9 +410,9 @@ func TestExtractTarGz_SymlinkTraversal(t *testing.T) {
 				t.Fatalf("failed to write symlink header: %v", err)
 			}
 
-			tarWriter.Close()
-			gzipWriter.Close()
-			archiveFile.Close()
+			_ = tarWriter.Close()
+			_ = gzipWriter.Close()
+			_ = archiveFile.Close()
 
 			// Attempt extraction
 			destDir := filepath.Join(tmpDir, "extract")

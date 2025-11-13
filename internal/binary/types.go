@@ -83,14 +83,15 @@ type DownloadResult struct {
 
 // DownloadInfo contains metadata needed to download a binary
 type DownloadInfo struct {
-	Binary       Binary
-	Version      string
-	OS           string // "linux", "darwin", etc.
-	Arch         string // "amd64", "arm64", etc.
-	URL          string // Constructed download URL
-	SignatureURL string // GPG signature URL (may be empty)
-	ChecksumURL  string // SHA256 checksum URL (may be empty)
-	BundleURL    string // Cosign bundle URL (may be empty)
+	Binary         Binary
+	Version        string
+	OS             string // "linux", "darwin", etc.
+	Arch           string // "amd64", "arm64", etc.
+	URL            string // Constructed download URL
+	SignatureURL   string // GPG signature URL (may be empty)
+	ChecksumURL    string // SHA256 checksum URL (may be empty)
+	BundleURL      string // Cosign bundle URL (may be empty)
+	BinaryFilename string // Binary filename for checksum lookup (e.g., "mise-v2024.12.7-linux-x64.tar.gz")
 }
 
 // VerificationResult contains the outcome of a verification attempt

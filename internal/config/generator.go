@@ -268,7 +268,7 @@ func (g *Generator) writeOptions(buf *bytes.Buffer, options Options) {
 	if options.BackupRetention > 0 {
 		buf.WriteString(g.indent)
 		buf.WriteString(g.indent)
-		buf.WriteString(fmt.Sprintf("backup_retention = %d,\n", options.BackupRetention))
+		fmt.Fprintf(buf, "backup_retention = %d,\n", options.BackupRetention)
 	}
 
 	buf.WriteString(g.indent)

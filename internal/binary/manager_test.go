@@ -142,8 +142,8 @@ func TestManagerIsInstalled(t *testing.T) {
 
 	// Create bin directory and add a mock binary
 	binPath := manager.GetBinaryPath(BinaryMise)
-	os.MkdirAll(filepath.Dir(binPath), 0755)
-	os.WriteFile(binPath, []byte("#!/bin/sh\necho test"), 0755)
+	_ = os.MkdirAll(filepath.Dir(binPath), 0755)
+	_ = os.WriteFile(binPath, []byte("#!/bin/sh\necho test"), 0755)
 
 	// Now should be installed
 	installed, err = manager.IsInstalled(BinaryMise)
@@ -174,8 +174,8 @@ func TestManagerIsInstalled_NotExecutable(t *testing.T) {
 
 	// Create binary without execute permissions
 	binPath := manager.GetBinaryPath(BinaryMise)
-	os.MkdirAll(filepath.Dir(binPath), 0755)
-	os.WriteFile(binPath, []byte("test"), 0644) // Not executable
+	_ = os.MkdirAll(filepath.Dir(binPath), 0755)
+	_ = os.WriteFile(binPath, []byte("test"), 0644) // Not executable
 
 	// Should not be considered installed
 	installed, err := manager.IsInstalled(BinaryMise)
@@ -212,8 +212,8 @@ func TestManagerGetInstalledVersion(t *testing.T) {
 
 	// Install mock binary
 	binPath := manager.GetBinaryPath(BinaryMise)
-	os.MkdirAll(filepath.Dir(binPath), 0755)
-	os.WriteFile(binPath, []byte("#!/bin/sh\necho test"), 0755)
+	_ = os.MkdirAll(filepath.Dir(binPath), 0755)
+	_ = os.WriteFile(binPath, []byte("#!/bin/sh\necho test"), 0755)
 
 	// Get version
 	version, err := manager.GetInstalledVersion(BinaryMise)
@@ -237,10 +237,10 @@ func TestManagerDownload(t *testing.T) {
 			// Create a minimal tar.gz with binary
 			// For testing, just return mock content
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(mockBinaryContent))
+			_, _ = w.Write([]byte(mockBinaryContent))
 		} else if strings.Contains(r.URL.Path, "checksums") {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(mockChecksums))
+			_, _ = w.Write([]byte(mockChecksums))
 		} else {
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -336,9 +336,9 @@ func TestManagerInstall_SkipIfAlreadyInstalled(t *testing.T) {
 
 	// Pre-install a mock binary
 	binPath := manager.GetBinaryPath(BinaryMise)
-	os.MkdirAll(filepath.Dir(binPath), 0755)
+	_ = os.MkdirAll(filepath.Dir(binPath), 0755)
 	originalContent := []byte("original content")
-	os.WriteFile(binPath, originalContent, 0755)
+	_ = os.WriteFile(binPath, originalContent, 0755)
 
 	// Try to install - should skip
 	ctx := context.Background()
@@ -413,8 +413,8 @@ func TestManagerInstallAll(t *testing.T) {
 	// Pre-install both binaries to test that InstallAll works
 	for _, binary := range []Binary{BinaryMise, BinaryChezmoi} {
 		binPath := manager.GetBinaryPath(binary)
-		os.MkdirAll(filepath.Dir(binPath), 0755)
-		os.WriteFile(binPath, []byte("test"), 0755)
+		_ = os.MkdirAll(filepath.Dir(binPath), 0755)
+		_ = os.WriteFile(binPath, []byte("test"), 0755)
 	}
 
 	// InstallAll should skip both (already installed)
@@ -473,7 +473,7 @@ func TestManagerDownload_RequireGPGForMise(t *testing.T) {
 			// Checksums file - return valid content
 			w.WriteHeader(http.StatusOK)
 			// Return a fake checksum (this would normally match the binary)
-			w.Write([]byte("abc123def456 mise-2024.12.7-linux-amd64.tar.gz\n"))
+			_, _ = w.Write([]byte("abc123def456 mise-2024.12.7-linux-amd64.tar.gz\n"))
 			return
 		}
 		// Binary file - return minimal tar.gz

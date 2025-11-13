@@ -48,9 +48,12 @@ func constructMiseDownloadInfo(info *DownloadInfo, version string) (*DownloadInf
 	binaryName := fmt.Sprintf("mise-v%s-%s-%s.tar.gz", version, osName, archName)
 
 	info.URL = fmt.Sprintf("%s/%s", baseURL, binaryName)
-	info.SignatureURL = fmt.Sprintf("%s/%s.sig", baseURL, binaryName)
-	// mise provides checksums but we'll prefer GPG
-	info.ChecksumURL = ""
+	// mise provides a GPG-signed checksums file (SHASUMS256.txt + SHASUMS256.asc)
+	// Verify the checksums file with GPG, then verify the binary's SHA256.
+	info.SignatureURL = fmt.Sprintf("%s/SHASUMS256.asc", baseURL)
+	info.ChecksumURL = fmt.Sprintf("%s/SHASUMS256.txt", baseURL)
+	info.BundleURL = ""
+	info.BinaryFilename = binaryName
 
 	return info, nil
 }
