@@ -85,6 +85,7 @@ type RemovalPlan struct {
 	CacheSize         int64
 	ShellIntegrations []ShellIntegration
 	BackupFiles       []string
+	ActualBackupPaths []string // Actual backup files created during removal
 }
 
 // ShellIntegration describes shell integration to remove
