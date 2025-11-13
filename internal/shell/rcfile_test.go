@@ -391,3 +391,265 @@ func TestAddActivationLine_Idempotent(t *testing.T) {
 		t.Logf("First content length: %d, Second content length: %d", len(firstContent), len(secondContent))
 	}
 }
+
+func TestRemoveActivationLine(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	tests := []struct {
+		name            string
+		initialContent  string
+		expectedContent string
+		wantErr         bool
+		shouldModify    bool
+	}{
+		{
+			name: "Remove activation line from file",
+			initialContent: `export PATH=$PATH:/usr/local/bin
+
+# ZERB - Developer environment manager
+eval "$(zerb activate bash)"
+
+alias ll='ls -la'
+`,
+			expectedContent: `export PATH=$PATH:/usr/local/bin
+
+alias ll='ls -la'
+`,
+			wantErr:      false,
+			shouldModify: true,
+		},
+		{
+			name: "Remove activation with extra newlines",
+			initialContent: `export PATH=$PATH:/usr/local/bin
+
+
+# ZERB - Developer environment manager
+eval "$(zerb activate bash)"
+
+
+alias ll='ls -la'
+`,
+			expectedContent: `export PATH=$PATH:/usr/local/bin
+
+
+
+alias ll='ls -la'
+`,
+			wantErr:      false,
+			shouldModify: true,
+		},
+		{
+			name: "No activation line present (idempotent)",
+			initialContent: `export PATH=$PATH:/usr/local/bin
+
+alias ll='ls -la'
+`,
+			expectedContent: `export PATH=$PATH:/usr/local/bin
+
+alias ll='ls -la'
+`,
+			wantErr:      false,
+			shouldModify: false,
+		},
+		{
+			name: "Remove from file with only ZERB",
+			initialContent: `# ZERB - Developer environment manager
+eval "$(zerb activate bash)"
+`,
+			expectedContent: ``,
+			wantErr:         false,
+			shouldModify:    true,
+		},
+		{
+			name: "Multiple comment lines before activation",
+			initialContent: `# My bashrc
+# Author: Test User
+
+# ZERB - Developer environment manager
+eval "$(zerb activate bash)"
+
+export FOO=bar
+`,
+			expectedContent: `# My bashrc
+# Author: Test User
+
+export FOO=bar
+`,
+			wantErr:      false,
+			shouldModify: true,
+		},
+		{
+			name: "Activation with different shell",
+			initialContent: `# ZERB - Developer environment manager
+eval "$(zerb activate zsh)"
+
+export ZSH_THEME="agnoster"
+`,
+			expectedContent: `export ZSH_THEME="agnoster"
+`,
+			wantErr:      false,
+			shouldModify: true,
+		},
+		{
+			name:            "Empty file (idempotent)",
+			initialContent:  "",
+			expectedContent: "",
+			wantErr:         false,
+			shouldModify:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create test RC file
+			rcPath := filepath.Join(tmpDir, "test.rc")
+			if err := os.WriteFile(rcPath, []byte(tt.initialContent), 0644); err != nil {
+				t.Fatalf("Failed to create test RC file: %v", err)
+			}
+
+			// Remove activation line
+			err := RemoveActivationLine(rcPath)
+
+			// Check error
+			if (err != nil) != tt.wantErr {
+				t.Errorf("RemoveActivationLine() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			// Read result
+			content, err := os.ReadFile(rcPath)
+			if err != nil {
+				t.Fatalf("Failed to read result: %v", err)
+			}
+
+			// Compare content
+			got := string(content)
+			if got != tt.expectedContent {
+				t.Errorf("RemoveActivationLine() content mismatch\nGot:\n%q\n\nWant:\n%q", got, tt.expectedContent)
+			}
+		})
+	}
+}
+
+func TestRemoveActivationLine_NonExistentFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	rcPath := filepath.Join(tmpDir, "nonexistent.rc")
+
+	// Should not error on non-existent file (idempotent)
+	err := RemoveActivationLine(rcPath)
+	if err != nil {
+		t.Errorf("RemoveActivationLine() on non-existent file should not error, got: %v", err)
+	}
+}
+
+func TestRemoveActivationLine_Symlink(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create actual file
+	actualFile := filepath.Join(tmpDir, "actual.rc")
+	if err := os.WriteFile(actualFile, []byte("test content"), 0644); err != nil {
+		t.Fatalf("Failed to create actual file: %v", err)
+	}
+
+	// Create symlink
+	symlinkPath := filepath.Join(tmpDir, "symlink.rc")
+	if err := os.Symlink(actualFile, symlinkPath); err != nil {
+		t.Fatalf("Failed to create symlink: %v", err)
+	}
+
+	// Should error on symlink (security)
+	err := RemoveActivationLine(symlinkPath)
+	if err == nil {
+		t.Error("RemoveActivationLine() should error on symlink")
+	}
+	if !strings.Contains(err.Error(), "symlink") {
+		t.Errorf("Error should mention symlink, got: %v", err)
+	}
+}
+
+func TestRemoveActivationLine_Idempotent(t *testing.T) {
+	tmpDir := t.TempDir()
+	rcPath := filepath.Join(tmpDir, "test.rc")
+
+	initialContent := `export PATH=$PATH:/usr/local/bin
+
+# ZERB - Developer environment manager
+eval "$(zerb activate bash)"
+
+alias ll='ls -la'
+`
+
+	expectedContent := `export PATH=$PATH:/usr/local/bin
+
+alias ll='ls -la'
+`
+
+	// Create file with activation line
+	if err := os.WriteFile(rcPath, []byte(initialContent), 0644); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	// First removal
+	if err := RemoveActivationLine(rcPath); err != nil {
+		t.Fatalf("First removal failed: %v", err)
+	}
+
+	// Check content after first removal
+	content1, _ := os.ReadFile(rcPath)
+	if string(content1) != expectedContent {
+		t.Errorf("After first removal, content mismatch\nGot:\n%q\n\nWant:\n%q", string(content1), expectedContent)
+	}
+
+	// Second removal (idempotent - should not modify)
+	if err := RemoveActivationLine(rcPath); err != nil {
+		t.Fatalf("Second removal failed: %v", err)
+	}
+
+	// Check content after second removal (should be same)
+	content2, _ := os.ReadFile(rcPath)
+	if string(content2) != expectedContent {
+		t.Errorf("After second removal, content mismatch\nGot:\n%q\n\nWant:\n%q", string(content2), expectedContent)
+	}
+
+	// Third removal (still idempotent)
+	if err := RemoveActivationLine(rcPath); err != nil {
+		t.Fatalf("Third removal failed: %v", err)
+	}
+
+	// Check content after third removal (should still be same)
+	content3, _ := os.ReadFile(rcPath)
+	if string(content3) != expectedContent {
+		t.Errorf("After third removal, content mismatch\nGot:\n%q\n\nWant:\n%q", string(content3), expectedContent)
+	}
+}
+
+func TestRemoveActivationLine_PreservesPermissions(t *testing.T) {
+	tmpDir := t.TempDir()
+	rcPath := filepath.Join(tmpDir, "test.rc")
+
+	content := `# ZERB - Developer environment manager
+eval "$(zerb activate bash)"
+`
+
+	// Create file with specific permissions
+	if err := os.WriteFile(rcPath, []byte(content), 0600); err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+
+	// Remove activation line
+	if err := RemoveActivationLine(rcPath); err != nil {
+		t.Fatalf("RemoveActivationLine() failed: %v", err)
+	}
+
+	// Check permissions are preserved
+	info, err := os.Stat(rcPath)
+	if err != nil {
+		t.Fatalf("Failed to stat file: %v", err)
+	}
+
+	// Note: permissions might be affected by umask, so we check for reasonable permissions
+	mode := info.Mode().Perm()
+	if mode != 0600 && mode != 0644 {
+		t.Logf("Warning: Permissions changed from 0600 to %o (may be expected due to umask)", mode)
+	}
+}

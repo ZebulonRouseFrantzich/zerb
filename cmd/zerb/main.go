@@ -30,6 +30,13 @@ func main() {
 				os.Exit(1)
 			}
 			return
+		case "uninit", "remove":
+			// Handle zerb uninit subcommand (remove is an alias)
+			if err := runUninit(os.Args[2:]); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+			return
 		}
 	}
 
@@ -43,6 +50,7 @@ func main() {
 	fmt.Println("Usage:")
 	fmt.Println("  zerb --version         Show version information")
 	fmt.Println("  zerb init              Initialize ZERB environment")
+	fmt.Println("  zerb uninit            Remove ZERB from your system")
 	fmt.Println("  zerb activate <shell>  Generate shell activation script (bash, zsh, fish)")
 	fmt.Println()
 	fmt.Println("Coming soon:")

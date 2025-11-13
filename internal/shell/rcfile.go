@@ -307,3 +307,128 @@ func AddActivationLine(rcPath string, activationCommand string) error {
 
 	return nil
 }
+// RemoveActivationLine removes the ZERB activation line from the RC file
+// This is an atomic operation using a temporary file
+// Returns nil if the activation line doesn't exist (idempotent)
+func RemoveActivationLine(rcPath string) error {
+	// Security: Check for symlinks (prevent symlink attack)
+	if info, err := os.Lstat(rcPath); err == nil {
+		if info.Mode()&os.ModeSymlink != 0 {
+			return &RCFileError{
+				Path:    rcPath,
+				Message: "RC file is a symlink (security risk)",
+			}
+		}
+	}
+
+	// Check if file exists
+	exists, err := RCFileExists(rcPath)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		// File doesn't exist, nothing to remove (idempotent)
+		return nil
+	}
+
+	// Read existing content
+	existingContent, err := os.ReadFile(rcPath)
+	if err != nil {
+		return &RCFileError{
+			Path:    rcPath,
+			Message: "failed to read existing file",
+			Cause:   err,
+		}
+	}
+
+	// Check if activation line exists
+	if !strings.Contains(string(existingContent), ActivationMarker) {
+		// Activation line not present, nothing to do (idempotent)
+		return nil
+	}
+
+	// Filter out ZERB-related lines
+	lines := strings.Split(string(existingContent), "\n")
+	var filteredLines []string
+	skipNext := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		
+		// Skip the ZERB comment line
+		if trimmed == "# ZERB - Developer environment manager" {
+			skipNext = true
+			continue
+		}
+		
+		// Skip any line containing the activation marker
+		if strings.Contains(line, ActivationMarker) {
+			continue
+		}
+		
+		// Skip empty lines immediately after ZERB comment (cleanup)
+		if skipNext && trimmed == "" {
+			skipNext = false
+			continue
+		}
+		
+		skipNext = false
+		filteredLines = append(filteredLines, line)
+	}
+
+	// Remove trailing empty lines that might have been left
+	for len(filteredLines) > 0 && strings.TrimSpace(filteredLines[len(filteredLines)-1]) == "" {
+		filteredLines = filteredLines[:len(filteredLines)-1]
+	}
+
+	// Create temporary file in the same directory (for atomic rename)
+	dir := filepath.Dir(rcPath)
+	tmpFile, err := os.CreateTemp(dir, ".zerb-tmp-*")
+	if err != nil {
+		return &RCFileError{
+			Path:    rcPath,
+			Message: "failed to create temporary file",
+			Cause:   err,
+		}
+	}
+	tmpPath := tmpFile.Name()
+	defer os.Remove(tmpPath) // Clean up on error
+
+	// Write filtered content
+	newContent := strings.Join(filteredLines, "\n")
+	if len(filteredLines) > 0 {
+		newContent += "\n" // Ensure trailing newline
+	}
+
+	if _, err := tmpFile.WriteString(newContent); err != nil {
+		tmpFile.Close()
+		return &RCFileError{
+			Path:    rcPath,
+			Message: "failed to write filtered content",
+			Cause:   err,
+		}
+	}
+
+	// Sync to disk
+	if err := tmpFile.Sync(); err != nil {
+		tmpFile.Close()
+		return &RCFileError{
+			Path:    rcPath,
+			Message: "failed to sync file",
+			Cause:   err,
+		}
+	}
+
+	tmpFile.Close()
+
+	// Atomic rename
+	if err := os.Rename(tmpPath, rcPath); err != nil {
+		return &RCFileError{
+			Path:    rcPath,
+			Message: "failed to rename temp file",
+			Cause:   err,
+		}
+	}
+
+	return nil
+}
