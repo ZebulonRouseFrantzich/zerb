@@ -288,7 +288,7 @@ func TestVerifyFile(t *testing.T) {
 			name:           "mise_gpg_success",
 			binary:         BinaryMise,
 			binaryPath:     "testdata/test-binary",
-			signaturePath:  "testdata/test-binary.asc",
+			signaturePath:  "testdata/checksums.txt.asc", // GPG signature of checksums file
 			checksumPath:   "testdata/checksums.txt",
 			expectedMethod: VerificationGPG,
 			wantSuccess:    true,

@@ -23,6 +23,13 @@ func main() {
 				os.Exit(1)
 			}
 			return
+		case "init":
+			// Handle zerb init subcommand
+			if err := runInit(os.Args[2:]); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+			return
 		}
 	}
 
@@ -35,10 +42,10 @@ func main() {
 	fmt.Println()
 	fmt.Println("Usage:")
 	fmt.Println("  zerb --version         Show version information")
+	fmt.Println("  zerb init              Initialize ZERB environment")
 	fmt.Println("  zerb activate <shell>  Generate shell activation script (bash, zsh, fish)")
 	fmt.Println()
 	fmt.Println("Coming soon:")
-	fmt.Println("  zerb init        Initialize ZERB configuration")
 	fmt.Println("  zerb add         Add tools to your environment")
 	fmt.Println("  zerb sync        Sync tools and configs")
 	fmt.Println("  zerb drift       Check for environment drift")

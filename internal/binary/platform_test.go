@@ -14,6 +14,7 @@ func TestConstructMiseDownloadInfo(t *testing.T) {
 		arch        string
 		expectedURL string
 		expectedSig string
+		expectedSum string
 		wantErr     bool
 	}{
 		{
@@ -22,7 +23,8 @@ func TestConstructMiseDownloadInfo(t *testing.T) {
 			os:          "linux",
 			arch:        "amd64",
 			expectedURL: "https://github.com/jdx/mise/releases/download/v2024.12.7/mise-v2024.12.7-linux-x64.tar.gz",
-			expectedSig: "https://github.com/jdx/mise/releases/download/v2024.12.7/mise-v2024.12.7-linux-x64.tar.gz.sig",
+			expectedSig: "https://github.com/jdx/mise/releases/download/v2024.12.7/SHASUMS256.asc",
+			expectedSum: "https://github.com/jdx/mise/releases/download/v2024.12.7/SHASUMS256.txt",
 			wantErr:     false,
 		},
 		{
@@ -31,7 +33,8 @@ func TestConstructMiseDownloadInfo(t *testing.T) {
 			os:          "linux",
 			arch:        "arm64",
 			expectedURL: "https://github.com/jdx/mise/releases/download/v2024.12.7/mise-v2024.12.7-linux-arm64.tar.gz",
-			expectedSig: "https://github.com/jdx/mise/releases/download/v2024.12.7/mise-v2024.12.7-linux-arm64.tar.gz.sig",
+			expectedSig: "https://github.com/jdx/mise/releases/download/v2024.12.7/SHASUMS256.asc",
+			expectedSum: "https://github.com/jdx/mise/releases/download/v2024.12.7/SHASUMS256.txt",
 			wantErr:     false,
 		},
 		{
@@ -40,7 +43,8 @@ func TestConstructMiseDownloadInfo(t *testing.T) {
 			os:          "linux",
 			arch:        "386",
 			expectedURL: "https://github.com/jdx/mise/releases/download/v2024.12.7/mise-v2024.12.7-linux-x86.tar.gz",
-			expectedSig: "https://github.com/jdx/mise/releases/download/v2024.12.7/mise-v2024.12.7-linux-x86.tar.gz.sig",
+			expectedSig: "https://github.com/jdx/mise/releases/download/v2024.12.7/SHASUMS256.asc",
+			expectedSum: "https://github.com/jdx/mise/releases/download/v2024.12.7/SHASUMS256.txt",
 			wantErr:     false,
 		},
 		{
@@ -87,6 +91,9 @@ func TestConstructMiseDownloadInfo(t *testing.T) {
 
 			if result.SignatureURL != tt.expectedSig {
 				t.Errorf("SignatureURL mismatch:\ngot:  %s\nwant: %s", result.SignatureURL, tt.expectedSig)
+			}
+			if result.ChecksumURL != tt.expectedSum {
+				t.Errorf("ChecksumURL mismatch:\ngot:  %s\nwant: %s", result.ChecksumURL, tt.expectedSum)
 			}
 		})
 	}

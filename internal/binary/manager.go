@@ -156,21 +156,23 @@ func (m *Manager) Download(ctx context.Context, opts DownloadOptions) (*Download
 
 	switch opts.Binary {
 	case BinaryMise:
-		// mise REQUIRES GPG signature - don't silently ignore errors
+		// mise REQUIRES both the GPG-signed checksums and the checksums file
 		if downloadInfo.SignatureURL != "" && !opts.SkipGPG {
 			signaturePath, err = m.downloader.DownloadSignature(ctx, downloadInfo)
 			if err != nil {
 				return nil, fmt.Errorf("failed to download required GPG signature for mise: %w", err)
 			}
+		} else if !opts.SkipGPG {
+			return nil, fmt.Errorf("missing GPG signature URL for mise")
 		}
 
-		// Also download checksums for mise (used in addition to GPG)
 		if downloadInfo.ChecksumURL != "" {
 			checksumPath, err = m.downloader.DownloadChecksums(ctx, downloadInfo)
 			if err != nil {
-				// Checksums are optional for mise (GPG is primary)
-				checksumPath = ""
+				return nil, fmt.Errorf("failed to download required checksums for mise: %w", err)
 			}
+		} else {
+			return nil, fmt.Errorf("missing checksums URL for mise")
 		}
 
 	case BinaryChezmoi:
