@@ -30,8 +30,8 @@ func main() {
 				os.Exit(1)
 			}
 			return
-		case "uninit", "remove":
-			// Handle zerb uninit subcommand (remove is an alias)
+		case "uninit":
+			// Handle zerb uninit subcommand
 			if err := runUninit(os.Args[2:]); err != nil {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 				os.Exit(1)
