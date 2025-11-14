@@ -97,6 +97,7 @@ ZERB acts as **intelligent glue** between battle-tested tools:
 
 - ✅ **Single declarative config** - One Lua file defines your entire environment
 - ✅ **Complete isolation** - Never conflicts with system packages or other tools
+- ✅ **Non-invasive** - Manual shell setup with clear instructions, never auto-modifies rc files
 - ✅ **Git-native versioning** - Full history, rollback, sync across machines
 - ✅ **Platform-aware** - Conditional logic for Linux distros, macOS, Windows
 - ✅ **Drift detection** - Know when your environment diverges from declared state
@@ -438,11 +439,67 @@ This feature respects ZERB's philosophy: **simple, pragmatic, and user-focused**
 
 ## Quick Start
 
-> **Note:** ZERB is not yet ready for installation. This section is a preview of the planned workflow.
+> **Note:** ZERB is in pre-pre-alpha development. Installation instructions below are for developers building from source.
+
+### Installation (Development Build)
+
+**Prerequisites:** Go 1.21+ or Nix with flakes enabled
+
+**Option 1: Build from source**
+
+```bash
+# Clone repository
+git clone https://github.com/ZebulonRouseFrantzich/zerb.git
+cd zerb
+
+# Build binary
+go build -o bin/zerb ./cmd/zerb
+
+# Install to PATH (required for shell activation)
+# Choose one:
+mkdir -p ~/.local/bin
+cp bin/zerb ~/.local/bin/zerb
+
+# OR install system-wide:
+sudo cp bin/zerb /usr/local/bin/zerb
+```
+
+**Option 2: Nix development environment**
+
+```bash
+git clone https://github.com/ZebulonRouseFrantzich/zerb.git
+cd zerb
+nix develop  # Enters dev shell with all tools
+just build   # Builds to bin/zerb
+cp bin/zerb ~/.local/bin/zerb  # Install to PATH
+```
+
+**Ensure `~/.local/bin` is on PATH** (add to `~/.bashrc` or `~/.zshrc` if needed):
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+**Verify installation:**
+
+```bash
+which zerb     # Should show path to zerb binary
+zerb --version # Should show version info
+```
+
+### Usage
 
 ```bash
 # Initialize ZERB
 $ zerb init
+# This creates the ZERB directory structure and downloads core components
+
+# Add shell integration (follow instructions from init output)
+$ echo 'eval "$(zerb activate bash)"' >> ~/.bashrc  # or ~/.zshrc
+$ source ~/.bashrc  # Reload shell
+
+# Verify ZERB is active
+$ zerb --version
 
 # Add tools interactively
 $ zerb add python
@@ -465,7 +522,27 @@ $ zerb push
 # On another machine
 $ zerb pull
 # Automatically installs tools and applies configs
+
+# Uninstall ZERB
+$ zerb uninit
+# Follow instructions to remove shell integration manually
 ```
+
+### Future: One-Line Installer (Pre-MVP)
+
+Before the MVP release, ZERB will provide a one-line installer:
+
+```bash
+curl -fsSL https://zerb.dev/install.sh | sh
+```
+
+This will automatically:
+- Detect your platform (Linux amd64/arm64)
+- Download and verify the latest release
+- Install to `~/.local/bin/zerb`
+- Configure PATH if needed
+
+See [Pre-MVP Tasks](.ai-workflow/plans/pre-mvp-tasks.md) for installation roadmap.
 
 ---
 

@@ -264,13 +264,19 @@ func showRemovalPlan(plan *RemovalPlan, flags *UninitFlags) {
 	}
 	fmt.Println("      - keyrings/, logs/, tmp/")
 
-	// Shell integrations
+	// Shell integrations (informational only - not automatically removed)
 	if len(plan.ShellIntegrations) > 0 {
 		fmt.Println()
-		fmt.Println("  [×] Shell integration:")
+		fmt.Println("  [!] Shell integration found in:")
 		for _, si := range plan.ShellIntegrations {
 			fmt.Printf("      - %s (line %d)\n", si.RCFile, si.Line)
 		}
+		fmt.Println()
+		fmt.Println("      You'll need to manually remove this after uninstall.")
+		fmt.Println("      (Instructions will be shown after removal)")
+	} else {
+		fmt.Println()
+		fmt.Println("  [✓] No shell integration detected")
 	}
 
 	// Backup files
@@ -312,13 +318,6 @@ func confirmUninit(flags *UninitFlags) (bool, error) {
 			tipFlags = append(tipFlags, "--keep-cache")
 		}
 		fmt.Printf("   zerb uninit %s\n", strings.Join(tipFlags, " "))
-		fmt.Println()
-	}
-
-	if !flags.noBackup {
-		timestamp := time.Now().Format("20060102-150405")
-		fmt.Println("A final backup will be created:")
-		fmt.Printf("   ~/.bashrc.zerb-uninit-backup.%s\n", timestamp)
 		fmt.Println()
 	}
 
@@ -464,13 +463,6 @@ func printUninitSuccessMessage(plan *RemovalPlan, flags *UninitFlags) {
 
 	fmt.Println("Removed:")
 	fmt.Println("  • ZERB directory")
-	if len(plan.ShellIntegrations) > 0 {
-		shells := []string{}
-		for _, si := range plan.ShellIntegrations {
-			shells = append(shells, si.Shell)
-		}
-		fmt.Printf("  • Shell integration (%s)\n", strings.Join(shells, ", "))
-	}
 	if len(plan.BackupFiles) > 0 && !flags.keepBackups {
 		fmt.Printf("  • %d backup files\n", len(plan.BackupFiles))
 	}
@@ -482,12 +474,41 @@ func printUninitSuccessMessage(plan *RemovalPlan, flags *UninitFlags) {
 	}
 	fmt.Printf("Freed %s of disk space\n", formatSize(totalSize))
 
-	if !flags.noBackup && len(plan.ShellIntegrations) > 0 {
+	// Show manual shell integration removal instructions
+	if len(plan.ShellIntegrations) > 0 {
 		fmt.Println()
-		timestamp := time.Now().Format("20060102-150405")
+		fmt.Println("⚠️  Don't forget to remove shell integration:")
+		fmt.Println()
+
 		for _, si := range plan.ShellIntegrations {
-			backupName := filepath.Base(si.RCFile) + ".zerb-uninit-backup." + timestamp
-			fmt.Printf("Final backup: ~/%s\n", backupName)
+			// Parse shell type from string
+			var shellType shell.ShellType
+			switch si.Shell {
+			case "bash":
+				shellType = shell.ShellBash
+			case "zsh":
+				shellType = shell.ShellZsh
+			case "fish":
+				shellType = shell.ShellFish
+			default:
+				continue
+			}
+
+			// Get the activation command to show what to remove
+			activationCmd, _ := shell.GenerateActivationCommand(shellType)
+
+			fmt.Printf("   From %s:\n", si.RCFile)
+			fmt.Printf("     sed -i \"/zerb activate/d\" %s\n", si.RCFile)
+			fmt.Println()
+			fmt.Printf("     Or edit %s and remove:\n", si.RCFile)
+			fmt.Printf("     %s\n", activationCmd)
+			fmt.Println()
+		}
+
+		if len(plan.ShellIntegrations) > 0 {
+			fmt.Println("   Then reload your shell:")
+			fmt.Printf("     source %s\n", plan.ShellIntegrations[0].RCFile)
+			fmt.Println()
 		}
 	}
 
@@ -564,10 +585,9 @@ func runUninit(args []string) error {
 
 	fmt.Println()
 
-	// Remove shell integrations
-	if err := removeShellIntegrations(plan, flags); err != nil {
-		return fmt.Errorf("remove shell integration: %w", err)
-	}
+	// Note: Shell integration is NOT automatically removed
+	// Users must manually remove it from their rc files
+	// Instructions will be shown in the success message
 
 	// Remove ZERB directory
 	if err := removeZerbDirectory(zerbDir, flags); err != nil {

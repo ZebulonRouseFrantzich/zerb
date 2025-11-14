@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/ZebulonRouseFrantzich/zerb/internal/binary"
@@ -167,51 +169,205 @@ func generateInitialConfig(ctx context.Context, zerbDir string) error {
 	return nil
 }
 
-// setupShellIntegration prompts user to set up shell integration
-func setupShellIntegration(ctx context.Context, zerbDir string) error {
-	shellManager, err := shell.NewManager(shell.Config{
-		ZerbDir: zerbDir,
-	})
+// detectUserShell detects the user's shell without modifying any files
+func detectUserShell() shell.ShellType {
+	detection, err := shell.DetectShell()
+	if err != nil || !detection.Shell.IsValid() {
+		return shell.ShellUnknown
+	}
+	return detection.Shell
+}
+
+// checkZerbOnPath checks if 'zerb' command is accessible on PATH
+// Returns the path to zerb if found, or empty string if not found
+func checkZerbOnPath() string {
+	path, err := exec.LookPath("zerb")
 	if err != nil {
-		return fmt.Errorf("create shell manager: %w", err)
+		return ""
+	}
+	return path
+}
+
+// printPathWarning prints a warning if zerb is not on PATH
+func printPathWarning() {
+	homeDir, _ := os.UserHomeDir()
+
+	fmt.Println()
+	fmt.Println("╔════════════════════════════════════════════════════════════╗")
+	fmt.Println("║  ⚠ Action Required: zerb not found on PATH                ║")
+	fmt.Println("╚════════════════════════════════════════════════════════════╝")
+	fmt.Println()
+	fmt.Println("Before you can use ZERB, install the binary to your PATH.")
+	fmt.Println()
+	fmt.Println("Choose one:")
+	fmt.Println()
+
+	// Get current executable path
+	exePath, err := os.Executable()
+
+	// Option 1: ~/.local/bin
+	fmt.Println("Option 1: Install to ~/.local/bin (recommended)")
+	fmt.Println()
+	if err == nil {
+		fmt.Printf("  mkdir -p ~/.local/bin\n")
+		fmt.Printf("  cp %s ~/.local/bin/zerb\n", exePath)
+	} else {
+		fmt.Println("  mkdir -p ~/.local/bin")
+		fmt.Println("  cp $(which zerb) ~/.local/bin/zerb")
 	}
 
-	// Use interactive setup with auto-detection
-	result, err := shellManager.DetectAndSetup(ctx, shell.SetupOptions{
-		Interactive: true,
-		Backup:      true,
-		DryRun:      false,
-	})
-	if err != nil {
-		return err
+	// Check if ~/.local/bin is on PATH
+	pathEnv := os.Getenv("PATH")
+	localBinPath := filepath.Join(homeDir, ".local", "bin")
+	if !strings.Contains(pathEnv, localBinPath) {
+		fmt.Println()
+		fmt.Println("  # If ~/.local/bin is not on PATH, add it:")
+		fmt.Println("  echo 'export PATH=\"$HOME/.local/bin:$PATH\"' >> ~/.bashrc")
 	}
 
-	// Print result
-	if result.Added {
-		fmt.Printf("✓ Added shell integration to %s\n", result.RCFile)
-		if result.BackupPath != "" {
-			fmt.Printf("  Backup saved to: %s\n", result.BackupPath)
-		}
-	} else if result.AlreadyPresent {
-		fmt.Printf("✓ Shell integration already present in %s\n", result.RCFile)
+	fmt.Println()
+
+	// Option 2: System-wide
+	fmt.Println("Option 2: Install system-wide")
+	fmt.Println()
+	if err == nil {
+		fmt.Printf("  sudo cp %s /usr/local/bin/zerb\n", exePath)
+	} else {
+		fmt.Println("  sudo cp $(which zerb) /usr/local/bin/zerb")
 	}
 
-	return nil
+	fmt.Println()
+	fmt.Println("After installing, verify:")
+	fmt.Println()
+	fmt.Println("  which zerb  # Should show the path to zerb")
+	fmt.Println()
+}
+
+// printShellIntegrationInstructions prints instructions for manually adding shell integration
+func printShellIntegrationInstructions(detectedShell shell.ShellType) {
+	fmt.Println()
+	fmt.Println("╔════════════════════════════════════════════════════════════╗")
+	fmt.Println("║  Next: Add Shell Integration                              ║")
+	fmt.Println("╚════════════════════════════════════════════════════════════╝")
+	fmt.Println()
+	fmt.Println("AFTER installing zerb to PATH (see above), add shell integration:")
+	fmt.Println()
+
+	if detectedShell.IsValid() {
+		// Show instructions for detected shell
+		rcFile, _ := shell.GetRCFilePath(detectedShell)
+		activationCmd, _ := shell.GenerateActivationCommand(detectedShell)
+
+		fmt.Printf("  echo '%s' >> %s\n", activationCmd, rcFile)
+		fmt.Println()
+		fmt.Println("Then reload your shell:")
+		fmt.Println()
+		fmt.Printf("  source %s\n", rcFile)
+		fmt.Println()
+		fmt.Println("Finally, verify everything works:")
+		fmt.Println()
+		fmt.Println("  zerb --version")
+		fmt.Println()
+	} else {
+		// Show instructions for all shells (detection failed)
+		fmt.Println("Choose your shell:")
+		fmt.Println()
+		fmt.Println("  # For Bash:")
+		bashCmd, _ := shell.GenerateActivationCommand(shell.ShellBash)
+		bashRC, _ := shell.GetRCFilePath(shell.ShellBash)
+		fmt.Printf("  echo '%s' >> %s\n", bashCmd, bashRC)
+		fmt.Println()
+		fmt.Println("  # For Zsh:")
+		zshCmd, _ := shell.GenerateActivationCommand(shell.ShellZsh)
+		zshRC, _ := shell.GetRCFilePath(shell.ShellZsh)
+		fmt.Printf("  echo '%s' >> %s\n", zshCmd, zshRC)
+		fmt.Println()
+		fmt.Println("  # For Fish:")
+		fishCmd, _ := shell.GenerateActivationCommand(shell.ShellFish)
+		fishRC, _ := shell.GetRCFilePath(shell.ShellFish)
+		fmt.Printf("  echo '%s' >> %s\n", fishCmd, fishRC)
+		fmt.Println()
+		fmt.Println("Then reload and verify:")
+		fmt.Println()
+		fmt.Println("  source ~/.bashrc  # or ~/.zshrc")
+		fmt.Println("  zerb --version")
+		fmt.Println()
+	}
 }
 
 // printSuccessMessage prints the success message after initialization
-func printSuccessMessage(zerbDir string) {
+func printSuccessMessage(zerbDir string, detectedShell shell.ShellType) {
 	fmt.Println()
 	fmt.Println("╔════════════════════════════════════════════════════════════╗")
 	fmt.Println("║  ZERB Initialization Complete!                             ║")
 	fmt.Println("╚════════════════════════════════════════════════════════════╝")
 	fmt.Println()
-	fmt.Println("Next steps:")
-	fmt.Println("  1. Restart your shell or run: source ~/.bashrc (or ~/.zshrc)")
-	fmt.Println("  2. Add tools: zerb add <tool>")
-	fmt.Println("  3. Track configs: zerb config add <path>")
-	fmt.Println()
 	fmt.Printf("ZERB directory: %s\n", zerbDir)
+	fmt.Println()
+
+	// Get current executable path
+	exePath, err := os.Executable()
+	if err != nil {
+		exePath = "zerb" // fallback
+	}
+
+	// Shell integration instructions with explicit sequencing
+	fmt.Println("Next steps:")
+	fmt.Println()
+
+	fmt.Println("  1. FIRST, ensure zerb is installed to ~/.local/bin:")
+	fmt.Println()
+	fmt.Printf("     cp %s ~/.local/bin/zerb\n", exePath)
+	fmt.Println()
+	fmt.Println("     # Verify it's installed:")
+	fmt.Println("     which zerb  # Should show: ~/.local/bin/zerb")
+	fmt.Println()
+
+	if detectedShell.IsValid() {
+		rcFile, _ := shell.GetRCFilePath(detectedShell)
+		activationCmd, _ := shell.GenerateActivationCommand(detectedShell)
+
+		fmt.Printf("  2. THEN add shell integration to %s:\n", rcFile)
+		fmt.Println()
+		fmt.Printf("     echo '%s' >> %s\n", activationCmd, rcFile)
+		fmt.Println()
+		fmt.Println("  3. Reload your shell:")
+		fmt.Println()
+		fmt.Printf("     source %s\n", rcFile)
+		fmt.Println()
+	} else {
+		fmt.Println("  2. THEN add shell integration (choose your shell):")
+		fmt.Println()
+		fmt.Println("     # For Bash:")
+		bashCmd, _ := shell.GenerateActivationCommand(shell.ShellBash)
+		bashRC, _ := shell.GetRCFilePath(shell.ShellBash)
+		fmt.Printf("     echo '%s' >> %s\n", bashCmd, bashRC)
+		fmt.Println()
+		fmt.Println("     # For Zsh:")
+		zshCmd, _ := shell.GenerateActivationCommand(shell.ShellZsh)
+		zshRC, _ := shell.GetRCFilePath(shell.ShellZsh)
+		fmt.Printf("     echo '%s' >> %s\n", zshCmd, zshRC)
+		fmt.Println()
+		fmt.Println("     # For Fish:")
+		fishCmd, _ := shell.GenerateActivationCommand(shell.ShellFish)
+		fishRC, _ := shell.GetRCFilePath(shell.ShellFish)
+		fmt.Printf("     echo '%s' >> %s\n", fishCmd, fishRC)
+		fmt.Println()
+		fmt.Println("  3. Reload your shell:")
+		fmt.Println()
+		fmt.Println("     source ~/.bashrc  # or ~/.zshrc")
+		fmt.Println()
+	}
+
+	fmt.Println("  4. Verify everything works:")
+	fmt.Println()
+	fmt.Println("     zerb --version")
+	fmt.Println()
+	fmt.Println("  5. Start using ZERB:")
+	fmt.Println()
+	fmt.Println("     zerb add node@20")
+	fmt.Println("     zerb config add ~/.zshrc")
+	fmt.Println()
 }
 
 // runInit handles the `zerb init` subcommand
@@ -271,17 +427,21 @@ func runInit(args []string) error {
 	}
 	fmt.Printf("✓ Created initial config\n")
 
-	// Step 5: Shell integration setup
-	fmt.Printf("\nSetting up shell integration...\n")
-	if err := setupShellIntegration(ctx, zerbDir); err != nil {
-		// Non-fatal - user can do manually
-		fmt.Printf("⚠  Shell integration setup failed: %v\n", err)
-		fmt.Println("\nYou can manually add this to your shell rc file:")
-		fmt.Printf("  eval \"$(zerb activate bash)\"  # or zsh, fish\n")
-	}
+	// Step 5: Detect shell (for showing appropriate instructions)
+	detectedShell := detectUserShell()
 
-	// Print success message
-	printSuccessMessage(zerbDir)
+	// Step 6: Check if zerb is on PATH and show appropriate success message
+	zerbPath := checkZerbOnPath()
+	if zerbPath == "" {
+		// zerb is not on PATH - print warning with install instructions
+		printPathWarning()
+		fmt.Println()
+		// Still show shell integration instructions after PATH warning
+		printShellIntegrationInstructions(detectedShell)
+	} else {
+		// zerb is on PATH - print success message with shell integration instructions
+		printSuccessMessage(zerbDir, detectedShell)
+	}
 
 	return nil
 }
