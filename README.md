@@ -596,13 +596,14 @@ See [Pre-MVP Tasks](.ai-workflow/plans/pre-mvp-tasks.md) for installation roadma
 - [ ] Pre-push validation
 
 #### Drift Detection & Resolution
-- [ ] Three-way state comparison (baseline, managed, active)
-- [ ] External override detection (system package managers)
-- [ ] Interactive drift resolution (individual mode)
-- [ ] Bulk resolution modes (adopt all, revert all)
+- [x] Three-way state comparison (baseline, managed, active)
+- [x] External override detection (system package managers)
+- [x] Interactive drift resolution (individual mode)
+- [x] Bulk resolution modes (adopt all, revert all)
+- [x] Version detection caching (5-minute TTL)
+- [x] User-facing terminology abstraction
 - [ ] Resume capability for interrupted operations
 - [ ] Drift-aware sync behavior
-- [ ] User-facing terminology abstraction
 - [ ] No persistent ignore (conscious decision-making)
 
 #### Error Handling & Recovery

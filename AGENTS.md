@@ -22,9 +22,12 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 ## Build/Test Commands
 - `go test ./...` - Run all tests
 - `go test -run TestName ./path/to/package` - Run single test
+- `go test -cover ./internal/drift` - Run drift tests with coverage
 - `go build -o bin/zerb ./cmd/zerb` - Build binary
 - `go vet ./...` - Run Go vet
 - `golangci-lint run` - Run linter (when configured)
+- `./bin/zerb drift --help` - Show drift command help
+- `./bin/zerb drift --dry-run` - Check for drift without making changes
 
 ## Code Style
 - **Go Version**: 1.21+ required
