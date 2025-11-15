@@ -141,14 +141,14 @@ func generateInitialConfig(ctx context.Context, zerbDir string) error {
 	configFilename := fmt.Sprintf("zerb.lua.%s", timestamp)
 	configPath := filepath.Join(zerbDir, "configs", configFilename)
 
-	// Write config file
-	if err := os.WriteFile(configPath, []byte(luaCode), 0644); err != nil {
+	// Write config file (0600 for security - may contain sensitive data)
+	if err := os.WriteFile(configPath, []byte(luaCode), 0600); err != nil {
 		return fmt.Errorf("write config file: %w", err)
 	}
 
-	// Create .zerb-active marker file
+	// Create .zerb-active marker file (0600 for consistency)
 	markerPath := filepath.Join(zerbDir, ".zerb-active")
-	if err := os.WriteFile(markerPath, []byte(timestamp), 0644); err != nil {
+	if err := os.WriteFile(markerPath, []byte(timestamp), 0600); err != nil {
 		return fmt.Errorf("write marker file: %w", err)
 	}
 

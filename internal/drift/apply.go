@@ -5,11 +5,41 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/ZebulonRouseFrantzich/zerb/internal/config"
 )
+
+var (
+	// validToolNameRegex matches valid tool names (alphanumeric, underscore, hyphen, slash for repos)
+	validToolNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_/-]+$`)
+	// validVersionRegex matches valid version strings (alphanumeric, dot, hyphen, plus)
+	validVersionRegex = regexp.MustCompile(`^[a-zA-Z0-9._+-]+$`)
+)
+
+// validateToolName checks if a tool name is safe to use in commands
+func validateToolName(name string) error {
+	if name == "" {
+		return fmt.Errorf("tool name cannot be empty")
+	}
+	if !validToolNameRegex.MatchString(name) {
+		return fmt.Errorf("invalid tool name %q: must contain only alphanumeric characters, underscores, hyphens, and slashes", name)
+	}
+	return nil
+}
+
+// validateVersion checks if a version string is safe to use in commands
+func validateVersion(version string) error {
+	if version == "" {
+		return fmt.Errorf("version cannot be empty")
+	}
+	if !validVersionRegex.MatchString(version) {
+		return fmt.Errorf("invalid version %q: must contain only alphanumeric characters, dots, hyphens, and plus signs", version)
+	}
+	return nil
+}
 
 // ApplyDriftAction applies a drift resolution action
 func ApplyDriftAction(ctx context.Context, result DriftResult, action DriftAction, configPath, zerbDir, miseBinary string) error {
@@ -56,14 +86,14 @@ func applyAdopt(result DriftResult, configPath string, zerbDir string) error {
 	newConfigFilename := fmt.Sprintf("zerb.lua.%s", timestamp)
 	newConfigPath := filepath.Join(configsDir, newConfigFilename)
 
-	// Write new config
-	if err := os.WriteFile(newConfigPath, []byte(luaCode), 0644); err != nil {
+	// Write new config (0600 for security - may contain sensitive data)
+	if err := os.WriteFile(newConfigPath, []byte(luaCode), 0600); err != nil {
 		return fmt.Errorf("write config: %w", err)
 	}
 
-	// Update .zerb-active marker
+	// Update .zerb-active marker (0600 for consistency)
 	markerPath := filepath.Join(zerbDir, ".zerb-active")
-	if err := os.WriteFile(markerPath, []byte(timestamp), 0644); err != nil {
+	if err := os.WriteFile(markerPath, []byte(timestamp), 0600); err != nil {
 		return fmt.Errorf("update marker: %w", err)
 	}
 
@@ -80,8 +110,17 @@ func applyAdopt(result DriftResult, configPath string, zerbDir string) error {
 
 // applyRevert restores environment to match baseline
 func applyRevert(ctx context.Context, result DriftResult, miseBinary string, zerbDir string) error {
+	// Validate tool name before any operations
+	if err := validateToolName(result.Tool); err != nil {
+		return fmt.Errorf("invalid tool name: %w", err)
+	}
+
 	switch result.DriftType {
 	case DriftExternalOverride, DriftVersionMismatch:
+		// Validate version
+		if err := validateVersion(result.BaselineVersion); err != nil {
+			return fmt.Errorf("invalid baseline version: %w", err)
+		}
 		// Reinstall correct version via mise
 		toolSpec := fmt.Sprintf("%s@%s", result.Tool, result.BaselineVersion)
 		if err := executeMiseInstallOrUninstall(ctx, miseBinary, zerbDir, "install", toolSpec); err != nil {
@@ -89,6 +128,10 @@ func applyRevert(ctx context.Context, result DriftResult, miseBinary string, zer
 		}
 
 	case DriftMissing:
+		// Validate version
+		if err := validateVersion(result.BaselineVersion); err != nil {
+			return fmt.Errorf("invalid baseline version: %w", err)
+		}
 		// Install missing tool
 		toolSpec := fmt.Sprintf("%s@%s", result.Tool, result.BaselineVersion)
 		if err := executeMiseInstallOrUninstall(ctx, miseBinary, zerbDir, "install", toolSpec); err != nil {
@@ -96,7 +139,7 @@ func applyRevert(ctx context.Context, result DriftResult, miseBinary string, zer
 		}
 
 	case DriftExtra:
-		// Uninstall extra tool
+		// Uninstall extra tool (no version needed for uninstall)
 		if err := executeMiseInstallOrUninstall(ctx, miseBinary, zerbDir, "uninstall", result.Tool); err != nil {
 			return fmt.Errorf("uninstall %s: %w", result.Tool, err)
 		}
