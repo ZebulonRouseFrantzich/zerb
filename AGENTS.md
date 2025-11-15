@@ -1,11 +1,33 @@
+<!-- OPENSPEC:START -->
+# OpenSpec Instructions
+
+These instructions are for AI assistants working in this project.
+
+Always open `@/openspec/AGENTS.md` when the request:
+- Mentions planning or proposals (words like proposal, spec, change, plan)
+- Introduces new capabilities, breaking changes, architecture shifts, or big performance/security work
+- Sounds ambiguous and you need the authoritative spec before coding
+
+Use `@/openspec/AGENTS.md` to learn:
+- How to create and apply change proposals
+- Spec format and conventions
+- Project structure and guidelines
+
+Keep this managed block so 'openspec update' can refresh the instructions.
+
+<!-- OPENSPEC:END -->
+
 # Agent Guidelines for ZERB
 
 ## Build/Test Commands
 - `go test ./...` - Run all tests
 - `go test -run TestName ./path/to/package` - Run single test
+- `go test -cover ./internal/drift` - Run drift tests with coverage
 - `go build -o bin/zerb ./cmd/zerb` - Build binary
 - `go vet ./...` - Run Go vet
 - `golangci-lint run` - Run linter (when configured)
+- `./bin/zerb drift --help` - Show drift command help
+- `./bin/zerb drift --dry-run` - Check for drift without making changes
 
 ## Code Style
 - **Go Version**: 1.21+ required

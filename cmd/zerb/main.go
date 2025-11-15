@@ -37,6 +37,13 @@ func main() {
 				os.Exit(1)
 			}
 			return
+		case "drift":
+			// Handle zerb drift subcommand
+			if err := runDrift(os.Args[2:]); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+				os.Exit(1)
+			}
+			return
 		}
 	}
 
@@ -52,9 +59,9 @@ func main() {
 	fmt.Println("  zerb init              Initialize ZERB environment")
 	fmt.Println("  zerb uninit            Remove ZERB from your system")
 	fmt.Println("  zerb activate <shell>  Generate shell activation script (bash, zsh, fish)")
+	fmt.Println("  zerb drift [options]   Check for environment drift")
 	fmt.Println()
 	fmt.Println("Coming soon:")
 	fmt.Println("  zerb add         Add tools to your environment")
 	fmt.Println("  zerb sync        Sync tools and configs")
-	fmt.Println("  zerb drift       Check for environment drift")
 }
