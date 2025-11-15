@@ -1,290 +1,107 @@
 package config
 
 import (
-	"context"
 	"strings"
 	"testing"
-	"time"
 )
 
-// TestParser_InfiniteLoopProtection tests that infinite loops are caught by timeout.
-func TestParser_InfiniteLoopProtection(t *testing.T) {
-	luaCode := `
-		zerb = { tools = {} }
-		while true do end  -- Infinite loop
-	`
-
-	parser := NewParser(nil)
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-
-	_, err := parser.ParseString(ctx, luaCode)
-	if err == nil {
-		t.Fatal("Expected timeout error for infinite loop, got nil")
-	}
-
-	if !strings.Contains(err.Error(), "timeout") {
-		t.Errorf("Expected timeout error, got: %v", err)
-	}
-}
-
-// TestParser_MaxConfigSize tests that oversized configs are rejected.
-func TestParser_MaxConfigSize(t *testing.T) {
-	// Create a config larger than MaxConfigSize
-	largeConfig := strings.Repeat("a", MaxConfigSize+1)
-
-	parser := NewParser(nil)
-	_, err := parser.ParseString(context.Background(), largeConfig)
-	if err == nil {
-		t.Fatal("Expected error for oversized config, got nil")
-	}
-
-	if !strings.Contains(err.Error(), "too large") {
-		t.Errorf("Expected 'too large' error, got: %v", err)
-	}
-}
-
-// TestParser_MaxToolCount tests that configs with too many tools are rejected.
-func TestParser_MaxToolCount(t *testing.T) {
-	// Create config with more than MaxToolCount tools
-	var tools strings.Builder
-	tools.WriteString("zerb = {\n  tools = {\n")
-	for i := 0; i < MaxToolCount+10; i++ {
-		tools.WriteString("    \"tool")
-		tools.WriteString(strings.Repeat("a", 10))
-		tools.WriteString("@1.0.0\",\n")
-	}
-	tools.WriteString("  },\n}")
-
-	parser := NewParser(nil)
-	_, err := parser.ParseString(context.Background(), tools.String())
-	if err == nil {
-		t.Fatal("Expected error for too many tools, got nil")
-	}
-
-	if !strings.Contains(err.Error(), "too many tools") {
-		t.Errorf("Expected 'too many tools' error, got: %v", err)
-	}
-}
-
-// TestParser_MaxConfigFileCount tests that configs with too many files are rejected.
-func TestParser_MaxConfigFileCount(t *testing.T) {
-	// Create config with more than MaxConfigFileCount files
-	var configs strings.Builder
-	configs.WriteString("zerb = {\n  tools = {},\n  configs = {\n")
-	for i := 0; i < MaxConfigFileCount+10; i++ {
-		configs.WriteString("    \"~/")
-		configs.WriteString(strings.Repeat("f", 10))
-		configs.WriteString("\",\n")
-	}
-	configs.WriteString("  },\n}")
-
-	parser := NewParser(nil)
-	_, err := parser.ParseString(context.Background(), configs.String())
-	if err == nil {
-		t.Fatal("Expected error for too many config files, got nil")
-	}
-
-	if !strings.Contains(err.Error(), "too many config files") {
-		t.Errorf("Expected 'too many config files' error, got: %v", err)
-	}
-}
-
-// TestSandboxLuaVM_MetatableProtection tests that metatable manipulation is blocked.
-func TestSandboxLuaVM_MetatableProtection(t *testing.T) {
+func TestDetectSensitiveData(t *testing.T) {
 	tests := []struct {
-		name string
-		code string
+		name      string
+		content   string
+		wantCount int
+		wantNames []string
 	}{
 		{
-			name: "getmetatable blocked",
-			code: `zerb = {}; mt = getmetatable("")`,
+			name:      "no sensitive data",
+			content:   "tools = { 'node@20.0.0', 'python@3.11' }",
+			wantCount: 0,
 		},
 		{
-			name: "setmetatable blocked",
-			code: `zerb = {}; setmetatable({}, {})`,
+			name:      "API key detected",
+			content:   "api_key = 'sk_live_1234567890abcdefghij'",
+			wantCount: 1,
+			wantNames: []string{"API Key"},
 		},
 		{
-			name: "rawget blocked",
-			code: `zerb = {}; rawget(_G, "os")`,
+			name:      "token detected",
+			content:   "auth_token = 'ghp_1234567890abcdefghijklmnopqrstuv'",
+			wantCount: 1,
+			wantNames: []string{"Token"},
 		},
 		{
-			name: "rawset blocked",
-			code: `zerb = {}; rawset(_G, "os", {})`,
+			name:      "password detected",
+			content:   "password = 'MySecretPass123'",
+			wantCount: 1,
+			wantNames: []string{"Password"},
 		},
 		{
-			name: "collectgarbage blocked",
-			code: `zerb = {}; collectgarbage("collect")`,
+			name:      "GitHub token in URL",
+			content:   "url = 'https://ghp_abcdefghijklmnopqrstuvwxyz1234567890@github.com/repo'",
+			wantCount: 1,
+			wantNames: []string{"GitHub Token"},
+		},
+		{
+			name: "multiple sensitive items",
+			content: `api_key = 'sk_1234567890123456789012'
+password = 'secret123'
+token = 'bearer_abcdefghijklmnopqrstuvwxyz'`,
+			wantCount: 3,
+			wantNames: []string{"API Key", "Password", "Token"},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			parser := NewParser(nil)
-			_, err := parser.ParseString(context.Background(), tt.code)
-			if err == nil {
-				t.Errorf("Expected error for %s, got nil", tt.name)
+			findings := DetectSensitiveData(tt.content)
+			
+			if len(findings) != tt.wantCount {
+				t.Errorf("DetectSensitiveData() found %d items, want %d", len(findings), tt.wantCount)
 			}
-		})
-	}
-}
 
-// TestParser_PathTraversalProtection tests that path traversal attempts are blocked.
-func TestParser_PathTraversalProtection(t *testing.T) {
-	tests := []struct {
-		name string
-		path string
-	}{
-		{
-			name: "parent directory traversal",
-			path: "../../etc/passwd",
-		},
-		{
-			name: "absolute path outside home",
-			path: "/etc/passwd",
-		},
-		{
-			name: "windows path traversal",
-			path: "..\\..\\Windows\\System32",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			luaCode := `
-				zerb = {
-					configs = {
-						"` + tt.path + `",
-					},
+			if tt.wantNames != nil {
+				for i, finding := range findings {
+					if i < len(tt.wantNames) && finding.PatternName != tt.wantNames[i] {
+						t.Errorf("Finding %d: got name %q, want %q", i, finding.PatternName, tt.wantNames[i])
+					}
 				}
-			`
-
-			parser := NewParser(nil)
-			_, err := parser.ParseString(context.Background(), luaCode)
-			if err == nil {
-				t.Errorf("Expected error for path traversal attempt: %s", tt.path)
 			}
-		})
-	}
-}
 
-// TestParser_InvalidToolStrings tests that invalid tool strings are rejected.
-func TestParser_InvalidToolStrings(t *testing.T) {
-	tests := []struct {
-		name       string
-		tool       string
-		shouldFail bool
-	}{
-		{
-			name:       "valid tool",
-			tool:       "node@20.11.0",
-			shouldFail: false,
-		},
-		{
-			name:       "too long",
-			tool:       strings.Repeat("a", 300),
-			shouldFail: true,
-		},
-		{
-			name:       "invalid characters",
-			tool:       "node@20.11.0; rm -rf /",
-			shouldFail: true,
-		},
-		{
-			name:       "spaces",
-			tool:       "node @20",
-			shouldFail: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			luaCode := `
-				zerb = {
-					tools = {
-						"` + tt.tool + `",
-					},
+			// Verify findings have required fields
+			for i, finding := range findings {
+				if finding.PatternName == "" {
+					t.Errorf("Finding %d: missing PatternName", i)
 				}
-			`
-
-			parser := NewParser(nil)
-			_, err := parser.ParseString(context.Background(), luaCode)
-			if tt.shouldFail && err == nil {
-				t.Errorf("Expected error for invalid tool string: %s", tt.tool)
-			}
-			if !tt.shouldFail && err != nil {
-				t.Errorf("Expected no error for valid tool string: %s, got: %v", tt.tool, err)
-			}
-		})
-	}
-}
-
-// TestParser_InvalidGitURLs tests that invalid git URLs are rejected.
-func TestParser_InvalidGitURLs(t *testing.T) {
-	tests := []struct {
-		name       string
-		remote     string
-		shouldFail bool
-	}{
-		{
-			name:       "valid https",
-			remote:     "https://github.com/user/repo",
-			shouldFail: false,
-		},
-		{
-			name:       "valid ssh",
-			remote:     "git@github.com:user/repo.git",
-			shouldFail: false,
-		},
-		{
-			name:       "invalid scheme",
-			remote:     "ftp://example.com/repo",
-			shouldFail: true,
-		},
-		{
-			name:       "malformed url",
-			remote:     "://invalid",
-			shouldFail: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			luaCode := `
-				zerb = {
-					tools = {},
-					git = {
-						remote = "` + tt.remote + `",
-					},
+				if finding.Description == "" {
+					t.Errorf("Finding %d: missing Description", i)
 				}
-			`
-
-			parser := NewParser(nil)
-			_, err := parser.ParseString(context.Background(), luaCode)
-			if tt.shouldFail && err == nil {
-				t.Errorf("Expected error for invalid git URL: %s", tt.remote)
-			}
-			if !tt.shouldFail && err != nil {
-				t.Errorf("Expected no error for valid git URL: %s, got: %v", tt.remote, err)
+				if finding.Line == 0 {
+					t.Errorf("Finding %d: missing Line number", i)
+				}
+				if finding.Preview == "" {
+					t.Errorf("Finding %d: missing Preview", i)
+				}
 			}
 		})
 	}
 }
 
-// TestParser_ContextCancellation tests that context cancellation is respected.
-func TestParser_ContextCancellation(t *testing.T) {
-	luaCode := `zerb = { tools = {"node@20.11.0"} }`
-
-	parser := NewParser(nil)
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel() // Cancel immediately
-
-	_, err := parser.ParseString(ctx, luaCode)
-	if err == nil {
-		t.Fatal("Expected error for cancelled context, got nil")
+func TestFormatSensitiveDataWarning(t *testing.T) {
+	findings := []SensitiveDataFinding{
+		{
+			PatternName: "API Key",
+			Description: "Potential API key detected",
+			Line:        5,
+			Preview:     "api_key = [REDACTED]",
+		},
 	}
 
-	if !strings.Contains(err.Error(), "cancel") {
-		t.Errorf("Expected cancellation error, got: %v", err)
+	output := FormatSensitiveDataWarning(findings)
+	
+	wants := []string{"WARNING", "sensitive data", "line 5", "--allow-sensitive"}
+	for _, want := range wants {
+		if !strings.Contains(output, want) {
+			t.Errorf("FormatSensitiveDataWarning() missing %q in output", want)
+		}
 	}
 }

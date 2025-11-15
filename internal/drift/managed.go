@@ -99,12 +99,18 @@ func executeMiseCommand(ctx context.Context, misePath, zerbDir string, args ...s
 
 	cmd := exec.CommandContext(ctx, misePath, args...)
 
-	// Set mise environment variables for isolation
-	cmd.Env = append(os.Environ(),
-		"MISE_CONFIG_FILE="+filepath.Join(zerbDir, "mise/config.toml"),
-		"MISE_DATA_DIR="+filepath.Join(zerbDir, "mise"),
-		"MISE_CACHE_DIR="+filepath.Join(zerbDir, "cache/mise"),
-	)
+	// Build minimal clean environment for mise (instead of inheriting all env vars)
+	// Only include variables that mise actually needs
+	cmd.Env = []string{
+		"MISE_CONFIG_FILE=" + filepath.Join(zerbDir, "mise/config.toml"),
+		"MISE_DATA_DIR=" + filepath.Join(zerbDir, "mise"),
+		"MISE_CACHE_DIR=" + filepath.Join(zerbDir, "cache/mise"),
+		"PATH=" + os.Getenv("PATH"),
+		"HOME=" + os.Getenv("HOME"),
+		"USER=" + os.Getenv("USER"),
+		"TMPDIR=" + os.Getenv("TMPDIR"),
+		"TERM=" + os.Getenv("TERM"), // For better output formatting
+	}
 
 	output, err := cmd.CombinedOutput() // Capture both stdout and stderr
 	if err != nil {

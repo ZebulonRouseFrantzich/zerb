@@ -136,6 +136,17 @@ func generateInitialConfig(ctx context.Context, zerbDir string) error {
 		return fmt.Errorf("generate config: %w", err)
 	}
 
+	// Check for sensitive data in generated config
+	// Note: Empty initial config shouldn't have sensitive data, but we check anyway
+	// This will be more important when users modify their configs
+	findings := config.DetectSensitiveData(luaCode)
+	if len(findings) > 0 {
+		warning := config.FormatSensitiveDataWarning(findings)
+		fmt.Fprint(os.Stderr, warning)
+		// For init, we just warn but don't block since the initial config is safe
+		// Users will see this warning if they later add sensitive data
+	}
+
 	// Create timestamped config filename with milliseconds to ensure uniqueness
 	timestamp := time.Now().UTC().Format("20060102T150405.000Z")
 	configFilename := fmt.Sprintf("zerb.lua.%s", timestamp)

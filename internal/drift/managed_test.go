@@ -303,3 +303,122 @@ func TestIsZERBManaged(t *testing.T) {
 		})
 	}
 }
+
+func TestQueryManaged_VersionMismatch(t *testing.T) {
+	// Test case where ls --current shows a version not in ls --json
+	tmpDir := t.TempDir()
+
+	// Create mock mise script that returns JSON for ls --json but different version for ls --current
+	miseScript := `#!/bin/sh
+if [ "$1" = "ls" ] && [ "$2" = "--json" ]; then
+    cat << 'EOF'
+{
+  "node": [
+    {
+      "version": "20.11.0",
+      "install_path": "/home/user/.config/zerb/installs/node/20.11.0",
+      "source": {
+        "type": "mise.toml",
+        "path": "/home/user/.config/zerb/mise/config.toml"
+      }
+    }
+  ]
+}
+EOF
+elif [ "$1" = "ls" ] && [ "$2" = "--current" ]; then
+    cat << 'EOF'
+node     20.15.0
+python   3.12.1
+EOF
+fi
+`
+
+	// Create mock mise binary
+	misePath := filepath.Join(tmpDir, "bin", "mise")
+	os.MkdirAll(filepath.Dir(misePath), 0755)
+	err := os.WriteFile(misePath, []byte(miseScript), 0755)
+	if err != nil {
+		t.Fatalf("failed to create mock mise: %v", err)
+	}
+
+	// Test QueryManaged
+	tools, err := QueryManaged(context.Background(), tmpDir)
+	if err != nil {
+		t.Fatalf("QueryManaged(context.Background(), ) error = %v", err)
+	}
+
+	// Should skip node (version mismatch: 20.15.0 in current but only 20.11.0 in JSON)
+	// Should skip python (not in JSON at all)
+	// Result should be 1 tool with empty installPath or skipped entirely
+	if len(tools) > 1 {
+		t.Errorf("QueryManaged(context.Background(), ) returned %d tools, expected 0 or 1", len(tools))
+	}
+}
+
+func TestGetMiseTimeout(t *testing.T) {
+	tests := []struct {
+		name    string
+		envVal  string
+		want    string // duration as string for comparison
+		wantDef bool   // expect default timeout
+	}{
+		{
+			name:    "Default when no env var",
+			envVal:  "",
+			wantDef: true,
+		},
+		{
+			name:   "Custom timeout from env",
+			envVal: "30",
+			want:   "30s",
+		},
+		{
+			name:   "Large timeout from env",
+			envVal: "300",
+			want:   "5m0s",
+		},
+		{
+			name:    "Invalid env var - use default",
+			envVal:  "not-a-number",
+			wantDef: true,
+		},
+		{
+			name:    "Empty string - use default",
+			envVal:  "",
+			wantDef: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Save and restore env
+			origVal := os.Getenv("ZERB_MISE_TIMEOUT")
+			defer func() {
+				if origVal != "" {
+					os.Setenv("ZERB_MISE_TIMEOUT", origVal)
+				} else {
+					os.Unsetenv("ZERB_MISE_TIMEOUT")
+				}
+			}()
+
+			// Set test env
+			if tt.envVal != "" {
+				os.Setenv("ZERB_MISE_TIMEOUT", tt.envVal)
+			} else {
+				os.Unsetenv("ZERB_MISE_TIMEOUT")
+			}
+
+			got := getMiseTimeout()
+
+			if tt.wantDef {
+				if got != defaultMiseTimeout {
+					t.Errorf("getMiseTimeout() = %v, want default %v", got, defaultMiseTimeout)
+				}
+			} else {
+				if got.String() != tt.want {
+					t.Errorf("getMiseTimeout() = %v, want %v", got, tt.want)
+				}
+			}
+		})
+	}
+}
