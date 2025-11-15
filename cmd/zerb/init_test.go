@@ -464,3 +464,59 @@ func TestPrintPathWarning(t *testing.T) {
 
 	t.Log("printPathWarning() test: function exists and compiles")
 }
+
+// TestIsOnPath tests the PATH checking function
+func TestIsOnPath(t *testing.T) {
+	tests := []struct {
+		name     string
+		dirPath  string
+		pathEnv  string
+		expected bool
+	}{
+		{
+			name:     "exact match",
+			dirPath:  "/usr/local/bin",
+			pathEnv:  "/usr/bin:/usr/local/bin:/bin",
+			expected: true,
+		},
+		{
+			name:     "not on path",
+			dirPath:  "/opt/custom/bin",
+			pathEnv:  "/usr/bin:/usr/local/bin:/bin",
+			expected: false,
+		},
+		{
+			name:     "empty PATH",
+			dirPath:  "/usr/bin",
+			pathEnv:  "",
+			expected: false,
+		},
+		{
+			name:     "single entry PATH",
+			dirPath:  "/usr/bin",
+			pathEnv:  "/usr/bin",
+			expected: true,
+		},
+		{
+			name:     "with trailing slash",
+			dirPath:  "/usr/local/bin/",
+			pathEnv:  "/usr/bin:/usr/local/bin:/bin",
+			expected: true,
+		},
+		{
+			name:     "relative path on PATH",
+			dirPath:  "bin",
+			pathEnv:  "bin:/usr/bin",
+			expected: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := isOnPath(tt.dirPath, tt.pathEnv)
+			if result != tt.expected {
+				t.Errorf("isOnPath(%q, %q) = %v, want %v", tt.dirPath, tt.pathEnv, result, tt.expected)
+			}
+		})
+	}
+}

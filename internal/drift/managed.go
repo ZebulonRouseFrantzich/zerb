@@ -12,6 +12,30 @@ import (
 	"time"
 )
 
+// validateZerbDir checks if zerbDir contains path traversal sequences
+func validateZerbDir(zerbDir string) error {
+	// Check for path traversal sequences in original input
+	if strings.Contains(zerbDir, "..") {
+		return fmt.Errorf("invalid zerbDir: contains path traversal sequence")
+	}
+
+	// Clean the path
+	cleaned := filepath.Clean(zerbDir)
+
+	// Convert to absolute path for validation
+	absPath, err := filepath.Abs(cleaned)
+	if err != nil {
+		return fmt.Errorf("invalid zerbDir: cannot resolve absolute path: %w", err)
+	}
+
+	// Ensure the path stays within reasonable bounds (not root)
+	if absPath == "/" || absPath == string(filepath.Separator) {
+		return fmt.Errorf("invalid zerbDir: cannot use root directory")
+	}
+
+	return nil
+}
+
 // MiseTool represents a tool from mise ls --json output
 type MiseTool struct {
 	Version     string `json:"version"`
@@ -37,6 +61,11 @@ func getMiseTimeout() time.Duration {
 
 // QueryManaged queries mise for ZERB-installed tools
 func QueryManaged(ctx context.Context, zerbDir string) ([]Tool, error) {
+	// Validate zerbDir to prevent path traversal attacks
+	if err := validateZerbDir(zerbDir); err != nil {
+		return nil, err
+	}
+
 	misePath := filepath.Join(zerbDir, "bin", "mise")
 
 	// Execute mise ls --json to get all installed tools

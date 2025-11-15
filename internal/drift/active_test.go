@@ -2,6 +2,7 @@ package drift
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -384,5 +385,81 @@ func TestQueryActive_ForceRefresh(t *testing.T) {
 	// Both should return same version
 	if tools1[0].Version != tools2[0].Version {
 		t.Errorf("QueryActive() versions differ: %q vs %q", tools1[0].Version, tools2[0].Version)
+	}
+}
+
+func TestCachePruning(t *testing.T) {
+	// Clear cache before test
+	versionCache.Lock()
+	versionCache.entries = make(map[string]versionCacheEntry)
+	versionCache.Unlock()
+
+	tmpDir := t.TempDir()
+
+	// Create mock binaries
+	for i := 0; i < 110; i++ {
+		toolName := fmt.Sprintf("tool%d", i)
+		CreateMockBinary(t, tmpDir, toolName, "1.0.0")
+	}
+
+	// Add entries to fill cache beyond maxCacheEntries
+	for i := 0; i < 110; i++ {
+		toolPath := filepath.Join(tmpDir, fmt.Sprintf("tool%d", i))
+		_, err := DetectVersionCached(context.Background(), toolPath, false)
+		if err != nil {
+			t.Fatalf("DetectVersionCached() error = %v", err)
+		}
+	}
+
+	// Check that cache was pruned
+	versionCache.RLock()
+	cacheSize := len(versionCache.entries)
+	versionCache.RUnlock()
+
+	if cacheSize > maxCacheEntries {
+		t.Errorf("Cache size = %d, want <= %d", cacheSize, maxCacheEntries)
+	}
+}
+
+func TestCachePruning_ExpiredEntries(t *testing.T) {
+	// Clear cache before test
+	versionCache.Lock()
+	versionCache.entries = make(map[string]versionCacheEntry)
+	versionCache.Unlock()
+
+	tmpDir := t.TempDir()
+	mockPath := CreateMockBinary(t, tmpDir, "test-tool", "1.0.0")
+
+	// Add an expired entry
+	versionCache.Lock()
+	versionCache.entries[mockPath] = versionCacheEntry{
+		version:   "1.0.0",
+		timestamp: time.Now().Add(-10 * time.Minute), // Expired (TTL is 5 minutes)
+	}
+	// Add many more entries to trigger pruning
+	for i := 0; i < 105; i++ {
+		fakePath := fmt.Sprintf("/fake/path/%d", i)
+		versionCache.entries[fakePath] = versionCacheEntry{
+			version:   "1.0.0",
+			timestamp: time.Now().Add(-10 * time.Minute), // All expired
+		}
+	}
+	versionCache.Unlock()
+
+	// Trigger cache pruning by adding a new entry
+	newPath := filepath.Join(tmpDir, "new-tool")
+	CreateMockBinary(t, tmpDir, "new-tool", "2.0.0")
+	_, err := DetectVersionCached(context.Background(), newPath, false)
+	if err != nil {
+		t.Fatalf("DetectVersionCached() error = %v", err)
+	}
+
+	// Check that expired entries were pruned
+	versionCache.RLock()
+	cacheSize := len(versionCache.entries)
+	versionCache.RUnlock()
+
+	if cacheSize > maxCacheEntries {
+		t.Errorf("Cache size after pruning = %d, want <= %d", cacheSize, maxCacheEntries)
 	}
 }

@@ -99,7 +99,9 @@ func applyAdopt(result DriftResult, configPath string, zerbDir string) error {
 
 	// Update symlink
 	symlinkPath := filepath.Join(zerbDir, "zerb.lua.active")
-	os.Remove(symlinkPath) // Remove old symlink (ignore error)
+	if err := os.Remove(symlinkPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove old symlink: %w", err)
+	}
 	symlinkTarget := filepath.Join("configs", newConfigFilename)
 	if err := os.Symlink(symlinkTarget, symlinkPath); err != nil {
 		return fmt.Errorf("update symlink: %w", err)
@@ -139,9 +141,10 @@ func applyRevert(ctx context.Context, result DriftResult, miseBinary string, zer
 		}
 
 	case DriftExtra:
-		// Uninstall extra tool (no version needed for uninstall)
-		if err := executeMiseInstallOrUninstall(ctx, miseBinary, zerbDir, "uninstall", result.Tool); err != nil {
-			return fmt.Errorf("uninstall %s: %w", result.Tool, err)
+		// Uninstall extra tool with version spec (important when multiple versions installed)
+		toolSpec := fmt.Sprintf("%s@%s", result.Tool, result.ManagedVersion)
+		if err := executeMiseInstallOrUninstall(ctx, miseBinary, zerbDir, "uninstall", toolSpec); err != nil {
+			return fmt.Errorf("uninstall %s: %w", toolSpec, err)
 		}
 
 	case DriftManagedButNotActive:

@@ -23,6 +23,33 @@ type UninitFlags struct {
 	dryRun      bool
 }
 
+// validateZerbDirForRemoval checks if zerbDir is safe to remove (no path traversal)
+func validateZerbDirForRemoval(zerbDir string) error {
+	// Clean the path first
+	cleaned := filepath.Clean(zerbDir)
+
+	// Check for path traversal sequences
+	if strings.Contains(cleaned, "..") {
+		return fmt.Errorf("invalid zerbDir: contains path traversal sequence")
+	}
+
+	// Convert to absolute path for validation
+	absPath, err := filepath.Abs(cleaned)
+	if err != nil {
+		return fmt.Errorf("invalid zerbDir: cannot resolve absolute path: %w", err)
+	}
+
+	// Ensure the path is not root or system directories
+	systemDirs := []string{"/", "\\", "/usr", "/bin", "/sbin", "/etc", "/var", "/lib", "/boot"}
+	for _, sysDir := range systemDirs {
+		if absPath == sysDir || absPath == filepath.Clean(sysDir) {
+			return fmt.Errorf("invalid zerbDir: cannot remove system directory %s", absPath)
+		}
+	}
+
+	return nil
+}
+
 // parseUninitFlags parses command-line flags for uninit command
 func parseUninitFlags(args []string) (*UninitFlags, error) {
 	flags := &UninitFlags{}
@@ -410,6 +437,11 @@ func removeZerbDirectory(zerbDir string, flags *UninitFlags) error {
 				}
 			}
 		}
+	}
+
+	// Validate zerbDir before removal to prevent path traversal attacks
+	if err := validateZerbDirForRemoval(zerbDir); err != nil {
+		return err
 	}
 
 	// Remove the directory

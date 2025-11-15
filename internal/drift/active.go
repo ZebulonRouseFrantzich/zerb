@@ -28,6 +28,9 @@ var versionCache = struct {
 // versionCacheTTL is the time-to-live for cached version entries (5 minutes)
 const versionCacheTTL = 5 * time.Minute
 
+// maxCacheEntries is the maximum number of entries in the version cache
+const maxCacheEntries = 100
+
 // Default timeouts for subprocess operations
 const (
 	defaultVersionTimeout = 3 * time.Second
@@ -102,15 +105,57 @@ func DetectVersionCached(ctx context.Context, binaryPath string, forceRefresh bo
 		return "", err
 	}
 
-	// Update cache
+	// Update cache and prune expired entries if needed
 	versionCache.Lock()
 	versionCache.entries[binaryPath] = versionCacheEntry{
 		version:   version,
 		timestamp: time.Now(),
 	}
+
+	// Prune expired entries or enforce max size limit
+	if len(versionCache.entries) > maxCacheEntries {
+		pruneExpiredCacheEntries()
+	}
 	versionCache.Unlock()
 
 	return version, nil
+}
+
+// pruneExpiredCacheEntries removes expired entries from the version cache
+// Must be called with versionCache.Lock() held
+func pruneExpiredCacheEntries() {
+	now := time.Now()
+	for path, entry := range versionCache.entries {
+		if now.Sub(entry.timestamp) >= versionCacheTTL {
+			delete(versionCache.entries, path)
+		}
+	}
+
+	// If still over limit after pruning expired entries, remove oldest entries
+	if len(versionCache.entries) > maxCacheEntries {
+		// Find and remove oldest entries
+		type pathWithTime struct {
+			path string
+			time time.Time
+		}
+		var entries []pathWithTime
+		for path, entry := range versionCache.entries {
+			entries = append(entries, pathWithTime{path, entry.timestamp})
+		}
+		// Sort by timestamp (oldest first)
+		for i := 0; i < len(entries)-1; i++ {
+			for j := i + 1; j < len(entries); j++ {
+				if entries[i].time.After(entries[j].time) {
+					entries[i], entries[j] = entries[j], entries[i]
+				}
+			}
+		}
+		// Remove oldest entries until we're under the limit
+		toRemove := len(entries) - maxCacheEntries
+		for i := 0; i < toRemove; i++ {
+			delete(versionCache.entries, entries[i].path)
+		}
+	}
 }
 
 // DetectVersion detects the version of a binary by executing it

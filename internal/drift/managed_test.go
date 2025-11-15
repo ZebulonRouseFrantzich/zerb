@@ -355,6 +355,44 @@ fi
 	}
 }
 
+func TestValidateZerbDir(t *testing.T) {
+	tests := []struct {
+		name    string
+		zerbDir string
+		wantErr bool
+	}{
+		{
+			name:    "Valid path",
+			zerbDir: "/home/user/.config/zerb",
+			wantErr: false,
+		},
+		{
+			name:    "Path traversal - double dot",
+			zerbDir: "/home/user/../../../etc",
+			wantErr: true,
+		},
+		{
+			name:    "Root directory",
+			zerbDir: "/",
+			wantErr: true,
+		},
+		{
+			name:    "Relative path with traversal",
+			zerbDir: "../../etc/passwd",
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateZerbDir(tt.zerbDir)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateZerbDir(%q) error = %v, wantErr %v", tt.zerbDir, err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestGetMiseTimeout(t *testing.T) {
 	tests := []struct {
 		name    string

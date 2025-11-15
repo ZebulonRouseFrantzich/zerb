@@ -190,13 +190,35 @@ func detectUserShell() shell.ShellType {
 }
 
 // checkZerbOnPath checks if 'zerb' command is accessible on PATH
-// Returns the path to zerb if found, or empty string if not found
 func checkZerbOnPath() string {
 	path, err := exec.LookPath("zerb")
 	if err != nil {
 		return ""
 	}
 	return path
+}
+
+// isOnPath checks if a directory is on the PATH by properly splitting and comparing paths
+func isOnPath(dirPath string, pathEnv string) bool {
+	// Clean and get absolute path for comparison
+	cleanDir, err := filepath.Abs(filepath.Clean(dirPath))
+	if err != nil {
+		// If we can't resolve the path, fall back to simple comparison
+		cleanDir = filepath.Clean(dirPath)
+	}
+
+	// Split PATH using OS-specific separator
+	paths := strings.Split(pathEnv, string(os.PathListSeparator))
+	for _, p := range paths {
+		cleanPath, err := filepath.Abs(filepath.Clean(p))
+		if err != nil {
+			cleanPath = filepath.Clean(p)
+		}
+		if cleanPath == cleanDir {
+			return true
+		}
+	}
+	return false
 }
 
 // printPathWarning prints a warning if zerb is not on PATH
@@ -230,7 +252,7 @@ func printPathWarning() {
 	// Check if ~/.local/bin is on PATH
 	pathEnv := os.Getenv("PATH")
 	localBinPath := filepath.Join(homeDir, ".local", "bin")
-	if !strings.Contains(pathEnv, localBinPath) {
+	if !isOnPath(localBinPath, pathEnv) {
 		fmt.Println()
 		fmt.Println("  # If ~/.local/bin is not on PATH, add it:")
 		fmt.Println("  echo 'export PATH=\"$HOME/.local/bin:$PATH\"' >> ~/.bashrc")
