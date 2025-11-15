@@ -1,6 +1,7 @@
 package drift
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -24,7 +25,7 @@ func TestQueryActive(t *testing.T) {
 	// Test with tool names (including one that doesn't exist)
 	toolNames := []string{"node", "python", "go", "nonexistent"}
 
-	tools, err := QueryActive(toolNames)
+	tools, err := QueryActive(context.Background(), toolNames, false)
 	if err != nil {
 		t.Fatalf("QueryActive() error = %v", err)
 	}
@@ -59,13 +60,13 @@ func TestQueryActive(t *testing.T) {
 }
 
 func TestQueryActive_EmptyList(t *testing.T) {
-	tools, err := QueryActive([]string{})
+	tools, err := QueryActive(context.Background(), []string{}, false)
 	if err != nil {
 		t.Fatalf("QueryActive() error = %v", err)
 	}
 
 	if len(tools) != 0 {
-		t.Errorf("QueryActive([]) returned %d tools, want 0", len(tools))
+		t.Errorf("QueryActive(context.Background(), [], false) returned %d tools, want 0", len(tools))
 	}
 }
 
@@ -110,14 +111,14 @@ func TestDetectVersion(t *testing.T) {
 			mockPath := CreateMockBinary(t, tmpDir, tt.toolName, tt.toolVersion)
 
 			// Detect version
-			version, err := DetectVersion(mockPath)
+			version, err := DetectVersion(context.Background(), mockPath)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("DetectVersion() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("DetectVersion(context.Background(), ) error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
 
 			if version != tt.wantVersion {
-				t.Errorf("DetectVersion() = %q, want %q", version, tt.wantVersion)
+				t.Errorf("DetectVersion(context.Background(), ) = %q, want %q", version, tt.wantVersion)
 			}
 		})
 	}
@@ -142,13 +143,13 @@ fi
 		t.Fatalf("failed to create test binary: %v", err)
 	}
 
-	version, err := DetectVersion(toolPath)
+	version, err := DetectVersion(context.Background(), toolPath)
 	if err != nil {
-		t.Fatalf("DetectVersion() error = %v", err)
+		t.Fatalf("DetectVersion(context.Background(), ) error = %v", err)
 	}
 
 	if version != "2.5.3" {
-		t.Errorf("DetectVersion() = %q, want %q", version, "2.5.3")
+		t.Errorf("DetectVersion(context.Background(), ) = %q, want %q", version, "2.5.3")
 	}
 }
 
@@ -167,9 +168,9 @@ exit 1
 		t.Fatalf("failed to create test binary: %v", err)
 	}
 
-	_, err = DetectVersion(toolPath)
+	_, err = DetectVersion(context.Background(), toolPath)
 	if err == nil {
-		t.Error("DetectVersion() expected error for tool without version support")
+		t.Error("DetectVersion(context.Background(), ) expected error for tool without version support")
 	}
 }
 
@@ -196,7 +197,7 @@ func TestQueryActive_SymlinkResolution(t *testing.T) {
 	os.Setenv("PATH", symlinkDir+":"+origPATH)
 
 	// Query active tools
-	tools, err := QueryActive([]string{"node"})
+	tools, err := QueryActive(context.Background(), []string{"node"}, false)
 	if err != nil {
 		t.Fatalf("QueryActive() error = %v", err)
 	}

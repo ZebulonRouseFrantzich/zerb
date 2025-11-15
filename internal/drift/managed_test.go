@@ -1,6 +1,7 @@
 package drift
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -55,9 +56,9 @@ fi
 	}
 
 	// Test QueryManaged
-	tools, err := QueryManaged(tmpDir)
+	tools, err := QueryManaged(context.Background(), tmpDir)
 	if err != nil {
-		t.Fatalf("QueryManaged() error = %v", err)
+		t.Fatalf("QueryManaged(context.Background(), ) error = %v", err)
 	}
 
 	// Verify results
@@ -67,7 +68,7 @@ fi
 	}
 
 	if len(tools) != len(want) {
-		t.Errorf("QueryManaged() returned %d tools, want %d", len(tools), len(want))
+		t.Errorf("QueryManaged(context.Background(), ) returned %d tools, want %d", len(tools), len(want))
 		t.Errorf("got: %+v", tools)
 		t.Errorf("want: %+v", want)
 		return
@@ -82,11 +83,11 @@ fi
 	for _, wantTool := range want {
 		gotTool, exists := toolMap[wantTool.Name]
 		if !exists {
-			t.Errorf("QueryManaged() missing tool %s", wantTool.Name)
+			t.Errorf("QueryManaged(context.Background(), ) missing tool %s", wantTool.Name)
 			continue
 		}
 		if gotTool != wantTool {
-			t.Errorf("QueryManaged() tool %s = %+v, want %+v", wantTool.Name, gotTool, wantTool)
+			t.Errorf("QueryManaged(context.Background(), ) tool %s = %+v, want %+v", wantTool.Name, gotTool, wantTool)
 		}
 	}
 }

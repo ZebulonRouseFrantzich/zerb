@@ -16,6 +16,10 @@ func TestExtractVersion(t *testing.T) {
 		{"Ripgrep", "ripgrep 13.0.0", "13.0.0", false},
 		{"With prefix", "version: 2.5.3", "2.5.3", false},
 		{"Multiline", "node info\nv20.11.0\nmore info", "20.11.0", false},
+		{"Pre-release", "v1.2.3-beta.1", "1.2.3-beta.1", false},
+		{"Pre-release rc", "1.2.3-rc.2", "1.2.3-rc.2", false},
+		{"Build metadata", "1.2.3+build.456", "1.2.3+build.456", false},
+		{"Pre-release and build", "1.2.3-alpha.1+build.789", "1.2.3-alpha.1+build.789", false},
 		{"No version", "usage: tool [options]", "", true},
 		{"Empty", "", "", true},
 	}

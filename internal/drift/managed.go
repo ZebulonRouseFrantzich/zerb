@@ -1,12 +1,15 @@
 package drift
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 )
 
 // MiseTool represents a tool from mise ls --json output
@@ -19,12 +22,25 @@ type MiseTool struct {
 	} `json:"source"`
 }
 
+// Default timeout for mise operations
+const defaultMiseTimeout = 2 * time.Minute
+
+// getMiseTimeout returns the mise operation timeout from env or default
+func getMiseTimeout() time.Duration {
+	if val := os.Getenv("ZERB_MISE_TIMEOUT"); val != "" {
+		if seconds, err := strconv.Atoi(val); err == nil {
+			return time.Duration(seconds) * time.Second
+		}
+	}
+	return defaultMiseTimeout
+}
+
 // QueryManaged queries mise for ZERB-installed tools
-func QueryManaged(zerbDir string) ([]Tool, error) {
+func QueryManaged(ctx context.Context, zerbDir string) ([]Tool, error) {
 	misePath := filepath.Join(zerbDir, "bin", "mise")
 
 	// Execute mise ls --json to get all installed tools
-	jsonOutput, err := executeMiseCommand(misePath, zerbDir, "ls", "--json")
+	jsonOutput, err := executeMiseCommand(ctx, misePath, zerbDir, "ls", "--json")
 	if err != nil {
 		return nil, fmt.Errorf("execute mise ls --json: %w", err)
 	}
@@ -36,7 +52,7 @@ func QueryManaged(zerbDir string) ([]Tool, error) {
 	}
 
 	// Execute mise ls --current to get active versions
-	currentOutput, err := executeMiseCommand(misePath, zerbDir, "ls", "--current")
+	currentOutput, err := executeMiseCommand(ctx, misePath, zerbDir, "ls", "--current")
 	if err != nil {
 		return nil, fmt.Errorf("execute mise ls --current: %w", err)
 	}
@@ -76,8 +92,12 @@ func QueryManaged(zerbDir string) ([]Tool, error) {
 }
 
 // executeMiseCommand executes a mise command with proper isolation
-func executeMiseCommand(misePath, zerbDir string, args ...string) (string, error) {
-	cmd := exec.Command(misePath, args...)
+func executeMiseCommand(ctx context.Context, misePath, zerbDir string, args ...string) (string, error) {
+	timeout := getMiseTimeout()
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, misePath, args...)
 
 	// Set mise environment variables for isolation
 	cmd.Env = append(os.Environ(),
@@ -86,9 +106,9 @@ func executeMiseCommand(misePath, zerbDir string, args ...string) (string, error
 		"MISE_CACHE_DIR="+filepath.Join(zerbDir, "cache/mise"),
 	)
 
-	output, err := cmd.Output()
+	output, err := cmd.CombinedOutput() // Capture both stdout and stderr
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("%w (output: %s)", err, string(output))
 	}
 
 	return string(output), nil

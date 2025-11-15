@@ -6,9 +6,12 @@ import (
 	"strings"
 )
 
-var versionRegex = regexp.MustCompile(`\d+\.\d+\.\d+`)
+// versionRegex matches semantic versions including pre-release and build metadata
+// Examples: 1.2.3, 1.2.3-beta.1, 1.2.3+build.456, 1.2.3-rc.1+build.123
+var versionRegex = regexp.MustCompile(`\d+\.\d+\.\d+(?:-[a-zA-Z0-9.]+)?(?:\+[a-zA-Z0-9.]+)?`)
 
 // ExtractVersion extracts semantic version from command output
+// Supports standard semver format: X.Y.Z with optional pre-release and build metadata
 func ExtractVersion(output string) (string, error) {
 	matches := versionRegex.FindString(output)
 	if matches == "" {

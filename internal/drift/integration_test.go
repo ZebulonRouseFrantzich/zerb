@@ -1,6 +1,7 @@
 package drift
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -64,7 +65,7 @@ func TestDataCollection_Integration(t *testing.T) {
 
 	// 4. Test active collection
 	toolNames := []string{"node", "python", "go"}
-	active, err := QueryActive(toolNames)
+	active, err := QueryActive(context.Background(), toolNames, false)
 	if err != nil {
 		t.Fatalf("QueryActive() error = %v", err)
 	}
@@ -168,7 +169,7 @@ exit 1
 	os.Setenv("PATH", tmpDir+":"+origPATH)
 
 	// Query active
-	active, err := QueryActive([]string{"mystery-tool"})
+	active, err := QueryActive(context.Background(), []string{"mystery-tool"}, false)
 	if err != nil {
 		t.Fatalf("QueryActive() error = %v", err)
 	}
@@ -258,7 +259,7 @@ func TestDriftDetection_EndToEnd(t *testing.T) {
 
 	// Query active environment
 	toolNames := []string{"node", "python", "go", "rust", "rg"}
-	active, err := QueryActive(toolNames)
+	active, err := QueryActive(context.Background(), toolNames, false)
 	if err != nil {
 		t.Fatalf("QueryActive() error = %v", err)
 	}
@@ -384,7 +385,7 @@ func TestDriftDetection_ManagedButNotActive(t *testing.T) {
 	os.Setenv("PATH", emptyDir)
 
 	// Query active (should find nothing)
-	active, err := QueryActive([]string{"node"})
+	active, err := QueryActive(context.Background(), []string{"node"}, false)
 	if err != nil {
 		t.Fatalf("QueryActive() error = %v", err)
 	}
@@ -450,7 +451,7 @@ exit 1
 	os.Setenv("PATH", mysteryInstallDir)
 
 	// Query active
-	active, err := QueryActive([]string{"mystery"})
+	active, err := QueryActive(context.Background(), []string{"mystery"}, false)
 	if err != nil {
 		t.Fatalf("QueryActive() error = %v", err)
 	}

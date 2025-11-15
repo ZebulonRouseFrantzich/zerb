@@ -12,12 +12,12 @@ import (
 )
 
 // ApplyDriftAction applies a drift resolution action
-func ApplyDriftAction(result DriftResult, action DriftAction, configPath, zerbDir, miseBinary string) error {
+func ApplyDriftAction(ctx context.Context, result DriftResult, action DriftAction, configPath, zerbDir, miseBinary string) error {
 	switch action {
 	case ActionAdopt:
 		return applyAdopt(result, configPath, zerbDir)
 	case ActionRevert:
-		return applyRevert(result, miseBinary, zerbDir)
+		return applyRevert(ctx, result, miseBinary, zerbDir)
 	case ActionSkip:
 		return nil // No action
 	default:
@@ -79,25 +79,25 @@ func applyAdopt(result DriftResult, configPath string, zerbDir string) error {
 }
 
 // applyRevert restores environment to match baseline
-func applyRevert(result DriftResult, miseBinary string, zerbDir string) error {
+func applyRevert(ctx context.Context, result DriftResult, miseBinary string, zerbDir string) error {
 	switch result.DriftType {
 	case DriftExternalOverride, DriftVersionMismatch:
 		// Reinstall correct version via mise
 		toolSpec := fmt.Sprintf("%s@%s", result.Tool, result.BaselineVersion)
-		if err := executeMiseInstallOrUninstall(miseBinary, zerbDir, "install", toolSpec); err != nil {
+		if err := executeMiseInstallOrUninstall(ctx, miseBinary, zerbDir, "install", toolSpec); err != nil {
 			return fmt.Errorf("install %s: %w", toolSpec, err)
 		}
 
 	case DriftMissing:
 		// Install missing tool
 		toolSpec := fmt.Sprintf("%s@%s", result.Tool, result.BaselineVersion)
-		if err := executeMiseInstallOrUninstall(miseBinary, zerbDir, "install", toolSpec); err != nil {
+		if err := executeMiseInstallOrUninstall(ctx, miseBinary, zerbDir, "install", toolSpec); err != nil {
 			return fmt.Errorf("install %s: %w", toolSpec, err)
 		}
 
 	case DriftExtra:
 		// Uninstall extra tool
-		if err := executeMiseInstallOrUninstall(miseBinary, zerbDir, "uninstall", result.Tool); err != nil {
+		if err := executeMiseInstallOrUninstall(ctx, miseBinary, zerbDir, "uninstall", result.Tool); err != nil {
 			return fmt.Errorf("uninstall %s: %w", result.Tool, err)
 		}
 
@@ -110,7 +110,7 @@ func applyRevert(result DriftResult, miseBinary string, zerbDir string) error {
 	case DriftVersionUnknown:
 		// Reinstall to hopefully fix version detection
 		toolSpec := fmt.Sprintf("%s@%s", result.Tool, result.BaselineVersion)
-		if err := executeMiseInstallOrUninstall(miseBinary, zerbDir, "install", toolSpec); err != nil {
+		if err := executeMiseInstallOrUninstall(ctx, miseBinary, zerbDir, "install", toolSpec); err != nil {
 			return fmt.Errorf("install %s: %w", toolSpec, err)
 		}
 	}
@@ -119,8 +119,8 @@ func applyRevert(result DriftResult, miseBinary string, zerbDir string) error {
 }
 
 // executeMiseInstallOrUninstall is a wrapper around executeMiseCommand that discards output
-func executeMiseInstallOrUninstall(miseBinary string, zerbDir string, args ...string) error {
-	_, err := executeMiseCommand(miseBinary, zerbDir, args...)
+func executeMiseInstallOrUninstall(ctx context.Context, miseBinary string, zerbDir string, args ...string) error {
+	_, err := executeMiseCommand(ctx, miseBinary, zerbDir, args...)
 	if err != nil {
 		return fmt.Errorf("mise command failed: %w", err)
 	}
