@@ -8,6 +8,11 @@ import (
 	"time"
 )
 
+const (
+	// StaleLockThreshold is the maximum age of a lock before it's considered stale.
+	StaleLockThreshold = 10 * time.Minute
+)
+
 var (
 	ErrLockExists = errors.New("transaction lock exists: another operation may be in progress")
 	ErrStaleLock  = errors.New("stale lock detected")
@@ -80,7 +85,7 @@ func (l *Lock) Release() error {
 	return nil
 }
 
-// isLockStale checks if a lock file is older than 10 minutes.
+// isLockStale checks if a lock file is older than the stale lock threshold.
 func isLockStale(lockPath string) (bool, error) {
 	info, err := os.Stat(lockPath)
 	if err != nil {
@@ -88,5 +93,5 @@ func isLockStale(lockPath string) (bool, error) {
 	}
 
 	age := time.Since(info.ModTime())
-	return age > 10*time.Minute, nil
+	return age > StaleLockThreshold, nil
 }

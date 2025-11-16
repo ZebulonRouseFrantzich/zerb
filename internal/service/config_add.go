@@ -14,6 +14,15 @@ import (
 	"github.com/ZebulonRouseFrantzich/zerb/internal/transaction"
 )
 
+const (
+	// ConfigDirPermissions sets the permission mode for config directories.
+	ConfigDirPermissions = 0755
+	// ConfigFilePermissions sets the permission mode for config files.
+	ConfigFilePermissions = 0644
+	// TmpDirPermissions sets the permission mode for temporary directories.
+	TmpDirPermissions = 0700
+)
+
 // ConfigParser provides config parsing functionality.
 type ConfigParser interface {
 	ParseString(ctx context.Context, lua string) (*config.Config, error)
@@ -80,8 +89,8 @@ type AddResult struct {
 // Execute performs the config add operation.
 func (s *ConfigAddService) Execute(ctx context.Context, req AddRequest) (*AddResult, error) {
 	result := &AddResult{
-		AddedPaths:   []string{},
-		SkippedPaths: []string{},
+		AddedPaths:   make([]string, 0, len(req.Paths)),
+		SkippedPaths: make([]string, 0, len(req.Paths)),
 	}
 
 	// 1. Acquire transaction lock
@@ -262,13 +271,13 @@ Note: You may need to manually clean up files in the config manager's source dir
 	}
 
 	configsDir := filepath.Join(s.zerbDir, "configs")
-	if err := os.MkdirAll(configsDir, 0755); err != nil {
+	if err := os.MkdirAll(configsDir, ConfigDirPermissions); err != nil {
 		return nil, fmt.Errorf("create configs directory: %w", err)
 	}
 
 	newConfigPath := filepath.Join(configsDir, newConfigFilename)
 
-	if err := os.WriteFile(newConfigPath, []byte(newConfigContent), 0644); err != nil {
+	if err := os.WriteFile(newConfigPath, []byte(newConfigContent), ConfigFilePermissions); err != nil {
 		return nil, fmt.Errorf("write new config: %w", err)
 	}
 
@@ -282,7 +291,7 @@ Note: You may need to manually clean up files in the config manager's source dir
 
 	// 10. Update .zerb-active marker
 	activeMarkerPath := filepath.Join(s.zerbDir, ".zerb-active")
-	if err := os.WriteFile(activeMarkerPath, []byte(newConfigFilename+"\n"), 0644); err != nil {
+	if err := os.WriteFile(activeMarkerPath, []byte(newConfigFilename+"\n"), ConfigFilePermissions); err != nil {
 		return nil, fmt.Errorf("update active marker: %w", err)
 	}
 
@@ -297,7 +306,7 @@ Note: You may need to manually clean up files in the config manager's source dir
 		errStr := err.Error()
 		if strings.Contains(errStr, "not supported") || strings.Contains(errStr, "not implemented") {
 			// Fallback to copy on systems without symlink support
-			if err := os.WriteFile(activeConfigPath, []byte(newConfigContent), 0644); err != nil {
+			if err := os.WriteFile(activeConfigPath, []byte(newConfigContent), ConfigFilePermissions); err != nil {
 				return nil, fmt.Errorf("update active config: %w", err)
 			}
 		} else {
@@ -365,9 +374,12 @@ func (s *ConfigAddService) generateCommitBody(paths []string) string {
 		return ""
 	}
 
-	body := "Added configurations:\n"
+	var sb strings.Builder
+	sb.WriteString("Added configurations:\n")
 	for _, path := range paths {
-		body += fmt.Sprintf("- %s\n", path)
+		sb.WriteString("- ")
+		sb.WriteString(path)
+		sb.WriteString("\n")
 	}
-	return body
+	return sb.String()
 }

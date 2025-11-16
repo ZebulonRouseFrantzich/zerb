@@ -48,7 +48,8 @@ func main() {
 			// Handle zerb config subcommand
 			if len(os.Args) < 3 {
 				fmt.Fprintln(os.Stderr, "Error: config subcommand requires an action")
-				fmt.Fprintln(os.Stderr, "Usage: zerb config <add|list|remove>")
+				fmt.Fprintln(os.Stderr, "Usage: zerb config add [options] <path>...")
+				fmt.Fprintln(os.Stderr, "       (list and remove coming soon)")
 				os.Exit(1)
 			}
 			switch os.Args[2] {
@@ -59,7 +60,8 @@ func main() {
 				}
 			default:
 				fmt.Fprintf(os.Stderr, "Error: unknown config action: %s\n", os.Args[2])
-				fmt.Fprintln(os.Stderr, "Available actions: add")
+				fmt.Fprintln(os.Stderr, "Usage: zerb config add [options] <path>...")
+				fmt.Fprintln(os.Stderr, "       (list and remove coming soon)")
 				os.Exit(1)
 			}
 			return
