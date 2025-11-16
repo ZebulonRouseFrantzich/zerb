@@ -46,9 +46,9 @@ func TestCreateDirectoryStructure(t *testing.T) {
 		if !info.IsDir() {
 			t.Errorf("%s exists but is not a directory", dir)
 		}
-		// Check permissions (should be 0755)
-		if info.Mode().Perm() != 0755 {
-			t.Errorf("directory %s has wrong permissions: got %o, want 0755", dir, info.Mode().Perm())
+		// Check permissions (should be 0700 for security)
+		if info.Mode().Perm() != 0700 {
+			t.Errorf("directory %s has wrong permissions: got %o, want 0700", dir, info.Mode().Perm())
 		}
 	}
 }

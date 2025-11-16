@@ -75,6 +75,20 @@ func runActivate(args []string) error {
 		return fmt.Errorf("failed to access ZERB environment: %w", err)
 	}
 
+	// Check for .zerb-no-git marker and warn if git is not initialized
+	noGitMarkerPath := filepath.Join(zerbDir, ".zerb-no-git")
+	if _, err := os.Stat(noGitMarkerPath); err == nil {
+		fmt.Fprintf(os.Stderr, "\n⚠ Note: Git versioning not initialized\n")
+		fmt.Fprintf(os.Stderr, "  \n")
+		fmt.Fprintf(os.Stderr, "  Your ZERB environment is working, but configuration changes\n")
+		fmt.Fprintf(os.Stderr, "  are not being tracked in version history.\n")
+		fmt.Fprintf(os.Stderr, "  \n")
+		fmt.Fprintf(os.Stderr, "  To enable versioning and sync:\n")
+		fmt.Fprintf(os.Stderr, "    zerb git init\n")
+		fmt.Fprintf(os.Stderr, "  \n")
+		fmt.Fprintf(os.Stderr, "  (This message appears once per activate until git is set up)\n\n")
+	}
+
 	// Additional security: verify path is within expected ZERB directory
 	cleanPath := filepath.Clean(miseBinaryPath)
 	expectedPrefix := filepath.Clean(filepath.Join(zerbDir, "bin")) + string(filepath.Separator)
