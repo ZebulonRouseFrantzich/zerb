@@ -12,6 +12,18 @@ The user has requested the following change proposal. Use the openspec instructi
 - Keep changes tightly scoped to the requested outcome.
 - Refer to `openspec/AGENTS.md` (located inside the `openspec/` directory—run `ls openspec` or `openspec update` if you don't see it) if you need additional OpenSpec conventions or clarifications.
 - Identify any vague or ambiguous details and ask the necessary follow-up questions before editing files.
+- All proposal documents MUST implement the strict Test Driven Development (TDD) approach:
+  - Ordered Phases
+    - **RED Phase**: Write failing test(s) first
+    - **GREEN Phase**: Write minimal code to make test(s) pass
+    - **REFACTOR Phase**: Clean up code while keeping tests green
+  - TDD Requirements
+    - Write unit/integration tests BEFORE implementing the feature
+    - Verify tests fail initially (RED)
+    - Implement only enough code to make tests pass (GREEN)
+    - Refactor as needed while maintaining >80% coverage
+  - Tasks must be organized by feature area for clarity, but implementation MUST proceed test-first within each task.
+
 
 **Steps**
 1. Review `openspec/project.md`, run `openspec list` and `openspec list --specs`, and inspect related code or docs (e.g., via `rg`/`ls`) to ground the proposal in current behaviour; note any gaps that require clarification.
