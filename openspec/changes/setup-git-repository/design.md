@@ -34,6 +34,115 @@ ZERB uses git for version control of configuration files, enabling sync across m
 
 ## Decisions
 
+### Decision 0: Git Implementation Strategy (go-git vs system git)
+
+**Choice:** Use go-git library exclusively for all git operations; remove system git binary dependency.
+
+**Rationale:**
+- **Project architecture alignment**: `project.md` explicitly states "go-git (pure Go git implementation, no system git dependency)"
+- **Complete isolation**: No dependency on system PATH or external binaries
+- **Cross-platform compatibility**: Pure Go works identically on Linux, macOS, Windows without platform-specific git variants
+- **Security**: No risk of PATH hijacking or executing untrusted git binaries
+- **Deterministic behavior**: Library calls are more predictable than CLI output parsing
+- **Testing**: Easier to mock and test; no need for system git in test environments
+- **Minimal environments**: Can run in containers/systems without git installed
+
+**Implementation:**
+```go
+import (
+    "github.com/go-git/go-git/v5"
+    "github.com/go-git/go-git/v5/plumbing/object"
+    "github.com/go-git/go-git/v5/config"
+)
+
+// Initialize repository
+repo, err := git.PlainInit(zerbDir, false)
+
+// Configure user
+cfg, _ := repo.Config()
+cfg.User.Name = "User Name"
+cfg.User.Email = "user@example.com"
+repo.Storer.SetConfig(cfg)
+
+// Create commit
+worktree, _ := repo.Worktree()
+worktree.Add(".gitignore")
+worktree.Add("configs/zerb.lua.20250116T143052.123Z")
+worktree.Commit("Initialize ZERB environment", &git.CommitOptions{
+    Author: &object.Signature{
+        Name:  cfg.User.Name,
+        Email: cfg.User.Email,
+        When:  time.Now(),
+    },
+})
+```
+
+**Migration path:**
+- Current `internal/git/git.go` uses `exec.CommandContext("git", ...)`
+- This change migrates to go-git for: `Init`, `Configure`, `Add`, `Commit`
+- Future Component 07 (git operations) will continue with go-git for: `Status`, `Log`, `Remote`, `Fetch`, `Pull`, `Push`
+
+**Alternatives considered:**
+- Continue with system git: Violates project architecture, creates security/isolation risks
+- Hybrid approach (go-git for some, system git for others): Inconsistent, maintains security risks
+- Shell out with trusted paths: Still violates isolation principle, complex platform handling
+
+**Impact:**
+- Add `github.com/go-git/go-git/v5` dependency to `go.mod`
+- All git operations in this change use go-git APIs
+- No CLI subprocess management needed
+- Error handling uses Go errors, not stderr parsing
+
+### Decision 0.1: ZERB Directory Security (Permissions)
+
+**Choice:** Create ZERB root directory (`~/.config/zerb`) with `0700` permissions (user-only access).
+
+**Rationale:**
+- **Security**: Config files use `0600` because they may contain sensitive data; directory must also be restrictive
+- **Git history protection**: On multi-user systems with non-`0700` `~/.config`, other users could read `.git/objects` even if config files are `0600`, exposing secrets through git history
+- **Defense in depth**: Even if individual files have restrictive permissions, directory should prevent enumeration and access
+- **Consistency**: All ZERB-managed content (configs, git history, binaries, cache) should be private to the user
+
+**Implementation:**
+```go
+func createDirectoryStructure(zerbDir string) error {
+    // Create ZERB root with user-only permissions
+    if err := os.MkdirAll(zerbDir, 0700); err != nil {
+        return fmt.Errorf("create ZERB directory: %w", err)
+    }
+    
+    // Create subdirectories (inherit parent permissions or use explicit 0700)
+    subdirs := []string{
+        filepath.Join(zerbDir, "bin"),
+        filepath.Join(zerbDir, "keyrings"),
+        filepath.Join(zerbDir, "cache", "downloads"),
+        // ... etc
+    }
+    
+    for _, dir := range subdirs {
+        if err := os.MkdirAll(dir, 0700); err != nil {
+            return fmt.Errorf("create directory %s: %w", dir, err)
+        }
+    }
+    
+    return nil
+}
+```
+
+**Verification:**
+- Add test asserting `zerbDir` has mode `0700` after init
+- Add test ensuring `.git` subdirectory inherits restrictive permissions
+- Document in security guidelines that `~/.config/zerb` should remain private
+
+**Alternatives considered:**
+- Keep `0755` for directories: Rejected - exposes git history on multi-user systems
+- Only protect specific files: Insufficient - `.git/objects/` would still be readable
+- Rely on `~/.config` being private: Not guaranteed on all systems; not defensive
+
+**Trade-offs:**
+- Slightly less convenient for debugging (can't easily `ls` as another user)
+- **Benefit**: Strong security guarantee even on shared systems
+
 ### Decision 1: When to Initialize Git
 
 **Choice:** Initialize during `zerb init`, after directory structure but before shell integration.
@@ -44,12 +153,13 @@ ZERB uses git for version control of configuration files, enabling sync across m
 - Order matters: need directories first, then .gitignore, then git init, then initial config, then commit
 
 **Sequence:**
-1. Create directory structure
+1. Create directory structure (with 0700 permissions)
 2. Write .gitignore file
-3. Run `git init`
-4. Configure git (user.name, user.email)
-5. Generate initial config
-6. Create initial commit
+3. Initialize git repository (go-git)
+4. Configure git user (repo-local, using go-git)
+5. Extract keyrings and install binaries
+6. Generate initial config
+7. Create initial commit (add .gitignore and config)
 
 **Alternatives considered:**
 - Lazy initialization (first commit): Adds complexity, delays benefits
@@ -58,42 +168,82 @@ ZERB uses git for version control of configuration files, enabling sync across m
 
 ### Decision 2: Git User Configuration Strategy
 
-**Choice:** Three-tier fallback system
+**Choice:** Three-tier fallback system (environment → ZERB config → placeholders)
 
-1. Try system git config (`git config --global user.name/email`)
-2. Try environment variables (`GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`)
+1. Try environment variables (`ZERB_GIT_NAME`, `ZERB_GIT_EMAIL`, or `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`)
+2. Try ZERB-local configuration (future: `git.user.*` in `zerb.lua`)
 3. Use placeholder values (`ZERB User`, `zerb@localhost`)
 
 **Rationale:**
-- Most users have git configured globally (best case)
-- Environment variables provide override capability (CI/CD, testing)
-- Placeholder ensures init always succeeds (can fix later)
+- **Isolation principle**: Never read or write global git config (`~/.gitconfig`) to maintain complete ZERB isolation
+- Environment variables provide explicit override capability (CI/CD, testing, user preference)
+- Future ZERB config integration allows per-environment git identity
+- Placeholder ensures init always succeeds (can fix later via environment or config)
 - Warning message guides users to fix placeholder values
 
 **Implementation:**
 ```go
-func detectGitUser() (name, email string) {
-    // Try system git config
-    if name = execGit("config", "--global", "user.name"); name != "" {
-        email = execGit("config", "--global", "user.email")
-        return
+type GitUserInfo struct {
+    Name      string
+    Email     string
+    FromEnv   bool
+    FromConfig bool
+    IsDefault bool
+}
+
+func detectGitUser(cfg *config.Config) GitUserInfo {
+    // 1. Try ZERB-specific environment variables first
+    if name := os.Getenv("ZERB_GIT_NAME"); name != "" {
+        email := os.Getenv("ZERB_GIT_EMAIL")
+        return GitUserInfo{Name: name, Email: email, FromEnv: true}
     }
     
-    // Try environment variables
-    if name = os.Getenv("GIT_AUTHOR_NAME"); name != "" {
-        email = os.Getenv("GIT_AUTHOR_EMAIL")
-        return
+    // 2. Try standard git environment variables
+    if name := os.Getenv("GIT_AUTHOR_NAME"); name != "" {
+        email := os.Getenv("GIT_AUTHOR_EMAIL")
+        return GitUserInfo{Name: name, Email: email, FromEnv: true}
     }
     
-    // Fallback
-    return "ZERB User", "zerb@localhost"
+    // 3. Try ZERB config (future: cfg.Git.User.Name / cfg.Git.User.Email)
+    // Not implemented in this change
+    
+    // 4. Fallback to placeholders
+    return GitUserInfo{
+        Name:      "ZERB User",
+        Email:     "zerb@localhost",
+        IsDefault: true,
+    }
+}
+```
+
+**Using go-git:**
+```go
+import "github.com/go-git/go-git/v5/config"
+
+func configureGitUser(repo *git.Repository, userInfo GitUserInfo) error {
+    cfg, err := repo.Config()
+    if err != nil {
+        return fmt.Errorf("read repo config: %w", err)
+    }
+    
+    cfg.User.Name = userInfo.Name
+    cfg.User.Email = userInfo.Email
+    
+    if err := repo.Storer.SetConfig(cfg); err != nil {
+        return fmt.Errorf("write repo config: %w", err)
+    }
+    
+    return nil
 }
 ```
 
 **Alternatives considered:**
+- Read global git config: **Rejected** - violates ZERB isolation principle
 - Prompt user for name/email: Breaks non-interactive init, slows UX
 - Require git config: Too strict, fails unnecessarily
 - Use system username/hostname: Privacy concerns, not meaningful for commits
+
+**Note:** This decision aligns with ZERB's isolation architecture, ensuring ZERB never modifies or depends on system-wide git configuration.
 
 ### Decision 3: .gitignore Pattern Strategy
 
@@ -151,7 +301,9 @@ ZERB follows a strict separation:
    - Large binaries, frequently changing caches
    - No value in version control
 
-**Template location:** Embedded in Go code as string constant (avoid file I/O dependency)
+**Template location:** Embedded in `internal/git` package as string constant
+
+**Security note:** The ZERB root directory is created with `0700` permissions (Decision 0.1), ensuring that `.git/objects/` and all tracked/untracked files are only accessible to the owning user, even on multi-user systems.
 
 **Alternatives considered:**
 - Track generated configs: Creates data duplication, confusing diffs
@@ -161,56 +313,103 @@ ZERB follows a strict separation:
 
 ### Decision 4: Initial Commit Content
 
-**Choice:** Commit timestamped config file only
+**Choice:** Commit both `.gitignore` and timestamped config file
 
 **Rationale:**
-- Establishes git history from the start
-- Includes meaningful content (not empty commit)
+- Establishes git history from the start with meaningful content
+- `.gitignore` is source of truth for tracking policy - should be versioned from day 1
+- Prevents accidental commits of runtime/generated files immediately
+- Users can see what's ignored via `git show` or `git log`
 - Directory structure doesn't need to be tracked (recreated by init)
-- Keeps commit focused and minimal
+- Clean git history showing both setup files together
 
 **Commit message:** `"Initialize ZERB environment"`
 
 **Files in initial commit:**
-- `configs/zerb.lua.YYYYMMDDTHHMMSS.sssZ` (initial empty config)
-- `.gitignore` (ignored patterns)
+1. `.gitignore` (tracking policy - must be first)
+2. `configs/zerb.lua.YYYYMMDDTHHMMSS.sssZ` (initial empty config)
+
+**Commit order matters:**
+- Write `.gitignore` to disk **before** `git init`
+- This ensures the ignore patterns are in effect before the initial `git add`
+- Prevents any risk of accidentally staging runtime files
 
 **Alternatives considered:**
+- Config only: Conflicts with spec requirement; `.gitignore` wouldn't be versioned initially
 - Empty commit: Less meaningful, doesn't test git operations
 - Include all directories: Unnecessary, git doesn't track empty directories
 - Include keyrings: Security concern (even if public keys)
 
-### Decision 5: Error Handling for Missing Git
+### Decision 5: Error Handling for Missing Git Library
 
-**Choice:** Warn and continue (graceful degradation)
+**Choice:** Warn and continue (graceful degradation), with persistent warnings
 
 **Behavior:**
-- Check if `git` binary exists before initialization
-- If not found: print warning, skip git initialization, continue init
-- User can manually run `git init` later if desired
+- Attempt to initialize git repository using go-git library
+- If initialization fails (library issue, permissions, etc.): print warning, skip git initialization, continue init
+- Create marker file `.zerb-no-git` to track git-unavailable state
+- On `zerb activate`: check for marker and show warning prompting git setup
+- User can manually initialize git later if desired
 - All other ZERB features work without git (drift detection uses current state)
 
-**Warning message:**
+**Warning message (during init):**
 ```
-⚠ Warning: git binary not found on PATH
-  Git repository not initialized.
+⚠ Warning: Unable to initialize git repository
   
-  Install git and run:
-    cd ~/.config/zerb
-    git init
-    git add configs/ .gitignore
-    git commit -m "Initialize ZERB environment"
+  Git versioning not available.
+  
+  To set up git versioning later:
+    1. Ensure write permissions in ~/.config/zerb
+    2. Run: zerb git init
+  
+  ZERB will continue without version control.
+```
+
+**Warning message (on activate, if `.zerb-no-git` exists):**
+```
+⚠ Note: Git versioning not initialized
+  
+  Your ZERB environment is working, but configuration changes
+  are not being tracked in version history.
+  
+  To enable versioning and sync:
+    zerb git init
+  
+  (This message appears once per activate until git is set up)
+```
+
+**Implementation approach:**
+Using go-git library:
+```go
+import (
+    "github.com/go-git/go-git/v5"
+    "github.com/go-git/go-git/v5/plumbing/object"
+)
+
+func initGitRepo(zerbDir string) error {
+    repo, err := git.PlainInit(zerbDir, false)
+    if err != nil {
+        return fmt.Errorf("initialize git repository: %w", err)
+    }
+    return nil
+}
 ```
 
 **Rationale:**
-- Don't block init: ZERB has value without git versioning
-- Clear guidance: user knows exactly how to fix
-- Aligns with isolation: ZERB doesn't require specific system tools
+- Don't block init: ZERB has value without git versioning (tool management, config generation)
+- Clear guidance: user knows exactly how to enable git later
+- Aligns with isolation: ZERB uses go-git library, not system git binary
+- Persistent warning educates users without being annoying (only on activate, not every command)
+- Provides future `zerb git init` command for deferred setup
 
 **Alternatives considered:**
-- Fail init: Too strict, reduces ZERB adoption
+- Fail init: Too strict, reduces ZERB adoption for users who don't need git
 - Silent skip: Confusing, user doesn't know why git features fail later
-- Download git: Outside scope, violates isolation principles
+- Warn every command: Too noisy, user fatigue
+
+**Future enhancement:**
+- `zerb git init` command to initialize git in already-initialized ZERB environment
+- `zerb doctor` check for git status and recommendations
 
 ### Decision 6: Repository Location
 
@@ -302,14 +501,33 @@ N/A - This is new functionality, not migrating existing behavior.
 
 **Reasoning:**
 - Allow advanced users to pre-configure git (e.g., with remotes)
-- Verify it's a valid git repo with `git rev-parse --git-dir`
+- Verify it's a valid git repo using go-git
 - If invalid, warn and skip git init (don't overwrite)
 
 **Implementation:**
 ```go
-if isGitRepo(zerbDir) {
+import "github.com/go-git/go-git/v5"
+
+func isGitRepo(dir string) (bool, error) {
+    _, err := git.PlainOpen(dir)
+    if err == git.ErrRepositoryNotExists {
+        return false, nil
+    }
+    if err != nil {
+        return false, err // Corrupt or invalid repo
+    }
+    return true, nil
+}
+
+// In runInit:
+if valid, err := isGitRepo(zerbDir); err != nil {
+    fmt.Fprintf(os.Stderr, "⚠ Warning: Invalid git repository detected\n")
+    fmt.Fprintf(os.Stderr, "  Skipping git initialization.\n")
+    fmt.Fprintf(os.Stderr, "  Fix or remove .git directory to enable versioning.\n")
+    // Continue init without git
+} else if valid {
     fmt.Println("✓ Git repository already exists")
-    return nil
+    // Continue init, skip git initialization
 }
 ```
 
@@ -438,6 +656,21 @@ zerb = {
 This change establishes **local git repository infrastructure only**. Remote repository configuration and sync operations are explicitly deferred to a future change to keep this proposal focused and testable.
 
 **See:** `openspec/future-proposal-information/git-remote-setup.md` for detailed planning.
+
+## Future Work: Pre-commit Hooks
+
+Git repository initialization enables future pre-commit hooks that will enforce:
+1. Timestamped config immutability (prevent modifications to `configs/zerb.lua.*` snapshots)
+2. Lua syntax validation
+3. ZERB schema validation
+4. Large file warnings (>10MB)
+5. Secret detection (prevent credential leaks)
+
+**See:** `openspec/future-proposal-information/pre-commit-hooks.md` for detailed planning.
+
+**Dependencies:** This change (git repo must exist) → Component 07 (git operations) → Pre-commit hooks implementation
+
+**Timeline:** Post-MVP, after remote sync is implemented and secret detection patterns are validated.
 
 ### Summary of Planned Remote Setup (Post-MVP)
 

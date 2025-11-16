@@ -6,29 +6,40 @@ The git operations component (07-git-operations.md) requires a git repository to
 
 ## What Changes
 
-- Add git repository initialization during `zerb init`
-- Configure initial git settings (user.name, user.email with fallbacks)
-- Create initial commit with timestamped config and directory structure
-- Set up `.gitignore` to exclude runtime files (bin/, cache/, logs/, etc.)
+- Add git repository initialization during `zerb init` using go-git library
+- Configure repository-local git settings (user.name, user.email with environment variable fallbacks)
+- Create initial commit with both `.gitignore` and timestamped config
+- Set up `.gitignore` to exclude runtime files (bin/, cache/, logs/, etc.) and generated configs
 - Track only configs/ and chezmoi/source/ directories per architecture decision
 - Handle git initialization errors gracefully with clear user guidance
+- Create ZERB directory with 0700 permissions for security
+- Add persistent warning on `zerb activate` when git is not initialized
 
 **Explicitly out of scope (deferred to future change):**
 - Remote repository configuration (`git.remote` in config)
 - `--remote` and `--from` flags for `zerb init`
 - Smart detection and cloning of existing ZERB repos
+- Pre-commit hooks for validation and secret detection
 - See `openspec/future-proposal-information/git-remote-setup.md` for planned remote setup approach
+- See `openspec/future-proposal-information/pre-commit-hooks.md` for planned hook implementation
 
 ## Impact
 
 - **Affected specs**: initialization (new capability)
 - **Affected code**: 
-  - `cmd/zerb/init.go` - Add git initialization step
-  - `internal/git/git.go` - Add repository initialization methods
-  - New `.gitignore` template for ZERB directories
-- **Dependencies**: Enables future implementation of git operations component (07-git-operations.md)
-- **Future work**: Remote repository setup deferred to separate change (see `openspec/future-proposal-information/git-remote-setup.md`)
-- **User experience**: Adds one additional step to `zerb init` with minimal user interaction
+  - `cmd/zerb/init.go` - Add git initialization step (reordered sequence)
+  - `internal/git/git.go` - Migrate to go-git library, add repository initialization methods
+  - New `.gitignore` template in `internal/git`
+  - `cmd/zerb/activate.go` - Add warning for git-unavailable state
+- **Dependencies**: 
+  - Add `github.com/go-git/go-git/v5` to go.mod
+  - Enables future implementation of git operations component (07-git-operations.md)
+  - Enables future pre-commit hooks (see `openspec/future-proposal-information/pre-commit-hooks.md`)
+- **Future work**: 
+  - Remote repository setup deferred to separate change (see `openspec/future-proposal-information/git-remote-setup.md`)
+  - Pre-commit hooks deferred to separate change (see `openspec/future-proposal-information/pre-commit-hooks.md`)
+- **User experience**: Adds git initialization step to `zerb init` with minimal user interaction
+- **Security**: ZERB directory created with 0700 permissions to protect git history and config files
 - **Breaking changes**: None - this is additive functionality
 
 ## Architecture Decisions Reference

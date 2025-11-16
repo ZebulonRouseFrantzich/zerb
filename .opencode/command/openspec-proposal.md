@@ -38,4 +38,6 @@ The user has requested the following change proposal. Use the openspec instructi
 - Use `openspec show <id> --json --deltas-only` or `openspec show <spec> --type spec` to inspect details when validation fails.
 - Search existing requirements with `rg -n "Requirement:|Scenario:" openspec/specs` before writing new ones.
 - Explore the codebase with `rg <keyword>`, `ls`, or direct file reads so proposals align with current implementation realities.
+
+ultrathink
 <!-- OPENSPEC:END -->
