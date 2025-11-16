@@ -44,6 +44,25 @@ func main() {
 				os.Exit(1)
 			}
 			return
+		case "config":
+			// Handle zerb config subcommand
+			if len(os.Args) < 3 {
+				fmt.Fprintln(os.Stderr, "Error: config subcommand requires an action")
+				fmt.Fprintln(os.Stderr, "Usage: zerb config <add|list|remove>")
+				os.Exit(1)
+			}
+			switch os.Args[2] {
+			case "add":
+				if err := runConfigAdd(os.Args[3:]); err != nil {
+					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+					os.Exit(1)
+				}
+			default:
+				fmt.Fprintf(os.Stderr, "Error: unknown config action: %s\n", os.Args[2])
+				fmt.Fprintln(os.Stderr, "Available actions: add")
+				os.Exit(1)
+			}
+			return
 		}
 	}
 
@@ -55,13 +74,14 @@ func main() {
 	fmt.Println("ZERB is currently in active development (pre-pre-alpha).")
 	fmt.Println()
 	fmt.Println("Usage:")
-	fmt.Println("  zerb --version         Show version information")
-	fmt.Println("  zerb init              Initialize ZERB environment")
-	fmt.Println("  zerb uninit            Remove ZERB from your system")
-	fmt.Println("  zerb activate <shell>  Generate shell activation script (bash, zsh, fish)")
-	fmt.Println("  zerb drift [options]   Check for environment drift")
+	fmt.Println("  zerb --version             Show version information")
+	fmt.Println("  zerb init                  Initialize ZERB environment")
+	fmt.Println("  zerb uninit                Remove ZERB from your system")
+	fmt.Println("  zerb activate <shell>      Generate shell activation script (bash, zsh, fish)")
+	fmt.Println("  zerb drift [options]       Check for environment drift")
+	fmt.Println("  zerb config add [options]  Add config files to tracking")
 	fmt.Println()
 	fmt.Println("Coming soon:")
-	fmt.Println("  zerb add         Add tools to your environment")
-	fmt.Println("  zerb sync        Sync tools and configs")
+	fmt.Println("  zerb add                   Add tools to your environment")
+	fmt.Println("  zerb sync                  Sync tools and configs")
 }
