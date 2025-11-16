@@ -193,33 +193,97 @@ func validateToolString(tool string) error {
 	return nil
 }
 
+// NormalizeConfigPath normalizes a config path to a canonical form for duplicate detection.
+// It expands tilde, resolves symlinks, and cleans the path.
+// Returns the normalized absolute path or an error if the path is invalid.
+func NormalizeConfigPath(path string) (string, error) {
+	if path == "" {
+		return "", fmt.Errorf("path cannot be empty")
+	}
+
+	// Get home directory
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("cannot determine home directory: %w", err)
+	}
+
+	// Expand tilde
+	var absPath string
+	if strings.HasPrefix(path, "~/") {
+		absPath = filepath.Join(home, path[2:])
+	} else if path == "~" {
+		absPath = home
+	} else if filepath.IsAbs(path) {
+		absPath = path
+	} else {
+		return "", fmt.Errorf("must be absolute or start with ~/")
+	}
+
+	// Clean and resolve symlinks
+	absPath = filepath.Clean(absPath)
+	evalPath, err := filepath.EvalSymlinks(absPath)
+	if err == nil {
+		absPath = evalPath
+	}
+	// If symlink resolution fails (e.g., path doesn't exist), use cleaned path
+
+	return absPath, nil
+}
+
 // validateConfigPath validates a config file path for security.
 // It prevents path traversal attacks and restricts to home directory.
+// Uses canonical path checking with symlink resolution to prevent escapes.
 func validateConfigPath(path string) error {
 	if path == "" {
 		return fmt.Errorf("path cannot be empty")
 	}
 
-	// Expand tilde for validation
-	expanded := path
+	// Get home directory
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("cannot determine home directory: %w", err)
+	}
+	homeAbs := filepath.Clean(home)
+
+	// Expand and normalize the path
+	var absPath string
 	if strings.HasPrefix(path, "~/") {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return fmt.Errorf("cannot determine home directory: %w", err)
-		}
-		expanded = filepath.Join(home, path[2:])
+		absPath = filepath.Join(home, path[2:])
+	} else if path == "~" {
+		absPath = home
+	} else if filepath.IsAbs(path) {
+		absPath = path
+	} else {
+		return fmt.Errorf("must be absolute or start with ~/")
 	}
 
-	// Clean path and check for traversal
-	cleaned := filepath.Clean(expanded)
+	// Clean the path
+	absPath = filepath.Clean(absPath)
 
-	// Reject absolute paths outside home (unless explicitly allowed)
-	if filepath.IsAbs(path) && !strings.HasPrefix(path, "~/") {
+	// Try to resolve symlinks for canonical path (allow non-existent paths)
+	evalPath, err := filepath.EvalSymlinks(absPath)
+	if err != nil && !os.IsNotExist(err) {
+		// If the error is not "file doesn't exist", it might be a permission issue
+		// or other problem we should report
+		return fmt.Errorf("cannot evaluate path: %w", err)
+	}
+	if err == nil {
+		// Path exists, use resolved canonical path
+		absPath = evalPath
+	}
+	// If path doesn't exist, we still validate the cleaned path
+
+	// Verify the path is within home directory
+	// Check prefix carefully - must have separator or be exact match
+	if !strings.HasPrefix(absPath, homeAbs+string(filepath.Separator)) && absPath != homeAbs {
 		return fmt.Errorf("absolute paths outside home directory not allowed: %s", path)
 	}
 
-	// Check for path traversal attempts
-	if strings.Contains(cleaned, "..") {
+	// Use filepath.Rel to verify no directory traversal
+	// This is the secure way to check - it computes the relative path
+	// and if it starts with "..", then there's traversal happening
+	rel, err := filepath.Rel(homeAbs, absPath)
+	if err != nil || strings.HasPrefix(rel, "..") {
 		return fmt.Errorf("path traversal not allowed: %s", path)
 	}
 
