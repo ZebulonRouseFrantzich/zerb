@@ -222,10 +222,28 @@ func NormalizeConfigPath(path string) (string, error) {
 	// Clean and resolve symlinks
 	absPath = filepath.Clean(absPath)
 	evalPath, err := filepath.EvalSymlinks(absPath)
-	if err == nil {
+	if err != nil {
+		if os.IsNotExist(err) {
+			// Path doesn't exist - validate parent directory instead
+			parentDir := filepath.Dir(absPath)
+			parentEval, parentErr := filepath.EvalSymlinks(parentDir)
+			if parentErr != nil {
+				// Parent doesn't exist or has resolution issues - use cleaned path
+				// This is acceptable for NormalizeConfigPath as it's used for duplicate detection
+				// and the path will be validated separately by validateConfigPath
+				return absPath, nil
+			}
+			// Use the resolved parent with the original filename
+			absPath = filepath.Join(parentEval, filepath.Base(absPath))
+		} else {
+			// Other error (permission denied, symlink loop, etc.) - use cleaned path
+			// Similar reasoning as above
+			return absPath, nil
+		}
+	} else {
+		// Path exists, use resolved canonical path
 		absPath = evalPath
 	}
-	// If symlink resolution fails (e.g., path doesn't exist), use cleaned path
 
 	return absPath, nil
 }
@@ -262,16 +280,33 @@ func validateConfigPath(path string) error {
 
 	// Try to resolve symlinks for canonical path (allow non-existent paths)
 	evalPath, err := filepath.EvalSymlinks(absPath)
-	if err != nil && !os.IsNotExist(err) {
-		// If the error is not "file doesn't exist", it might be a permission issue
-		// or other problem we should report
-		return fmt.Errorf("cannot evaluate path: %w", err)
-	}
-	if err == nil {
+	if err != nil {
+		if os.IsNotExist(err) {
+			// Path doesn't exist - try to validate parent directory instead
+			parentDir := filepath.Dir(absPath)
+			parentEval, parentErr := filepath.EvalSymlinks(parentDir)
+			if parentErr != nil {
+				if os.IsNotExist(parentErr) {
+					// Parent also doesn't exist - this is OK for validation
+					// The path will be checked for existence at add time
+					// For now, just use the cleaned path
+					absPath = filepath.Clean(absPath)
+				} else {
+					// Other error (permission denied, symlink loop, etc.)
+					return fmt.Errorf("cannot evaluate parent directory: %w", parentErr)
+				}
+			} else {
+				// Use the resolved parent with the original filename
+				absPath = filepath.Join(parentEval, filepath.Base(absPath))
+			}
+		} else {
+			// Other error (permission denied, symlink loop, etc.)
+			return fmt.Errorf("cannot evaluate path: %w", err)
+		}
+	} else {
 		// Path exists, use resolved canonical path
 		absPath = evalPath
 	}
-	// If path doesn't exist, we still validate the cleaned path
 
 	// Verify the path is within home directory
 	// Check prefix carefully - must have separator or be exact match

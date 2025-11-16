@@ -23,6 +23,7 @@ var (
 type Git interface {
 	Stage(ctx context.Context, files ...string) error
 	Commit(ctx context.Context, msg, body string) error
+	GetHeadCommit(ctx context.Context) (string, error)
 }
 
 // Client implements the Git interface.
@@ -80,6 +81,19 @@ func (c *Client) Commit(ctx context.Context, msg, body string) error {
 	}
 
 	return nil
+}
+
+// GetHeadCommit returns the commit hash of HEAD.
+func (c *Client) GetHeadCommit(ctx context.Context) (string, error) {
+	cmd := exec.CommandContext(ctx, "git", "rev-parse", "HEAD")
+	cmd.Dir = c.repoPath
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", translateGitError(err, string(out))
+	}
+
+	return strings.TrimSpace(string(out)), nil
 }
 
 // translateGitError maps git errors to user-friendly errors.

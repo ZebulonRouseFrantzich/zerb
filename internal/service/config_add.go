@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/ZebulonRouseFrantzich/zerb/internal/chezmoi"
 	"github.com/ZebulonRouseFrantzich/zerb/internal/config"
 	"github.com/ZebulonRouseFrantzich/zerb/internal/git"
+	"github.com/ZebulonRouseFrantzich/zerb/internal/transaction"
 )
 
 // ConfigAddService orchestrates the config add operation.
@@ -72,7 +74,15 @@ func (s *ConfigAddService) Execute(ctx context.Context, req AddRequest) (*AddRes
 		SkippedPaths: []string{},
 	}
 
-	// 1. Validate and normalize all paths
+	// 1. Acquire transaction lock
+	txnDir := filepath.Join(s.zerbDir, ".txn")
+	lock, err := transaction.AcquireLock(txnDir)
+	if err != nil {
+		return nil, fmt.Errorf("acquire transaction lock: %w", err)
+	}
+	defer lock.Release()
+
+	// 2. Validate and normalize all paths
 	normalizedPaths := make(map[string]string) // original -> normalized
 	for _, path := range req.Paths {
 		// Validate and normalize path
@@ -83,15 +93,28 @@ func (s *ConfigAddService) Execute(ctx context.Context, req AddRequest) (*AddRes
 
 		// Check if path exists (unless skipped for testing)
 		if !req.SkipCheck {
-			if _, err := os.Stat(normalized); err != nil {
-				return nil, fmt.Errorf("path does not exist: %s", path)
+			// Stat the normalized path
+			info, err := os.Stat(normalized)
+			if err != nil {
+				return nil, fmt.Errorf("stat %q: %w", path, err)
 			}
 
+			// Verify file is readable
+			file, err := os.Open(normalized)
+			if err != nil {
+				return nil, fmt.Errorf("cannot read %q: %w", path, err)
+			}
+			file.Close()
+
 			// Check if directory and require --recursive
-			if info, _ := os.Stat(normalized); info != nil && info.IsDir() {
+			if info.IsDir() {
 				opts := req.Options[path]
 				if !opts.Recursive {
-					return nil, fmt.Errorf("path is a directory, use --recursive flag: %s", path)
+					return nil, fmt.Errorf(`%s is a directory.
+Use --recursive to track it and its contents.
+
+Example:
+  zerb config add %s --recursive`, path, path)
 				}
 			}
 		}
@@ -99,7 +122,7 @@ func (s *ConfigAddService) Execute(ctx context.Context, req AddRequest) (*AddRes
 		normalizedPaths[path] = normalized
 	}
 
-	// 2. Read current config
+	// 3. Read current config
 	activeConfigPath := filepath.Join(s.zerbDir, "zerb.lua.active")
 	cfgData, err := os.ReadFile(activeConfigPath)
 	if err != nil {
@@ -111,11 +134,16 @@ func (s *ConfigAddService) Execute(ctx context.Context, req AddRequest) (*AddRes
 		return nil, fmt.Errorf("parse current config: %w", err)
 	}
 
-	// 3. Check for duplicates
+	// 4. Check for duplicates
 	for origPath, normalized := range normalizedPaths {
 		isDuplicate := false
 		for _, existing := range currentConfig.Configs {
-			existingNorm, _ := config.NormalizeConfigPath(existing.Path)
+			existingNorm, err := config.NormalizeConfigPath(existing.Path)
+			if err != nil {
+				// Malformed existing entry - log warning and skip comparison
+				fmt.Fprintf(os.Stderr, "Warning: cannot normalize existing config path %q: %v\n", existing.Path, err)
+				continue
+			}
 			if existingNorm == normalized {
 				isDuplicate = true
 				result.SkippedPaths = append(result.SkippedPaths, origPath)
@@ -132,12 +160,30 @@ func (s *ConfigAddService) Execute(ctx context.Context, req AddRequest) (*AddRes
 		return result, nil
 	}
 
-	// 4. If dry run, stop here
+	// 5. If dry run, stop here
 	if req.DryRun {
 		return result, nil
 	}
 
-	// 5. Add files to chezmoi
+	// 6. Create transaction
+	txnOpts := make(map[string]transaction.AddOptions)
+	for _, path := range result.AddedPaths {
+		opts := req.Options[path]
+		txnOpts[path] = transaction.AddOptions{
+			Recursive: opts.Recursive,
+			Template:  opts.Template,
+			Secrets:   opts.Secrets,
+			Private:   opts.Private,
+		}
+	}
+	txn := transaction.New(result.AddedPaths, txnOpts)
+
+	// Save initial transaction state
+	if err := txn.Save(txnDir); err != nil {
+		return nil, fmt.Errorf("save transaction: %w", err)
+	}
+
+	// 7. Add files to chezmoi (track state per path)
 	for _, path := range result.AddedPaths {
 		opts := req.Options[path]
 		chezmoiOpts := chezmoi.AddOptions{
@@ -147,12 +193,36 @@ func (s *ConfigAddService) Execute(ctx context.Context, req AddRequest) (*AddRes
 			Private:   opts.Private,
 		}
 
+		// Update transaction state to in_progress
+		txn.UpdatePathState(path, transaction.StateInProgress, nil, nil)
+		if err := txn.Save(txnDir); err != nil {
+			return nil, fmt.Errorf("save transaction: %w", err)
+		}
+
+		// Perform chezmoi add
 		if err := s.chezmoi.Add(ctx, path, chezmoiOpts); err != nil {
-			return nil, fmt.Errorf("add %q to config manager: %w", path, err)
+			// Mark as failed and save transaction
+			txn.UpdatePathState(path, transaction.StateFailed, nil, err)
+			txn.Save(txnDir)
+
+			// Provide recovery instructions
+			txnFile := filepath.Join(txnDir, fmt.Sprintf("txn-config-add-%s.json", txn.ID))
+			return nil, fmt.Errorf(`failed to add %q to config manager: %w
+
+Transaction state saved for recovery.
+To view details: cat %s
+
+Note: You may need to manually clean up files in the config manager's source directory.`, path, err, txnFile)
+		}
+
+		// Mark as completed
+		txn.UpdatePathState(path, transaction.StateCompleted, nil, nil)
+		if err := txn.Save(txnDir); err != nil {
+			return nil, fmt.Errorf("save transaction: %w", err)
 		}
 	}
 
-	// 6. Update config file
+	// 8. Update config file
 	for _, path := range result.AddedPaths {
 		opts := req.Options[path]
 		currentConfig.Configs = append(currentConfig.Configs, config.ConfigFile{
@@ -164,7 +234,7 @@ func (s *ConfigAddService) Execute(ctx context.Context, req AddRequest) (*AddRes
 		})
 	}
 
-	// 7. Generate new timestamped config
+	// 9. Generate new timestamped config
 	// Note: we don't have the git commit yet, so pass empty string
 	newConfigFilename, newConfigContent, err := s.generator.GenerateTimestamped(ctx, currentConfig, "")
 	if err != nil {
@@ -184,22 +254,44 @@ func (s *ConfigAddService) Execute(ctx context.Context, req AddRequest) (*AddRes
 
 	result.ConfigVersion = newConfigFilename
 
-	// 8. Update .zerb-active marker
+	// Mark config as updated in transaction
+	txn.ConfigUpdated = true
+	if err := txn.Save(txnDir); err != nil {
+		return nil, fmt.Errorf("save transaction: %w", err)
+	}
+
+	// 10. Update .zerb-active marker
 	activeMarkerPath := filepath.Join(s.zerbDir, ".zerb-active")
 	if err := os.WriteFile(activeMarkerPath, []byte(newConfigFilename+"\n"), 0644); err != nil {
 		return nil, fmt.Errorf("update active marker: %w", err)
 	}
 
-	// 9. Update zerb.lua.active symlink (or copy on Windows)
-	os.Remove(activeConfigPath) // Remove old symlink/file
-	if err := os.Symlink(filepath.Join("configs", newConfigFilename), activeConfigPath); err != nil {
-		// Fallback to copy on systems without symlink support
-		if err := os.WriteFile(activeConfigPath, []byte(newConfigContent), 0644); err != nil {
-			return nil, fmt.Errorf("update active config: %w", err)
+	// 11. Update zerb.lua.active symlink atomically (or copy on Windows)
+	tmpLink := activeConfigPath + ".tmp"
+	target := filepath.Join("configs", newConfigFilename)
+
+	// Try to create symlink to temp location first
+	err = os.Symlink(target, tmpLink)
+	if err != nil {
+		// Check if symlinks are unsupported (Windows without dev mode)
+		errStr := err.Error()
+		if strings.Contains(errStr, "not supported") || strings.Contains(errStr, "not implemented") {
+			// Fallback to copy on systems without symlink support
+			if err := os.WriteFile(activeConfigPath, []byte(newConfigContent), 0644); err != nil {
+				return nil, fmt.Errorf("update active config: %w", err)
+			}
+		} else {
+			return nil, fmt.Errorf("create symlink: %w", err)
+		}
+	} else {
+		// Atomic rename (overwrites existing)
+		if err := os.Rename(tmpLink, activeConfigPath); err != nil {
+			os.Remove(tmpLink) // Clean up temp
+			return nil, fmt.Errorf("update active config link: %w", err)
 		}
 	}
 
-	// 10. Stage files in git
+	// 12. Stage files in git
 	filesToStage := []string{
 		filepath.Join("configs", newConfigFilename),
 		".zerb-active",
@@ -214,12 +306,26 @@ func (s *ConfigAddService) Execute(ctx context.Context, req AddRequest) (*AddRes
 		return nil, fmt.Errorf("stage files: %w", err)
 	}
 
-	// 11. Create git commit
+	// 13. Create git commit
 	commitMsg := s.generateCommitMessage(result.AddedPaths)
 	commitBody := s.generateCommitBody(result.AddedPaths)
 
 	if err := s.git.Commit(ctx, commitMsg, commitBody); err != nil {
 		return nil, fmt.Errorf("create commit: %w", err)
+	}
+
+	// 14. Mark git as committed and get commit hash
+	txn.GitCommitted = true
+
+	// Get the commit hash
+	commitHash, err := s.git.GetHeadCommit(ctx)
+	if err == nil {
+		result.CommitHash = commitHash
+	}
+
+	// Save final transaction state
+	if err := txn.Save(txnDir); err != nil {
+		return nil, fmt.Errorf("save transaction: %w", err)
 	}
 
 	return result, nil
