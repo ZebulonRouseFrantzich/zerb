@@ -14,12 +14,22 @@ import (
 	"github.com/ZebulonRouseFrantzich/zerb/internal/transaction"
 )
 
+// ConfigParser provides config parsing functionality.
+type ConfigParser interface {
+	ParseString(ctx context.Context, lua string) (*config.Config, error)
+}
+
+// ConfigGenerator provides config generation functionality.
+type ConfigGenerator interface {
+	GenerateTimestamped(ctx context.Context, cfg *config.Config, gitCommit string) (filename, content string, err error)
+}
+
 // ConfigAddService orchestrates the config add operation.
 type ConfigAddService struct {
 	chezmoi   chezmoi.Chezmoi
 	git       git.Git
-	parser    *config.Parser
-	generator *config.Generator
+	parser    ConfigParser
+	generator ConfigGenerator
 	clock     Clock
 	zerbDir   string
 }
@@ -28,8 +38,8 @@ type ConfigAddService struct {
 func NewConfigAddService(
 	chezmoiClient chezmoi.Chezmoi,
 	gitClient git.Git,
-	parser *config.Parser,
-	generator *config.Generator,
+	parser ConfigParser,
+	generator ConfigGenerator,
 	clock Clock,
 	zerbDir string,
 ) *ConfigAddService {
@@ -123,6 +133,11 @@ Example:
 	}
 
 	// 3. Read current config
+	// Check context before blocking I/O
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("operation cancelled: %w", err)
+	}
+
 	activeConfigPath := filepath.Join(s.zerbDir, "zerb.lua.active")
 	cfgData, err := os.ReadFile(activeConfigPath)
 	if err != nil {
@@ -223,6 +238,11 @@ Note: You may need to manually clean up files in the config manager's source dir
 	}
 
 	// 8. Update config file
+	// Check if we would exceed the maximum config file count
+	if len(currentConfig.Configs)+len(result.AddedPaths) > config.MaxConfigFileCount {
+		return nil, fmt.Errorf("would exceed maximum config file count (%d)", config.MaxConfigFileCount)
+	}
+
 	for _, path := range result.AddedPaths {
 		opts := req.Options[path]
 		currentConfig.Configs = append(currentConfig.Configs, config.ConfigFile{

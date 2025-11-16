@@ -65,13 +65,12 @@ func (c *Client) Commit(ctx context.Context, msg, body string) error {
 		return ErrEmptyMessage
 	}
 
-	// Build commit message
-	fullMsg := msg
+	// Use multiple -m flags for better formatting
+	args := []string{"commit", "-m", msg}
 	if body != "" {
-		fullMsg = msg + "\n\n" + body
+		args = append(args, "-m", body)
 	}
 
-	args := []string{"commit", "-m", fullMsg}
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = c.repoPath
 

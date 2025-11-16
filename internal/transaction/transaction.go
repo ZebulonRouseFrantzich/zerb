@@ -111,9 +111,13 @@ func (t *ConfigAddTxn) Save(dir string) error {
 	}
 
 	// Sync directory for durability
-	if dir, err := os.Open(dir); err == nil {
-		dir.Sync()
-		dir.Close()
+	df, err := os.Open(dir)
+	if err == nil {
+		if syncErr := df.Sync(); syncErr != nil {
+			df.Close()
+			return fmt.Errorf("sync directory: %w", syncErr)
+		}
+		df.Close()
 	}
 
 	return nil

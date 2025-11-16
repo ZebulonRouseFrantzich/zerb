@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -134,7 +135,7 @@ func translateChezmoiError(err error, stderr string) error {
 }
 
 // redactSensitiveInfo removes potentially sensitive information from error messages.
-// Currently just limits length and removes absolute paths that might leak info.
+// Redacts paths that might contain usernames and limits message length.
 func redactSensitiveInfo(msg string) string {
 	// Limit message length
 	const maxLen = 200
@@ -142,10 +143,24 @@ func redactSensitiveInfo(msg string) string {
 		msg = msg[:maxLen] + "..."
 	}
 
-	// Remove the word "chezmoi" if it appears
+	// Redact the word "chezmoi"
 	msg = strings.ReplaceAll(msg, "chezmoi", "config manager")
-	msg = strings.ReplaceAll(msg, "Chezmoi", "config manager")
+	msg = strings.ReplaceAll(msg, "Chezmoi", "Config Manager")
 	msg = strings.ReplaceAll(msg, "CHEZMOI", "CONFIG MANAGER")
+
+	// Redact absolute paths that might contain usernames
+	home, err := os.UserHomeDir()
+	if err == nil && home != "" {
+		msg = strings.ReplaceAll(msg, home, "$HOME")
+	}
+
+	// Redact /home/username patterns
+	re := regexp.MustCompile(`/home/[^/\s]+`)
+	msg = re.ReplaceAllString(msg, "/home/<user>")
+
+	// Redact /Users/username patterns (macOS)
+	re = regexp.MustCompile(`/Users/[^/\s]+`)
+	msg = re.ReplaceAllString(msg, "/Users/<user>")
 
 	return msg
 }
