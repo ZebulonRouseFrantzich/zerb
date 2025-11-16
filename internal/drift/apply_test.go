@@ -264,7 +264,7 @@ func TestApplyAdopt_Integration(t *testing.T) {
 
 	// Create marker file
 	markerPath := filepath.Join(tmpDir, ".zerb-active")
-	if err := os.WriteFile(markerPath, []byte("20250113T120000.000Z"), 0644); err != nil {
+	if err := os.WriteFile(markerPath, []byte("zerb.lua.20250113T120000.000Z"), 0644); err != nil {
 		t.Fatalf("failed to write marker: %v", err)
 	}
 
@@ -301,10 +301,10 @@ func TestApplyAdopt_Integration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to read marker: %v", err)
 	}
-	newTimestamp := string(markerContent)
+	newConfigFilename := strings.TrimSpace(string(markerContent))
 
 	// Verify new config content
-	newConfigPath := filepath.Join(configsDir, "zerb.lua."+newTimestamp)
+	newConfigPath := filepath.Join(configsDir, newConfigFilename)
 	newConfigContent, err := os.ReadFile(newConfigPath)
 	if err != nil {
 		t.Fatalf("failed to read new config: %v", err)
@@ -346,7 +346,7 @@ func TestApplyAdopt_Integration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to read symlink: %v", err)
 	}
-	expectedTarget := filepath.Join("configs", "zerb.lua."+newTimestamp)
+	expectedTarget := filepath.Join("configs", newConfigFilename)
 	if symlinkTarget != expectedTarget {
 		t.Errorf("symlink target = %q, want %q", symlinkTarget, expectedTarget)
 	}
@@ -422,7 +422,7 @@ func TestApplyDriftAction(t *testing.T) {
 
 			// Create marker and symlink
 			markerPath := filepath.Join(tmpDir, ".zerb-active")
-			os.WriteFile(markerPath, []byte("20250113T120000.000Z"), 0644)
+			os.WriteFile(markerPath, []byte("zerb.lua.20250113T120000.000Z"), 0644)
 			symlinkPath := filepath.Join(tmpDir, "zerb.lua.active")
 			os.Symlink(filepath.Join("configs", "zerb.lua.20250113T120000.000Z"), symlinkPath)
 

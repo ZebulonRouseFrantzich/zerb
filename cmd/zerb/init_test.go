@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -166,7 +165,7 @@ func TestIsAlreadyInitialized(t *testing.T) {
 			name: ".zerb-active marker exists - initialized",
 			setup: func(dir string) error {
 				markerPath := filepath.Join(dir, ".zerb-active")
-				return os.WriteFile(markerPath, []byte("20250101T120000Z"), 0644)
+				return os.WriteFile(markerPath, []byte("zerb.lua.20250101T120000.000Z"), 0644)
 			},
 			expected: true,
 		},
@@ -215,7 +214,7 @@ func TestIsAlreadyInitialized_FullyInitialized(t *testing.T) {
 
 	// Create marker
 	markerPath := filepath.Join(tmpDir, ".zerb-active")
-	if err := os.WriteFile(markerPath, []byte("20250101T120000Z"), 0644); err != nil {
+	if err := os.WriteFile(markerPath, []byte("zerb.lua.20250101T120000.000Z"), 0644); err != nil {
 		t.Fatalf("create marker failed: %v", err)
 	}
 
@@ -248,19 +247,18 @@ func TestGenerateInitialConfig(t *testing.T) {
 		t.Fatalf("failed to read marker file: %v", err)
 	}
 
-	timestamp := strings.TrimSpace(string(markerContent))
-	if timestamp == "" {
+	configFilename := strings.TrimSpace(string(markerContent))
+	if configFilename == "" {
 		t.Error("marker file is empty")
 	}
 
-	// Verify timestamp format (YYYYMMDDTHHMMSS.SSSZ with milliseconds)
-	timestampRegex := regexp.MustCompile(`^\d{8}T\d{6}\.\d{3}Z$`)
-	if !timestampRegex.MatchString(timestamp) {
-		t.Errorf("marker timestamp has invalid format: %s (expected YYYYMMDDTHHMMSS.SSSZ)", timestamp)
+	// Verify filename format (zerb.lua.YYYYMMDDTHHMMSS.SSSZ with milliseconds)
+	filenameRegex := regexp.MustCompile(`^zerb\.lua\.\d{8}T\d{6}\.\d{3}Z$`)
+	if !filenameRegex.MatchString(configFilename) {
+		t.Errorf("marker filename has invalid format: %s (expected zerb.lua.YYYYMMDDTHHMMSS.SSSZ)", configFilename)
 	}
 
 	// Verify timestamped config file exists
-	configFilename := fmt.Sprintf("zerb.lua.%s", timestamp)
 	configPath := filepath.Join(tmpDir, "configs", configFilename)
 	configContent, err := os.ReadFile(configPath)
 	if err != nil {
@@ -416,7 +414,7 @@ func TestRunInit_AlreadyInitialized(t *testing.T) {
 	}
 
 	markerPath := filepath.Join(tmpDir, ".zerb-active")
-	if err := os.WriteFile(markerPath, []byte("20250101T120000Z"), 0644); err != nil {
+	if err := os.WriteFile(markerPath, []byte("zerb.lua.20250101T120000.000Z"), 0644); err != nil {
 		t.Fatalf("create marker failed: %v", err)
 	}
 
