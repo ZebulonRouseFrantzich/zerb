@@ -93,7 +93,7 @@ func applyAdopt(result DriftResult, configPath string, zerbDir string) error {
 
 	// Update .zerb-active marker (0600 for consistency)
 	markerPath := filepath.Join(zerbDir, ".zerb-active")
-	if err := os.WriteFile(markerPath, []byte(timestamp), 0600); err != nil {
+	if err := os.WriteFile(markerPath, []byte(newConfigFilename), 0600); err != nil {
 		return fmt.Errorf("update marker: %w", err)
 	}
 

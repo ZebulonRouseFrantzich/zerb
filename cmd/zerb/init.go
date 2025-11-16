@@ -159,7 +159,7 @@ func generateInitialConfig(ctx context.Context, zerbDir string) error {
 
 	// Create .zerb-active marker file (0600 for consistency)
 	markerPath := filepath.Join(zerbDir, ".zerb-active")
-	if err := os.WriteFile(markerPath, []byte(timestamp), 0600); err != nil {
+	if err := os.WriteFile(markerPath, []byte(configFilename), 0600); err != nil {
 		return fmt.Errorf("write marker file: %w", err)
 	}
 
