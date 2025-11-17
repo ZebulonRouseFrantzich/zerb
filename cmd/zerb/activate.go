@@ -83,8 +83,11 @@ func runActivate(args []string) error {
 		fmt.Fprintf(os.Stderr, "  Your ZERB environment is working, but configuration changes\n")
 		fmt.Fprintf(os.Stderr, "  are not being tracked in version history.\n")
 		fmt.Fprintf(os.Stderr, "  \n")
-		fmt.Fprintf(os.Stderr, "  To enable versioning and sync:\n")
-		fmt.Fprintf(os.Stderr, "    zerb git init\n")
+		fmt.Fprintf(os.Stderr, "  To enable versioning and sync (temporary workaround):\n")
+		fmt.Fprintf(os.Stderr, "    rm %s\n", noGitMarkerPath)
+		fmt.Fprintf(os.Stderr, "    zerb uninit && zerb init\n")
+		fmt.Fprintf(os.Stderr, "  \n")
+		fmt.Fprintf(os.Stderr, "  Note: A 'zerb git init' command is planned for future release.\n")
 		fmt.Fprintf(os.Stderr, "  \n")
 		fmt.Fprintf(os.Stderr, "  (This message appears once per activate until git is set up)\n\n")
 	}

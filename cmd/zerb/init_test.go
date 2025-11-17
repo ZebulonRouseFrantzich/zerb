@@ -53,6 +53,34 @@ func TestCreateDirectoryStructure(t *testing.T) {
 	}
 }
 
+// TestCreateDirectoryStructure_RootPermissions verifies ZERB root directory has 0700 permissions
+func TestCreateDirectoryStructure_RootPermissions(t *testing.T) {
+	// Create a parent directory to contain our test ZERB root
+	parent := t.TempDir()
+	zerbRoot := filepath.Join(parent, "zerb-test")
+
+	// Create the directory structure (which includes creating the root)
+	err := createDirectoryStructure(zerbRoot)
+	if err != nil {
+		t.Fatalf("createDirectoryStructure failed: %v", err)
+	}
+
+	// Verify the root directory itself has 0700 permissions
+	info, err := os.Stat(zerbRoot)
+	if err != nil {
+		t.Fatalf("failed to stat ZERB root directory: %v", err)
+	}
+
+	if !info.IsDir() {
+		t.Fatal("ZERB root exists but is not a directory")
+	}
+
+	// Check permissions (must be 0700 for security on multi-user systems)
+	if info.Mode().Perm() != 0700 {
+		t.Errorf("ZERB root directory has wrong permissions: got %o, want 0700", info.Mode().Perm())
+	}
+}
+
 // TestCreateDirectoryStructure_IdempotentOperations tests that calling createDirectoryStructure twice doesn't fail
 func TestCreateDirectoryStructure_Idempotent(t *testing.T) {
 	tmpDir := t.TempDir()

@@ -323,3 +323,109 @@ func TestClient_Commit_EmptyMessage(t *testing.T) {
 		t.Error("Commit() with empty message should return error")
 	}
 }
+
+func TestClient_GetHeadCommit(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Initialize git repo
+	initCmd := exec.Command("git", "init")
+	initCmd.Dir = tmpDir
+	if err := initCmd.Run(); err != nil {
+		t.Fatalf("cannot initialize git repo: %v", err)
+	}
+
+	// Configure git user
+	nameCmd := exec.Command("git", "config", "user.name", "Test User")
+	nameCmd.Dir = tmpDir
+	nameCmd.Run()
+
+	emailCmd := exec.Command("git", "config", "user.email", "test@example.com")
+	emailCmd.Dir = tmpDir
+	emailCmd.Run()
+
+	// Create and commit a file
+	testFile := filepath.Join(tmpDir, "test.txt")
+	os.WriteFile(testFile, []byte("content"), 0644)
+
+	addCmd := exec.Command("git", "add", "test.txt")
+	addCmd.Dir = tmpDir
+	addCmd.Run()
+
+	commitCmd := exec.Command("git", "commit", "-m", "Initial commit")
+	commitCmd.Dir = tmpDir
+	if err := commitCmd.Run(); err != nil {
+		t.Fatalf("cannot create commit: %v", err)
+	}
+
+	client := NewClient(tmpDir)
+	ctx := context.Background()
+
+	// Get HEAD commit hash
+	hash, err := client.GetHeadCommit(ctx)
+	if err != nil {
+		t.Errorf("GetHeadCommit() error = %v, want nil", err)
+	}
+
+	// Verify hash is valid (40 character hex string)
+	if len(hash) != 40 {
+		t.Errorf("GetHeadCommit() returned hash of length %d, want 40", len(hash))
+	}
+
+	// Verify hash matches what git shows
+	revParseCmd := exec.Command("git", "rev-parse", "HEAD")
+	revParseCmd.Dir = tmpDir
+	output, _ := revParseCmd.Output()
+	expectedHash := strings.TrimSpace(string(output))
+
+	if hash != expectedHash {
+		t.Errorf("GetHeadCommit() = %q, want %q", hash, expectedHash)
+	}
+}
+
+func TestClient_GetHeadCommit_NoCommits(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Initialize git repo without any commits
+	initCmd := exec.Command("git", "init")
+	initCmd.Dir = tmpDir
+	initCmd.Run()
+
+	client := NewClient(tmpDir)
+	ctx := context.Background()
+
+	_, err := client.GetHeadCommit(ctx)
+	if err == nil {
+		t.Error("GetHeadCommit() on repo with no commits should return error")
+	}
+}
+
+func TestClient_GetHeadCommit_NotAGitRepo(t *testing.T) {
+	tmpDir := t.TempDir()
+	// Don't initialize as git repo
+
+	client := NewClient(tmpDir)
+	ctx := context.Background()
+
+	_, err := client.GetHeadCommit(ctx)
+	if err == nil {
+		t.Error("GetHeadCommit() on non-git directory should return error")
+	}
+}
+
+func TestClient_GetHeadCommit_ContextCancellation(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	initCmd := exec.Command("git", "init")
+	initCmd.Dir = tmpDir
+	initCmd.Run()
+
+	client := NewClient(tmpDir)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately
+
+	_, err := client.GetHeadCommit(ctx)
+	if err == nil {
+		t.Error("GetHeadCommit() with cancelled context should return error")
+	}
+}

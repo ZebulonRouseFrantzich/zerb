@@ -210,3 +210,58 @@ func containsInner(s, substr string) bool {
 	}
 	return false
 }
+
+// TestWriteGitignore_PermissionDenied tests behavior when directory creation fails due to permissions
+func TestWriteGitignore_PermissionDenied(t *testing.T) {
+	// Skip on systems where we can't reliably test permissions
+	if os.Getuid() == 0 {
+		t.Skip("skipping permission test when running as root")
+	}
+
+	// Create a read-only directory
+	tmpDir := t.TempDir()
+	readOnlyDir := filepath.Join(tmpDir, "readonly")
+	if err := os.Mkdir(readOnlyDir, 0555); err != nil { // r-xr-xr-x (no write)
+		t.Fatalf("failed to create read-only dir: %v", err)
+	}
+
+	// Try to write .gitignore in a subdirectory of read-only dir
+	gitignorePath := filepath.Join(readOnlyDir, "subdir", ".gitignore")
+	err := WriteGitignore(gitignorePath)
+	if err == nil {
+		t.Error("WriteGitignore() should fail when creating directory in read-only parent")
+	}
+}
+
+// TestWriteGitignore_FileWriteError tests behavior when file write fails
+func TestWriteGitignore_FileWriteError(t *testing.T) {
+	// Skip on systems where we can't reliably test permissions
+	if os.Getuid() == 0 {
+		t.Skip("skipping permission test when running as root")
+	}
+
+	// Create directory and make it read-only
+	tmpDir := t.TempDir()
+	if err := os.Chmod(tmpDir, 0555); err != nil { // r-xr-xr-x (no write)
+		t.Fatalf("failed to make dir read-only: %v", err)
+	}
+
+	// Restore permissions for cleanup
+	defer os.Chmod(tmpDir, 0755)
+
+	// Try to write .gitignore in read-only directory
+	gitignorePath := filepath.Join(tmpDir, ".gitignore")
+	err := WriteGitignore(gitignorePath)
+	if err == nil {
+		t.Error("WriteGitignore() should fail when writing to read-only directory")
+	}
+}
+
+// TestWriteGitignore_InvalidPath tests behavior with invalid file paths
+func TestWriteGitignore_InvalidPath(t *testing.T) {
+	// Empty path should fail
+	err := WriteGitignore("")
+	if err == nil {
+		t.Error("WriteGitignore() with empty path should return error")
+	}
+}

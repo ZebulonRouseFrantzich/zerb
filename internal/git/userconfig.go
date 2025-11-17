@@ -10,32 +10,31 @@ import (
 // 2. Standard git environment variables (GIT_AUTHOR_NAME, GIT_AUTHOR_EMAIL)
 // 3. Placeholder values (ZERB User, zerb@localhost)
 //
+// Each tier requires BOTH name AND email to be set (all-or-nothing).
+// If only one value is present in a tier, that tier is skipped entirely.
+//
 // This function never reads global git config to maintain ZERB isolation.
 func DetectGitUser() GitUserInfo {
-	// 1. Try ZERB-specific environment variables first
-	if name := os.Getenv("ZERB_GIT_NAME"); name != "" {
-		email := os.Getenv("ZERB_GIT_EMAIL")
-		if email == "" {
-			email = "zerb@localhost" // Fallback email if name is set but email isn't
-		}
+	// 1. Try ZERB-specific environment variables first (requires both name and email)
+	zerbName := os.Getenv("ZERB_GIT_NAME")
+	zerbEmail := os.Getenv("ZERB_GIT_EMAIL")
+	if zerbName != "" && zerbEmail != "" {
 		return GitUserInfo{
-			Name:       name,
-			Email:      email,
+			Name:       zerbName,
+			Email:      zerbEmail,
 			FromEnv:    true,
 			FromConfig: false,
 			IsDefault:  false,
 		}
 	}
 
-	// 2. Try standard git environment variables
-	if name := os.Getenv("GIT_AUTHOR_NAME"); name != "" {
-		email := os.Getenv("GIT_AUTHOR_EMAIL")
-		if email == "" {
-			email = "git@localhost" // Fallback email if name is set but email isn't
-		}
+	// 2. Try standard git environment variables (requires both name and email)
+	gitName := os.Getenv("GIT_AUTHOR_NAME")
+	gitEmail := os.Getenv("GIT_AUTHOR_EMAIL")
+	if gitName != "" && gitEmail != "" {
 		return GitUserInfo{
-			Name:       name,
-			Email:      email,
+			Name:       gitName,
+			Email:      gitEmail,
 			FromEnv:    true,
 			FromConfig: false,
 			IsDefault:  false,

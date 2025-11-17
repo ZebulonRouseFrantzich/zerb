@@ -452,7 +452,9 @@ func runInit(args []string) error {
 		fmt.Fprintf(os.Stderr, "  Fix or remove .git directory to enable versioning.\n")
 		// Create .zerb-no-git marker
 		markerPath := filepath.Join(zerbDir, ".zerb-no-git")
-		os.WriteFile(markerPath, []byte("git initialization failed: invalid repository\n"), 0600)
+		if writeErr := os.WriteFile(markerPath, []byte("git initialization failed: invalid repository\n"), 0600); writeErr != nil {
+			fmt.Fprintf(os.Stderr, "⚠ Warning: Failed to create marker file: %v\n", writeErr)
+		}
 	} else if isRepo {
 		fmt.Printf("✓ Git repository already exists\n")
 	} else {
@@ -470,7 +472,9 @@ func runInit(args []string) error {
 
 			// Create .zerb-no-git marker
 			markerPath := filepath.Join(zerbDir, ".zerb-no-git")
-			os.WriteFile(markerPath, []byte("git initialization failed\n"), 0600)
+			if writeErr := os.WriteFile(markerPath, []byte("git initialization failed\n"), 0600); writeErr != nil {
+				fmt.Fprintf(os.Stderr, "⚠ Warning: Failed to create marker file: %v\n", writeErr)
+			}
 		} else {
 			fmt.Printf("✓ Initialized git repository\n")
 
@@ -480,8 +484,9 @@ func runInit(args []string) error {
 				fmt.Fprintf(os.Stderr, "⚠ Warning: Failed to configure git user: %v\n", err)
 			} else {
 				if userInfo.IsDefault {
-					fmt.Fprintf(os.Stderr, "⚠ Note: Using placeholder git user (%s <%s>)\n", userInfo.Name, userInfo.Email)
-					fmt.Fprintf(os.Stderr, "  To use your own git identity, set environment variables:\n")
+					fmt.Fprintf(os.Stderr, "⚠ Note: Using placeholder git identity (%s <%s>)\n", userInfo.Name, userInfo.Email)
+					fmt.Fprintf(os.Stderr, "  ZERB maintains complete isolation and does not read global git config.\n")
+					fmt.Fprintf(os.Stderr, "  To set your git identity for ZERB, use environment variables:\n")
 					fmt.Fprintf(os.Stderr, "    export ZERB_GIT_NAME=\"Your Name\"\n")
 					fmt.Fprintf(os.Stderr, "    export ZERB_GIT_EMAIL=\"you@example.com\"\n")
 				} else {
