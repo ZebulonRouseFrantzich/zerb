@@ -2,6 +2,7 @@ package chezmoi
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -366,5 +367,186 @@ func TestTranslateChezmoiError(t *testing.T) {
 				t.Errorf("translateChezmoiError() should not mention 'chezmoi', got: %q", errMsg)
 			}
 		})
+	}
+}
+
+func TestClient_HasFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	sourceDir := filepath.Join(tmpDir, "source")
+	if err := os.MkdirAll(sourceDir, 0755); err != nil {
+		t.Fatalf("failed to create source dir: %v", err)
+	}
+
+	client := &Client{
+		bin:  filepath.Join(tmpDir, "bin", "chezmoi"),
+		src:  sourceDir,
+		conf: filepath.Join(tmpDir, "config.toml"),
+	}
+
+	tests := []struct {
+		name      string
+		setupFunc func(t *testing.T)
+		path      string
+		want      bool
+		wantErr   bool
+	}{
+		{
+			name: "file exists in source",
+			setupFunc: func(t *testing.T) {
+				// Create dot_zshrc in source directory
+				if err := os.WriteFile(filepath.Join(sourceDir, "dot_zshrc"), []byte("test"), 0644); err != nil {
+					t.Fatalf("failed to create source file: %v", err)
+				}
+			},
+			path: "~/.zshrc",
+			want: true,
+		},
+		{
+			name: "file does not exist in source",
+			setupFunc: func(t *testing.T) {
+				// No setup needed - file won't exist
+			},
+			path:    "~/.bashrc",
+			want:    false,
+			wantErr: false,
+		},
+		{
+			name: "nested file exists",
+			setupFunc: func(t *testing.T) {
+				// Create nested directory structure
+				nestedDir := filepath.Join(sourceDir, "dot_config", "nvim")
+				if err := os.MkdirAll(nestedDir, 0755); err != nil {
+					t.Fatalf("failed to create nested dir: %v", err)
+				}
+				if err := os.WriteFile(filepath.Join(nestedDir, "init.lua"), []byte("test"), 0644); err != nil {
+					t.Fatalf("failed to create nested file: %v", err)
+				}
+			},
+			path: "~/.config/nvim/init.lua",
+			want: true,
+		},
+		{
+			name: "directory exists",
+			setupFunc: func(t *testing.T) {
+				// Create directory
+				dir := filepath.Join(sourceDir, "dot_config", "git")
+				if err := os.MkdirAll(dir, 0755); err != nil {
+					t.Fatalf("failed to create directory: %v", err)
+				}
+			},
+			path: "~/.config/git",
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.setupFunc != nil {
+				tt.setupFunc(t)
+			}
+
+			ctx := context.Background()
+			got, err := client.HasFile(ctx, tt.path)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("HasFile() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("HasFile() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestClient_HasFile_ContextCancellation(t *testing.T) {
+	tmpDir := t.TempDir()
+	sourceDir := filepath.Join(tmpDir, "source")
+	if err := os.MkdirAll(sourceDir, 0755); err != nil {
+		t.Fatalf("failed to create source dir: %v", err)
+	}
+
+	client := &Client{
+		bin:  filepath.Join(tmpDir, "bin", "chezmoi"),
+		src:  sourceDir,
+		conf: filepath.Join(tmpDir, "config.toml"),
+	}
+
+	// Create cancelled context
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := client.HasFile(ctx, "~/.zshrc")
+	if err == nil {
+		t.Fatal("expected error for cancelled context, got nil")
+	}
+}
+
+func TestClient_HasFile_InvalidPath(t *testing.T) {
+	tmpDir := t.TempDir()
+	client := &Client{
+		bin:  filepath.Join(tmpDir, "bin", "chezmoi"),
+		src:  filepath.Join(tmpDir, "source"),
+		conf: filepath.Join(tmpDir, "config.toml"),
+	}
+
+	ctx := context.Background()
+	_, err := client.HasFile(ctx, "")
+	if err == nil {
+		t.Fatal("expected error for empty path, got nil")
+	}
+}
+
+func TestRedactedError(t *testing.T) {
+	tests := []struct {
+		name        string
+		err         error
+		context     string
+		wantMessage string
+		checkIsErr  error
+	}{
+		{
+			name:        "basic error redaction",
+			err:         os.ErrNotExist,
+			context:     "test operation",
+			wantMessage: "test operation:",
+			checkIsErr:  os.ErrNotExist,
+		},
+		{
+			name:        "error with path redaction",
+			err:         &os.PathError{Op: "stat", Path: "/home/user/.config/file", Err: os.ErrNotExist},
+			context:     "check file",
+			wantMessage: "check file:",
+			checkIsErr:  os.ErrNotExist, // Check for the wrapped error
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			redacted := newRedactedError(tt.err, tt.context)
+
+			// Check error message
+			msg := redacted.Error()
+			if !strings.Contains(msg, tt.wantMessage) {
+				t.Errorf("RedactedError.Error() = %q, want to contain %q", msg, tt.wantMessage)
+			}
+
+			// Check unwrap preserves error chain
+			unwrapped := redacted.(*RedactedError).Unwrap()
+			if unwrapped != tt.err {
+				t.Errorf("RedactedError.Unwrap() = %v, want %v", unwrapped, tt.err)
+			}
+
+			// Verify errors.Is works
+			if !errors.Is(redacted, tt.checkIsErr) {
+				t.Errorf("errors.Is() failed for redacted error, want to find %v", tt.checkIsErr)
+			}
+		})
+	}
+}
+
+func TestRedactedError_NilError(t *testing.T) {
+	result := newRedactedError(nil, "test")
+	if result != nil {
+		t.Errorf("newRedactedError(nil) = %v, want nil", result)
 	}
 }

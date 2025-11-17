@@ -129,13 +129,43 @@ The system SHALL use interfaces for dependencies to enable testing and maintaina
 - **THEN** a `StatusDetector` interface SHALL be defined in `internal/config`
 - **AND** service layer SHALL depend on the interface, not concrete implementation
 - **AND** interface SHALL accept context for cancellation
+- **AND** no duplicate interfaces SHALL exist (remove from service package)
 
 #### Scenario: Chezmoi query via interface
 - **WHEN** checking if files are managed by ZERB
 - **THEN** `Chezmoi` interface SHALL be extended with `HasFile(ctx, path) (bool, error)`
 - **AND** service layer SHALL use the interface
 - **AND** implementation SHALL reuse `config.NormalizeConfigPath` for path handling
-- **AND** errors SHALL be wrapped to hide internal paths (chezmoi source directory)
+- **AND** errors SHALL be wrapped using `RedactedError` type to preserve error chain
+- **AND** errors SHALL hide internal paths (chezmoi source directory)
+
+#### Scenario: RedactedError preserves error chain
+- **WHEN** HasFile returns an error
+- **THEN** error SHALL be wrapped in `RedactedError` type
+- **AND** `RedactedError.Unwrap()` SHALL return original error
+- **AND** upstream code CAN use `errors.Is/errors.As` for error type checking
+- **AND** error message SHALL be redacted (no internal paths, no "chezmoi")
+
+### Requirement: Path Normalization
+The system SHALL normalize configuration paths to handle tilde expansion and path canonicalization.
+
+#### Scenario: Service layer normalizes paths
+- **WHEN** service retrieves configs from parser
+- **THEN** service SHALL normalize each config path using `config.NormalizeConfigPath`
+- **AND** normalized paths SHALL be passed to status detector
+- **AND** detector SHALL receive pre-normalized paths (no tilde, absolute)
+- **AND** normalization errors SHALL be wrapped with config path context
+
+#### Scenario: Tilde paths handled correctly
+- **WHEN** config contains path `~/.zshrc`
+- **THEN** path SHALL be normalized to `$HOME/.zshrc` before status detection
+- **AND** `os.Stat` SHALL succeed (tilde expanded)
+- **AND** status detection SHALL work correctly
+
+#### Scenario: Nested tilde paths handled correctly
+- **WHEN** config contains path `~/.config/nvim/init.lua`
+- **THEN** path SHALL be normalized to `$HOME/.config/nvim/init.lua`
+- **AND** all path operations SHALL use normalized path
 
 ### Requirement: Context Support
 The system SHALL support cancellation and timeouts via context.
@@ -151,3 +181,26 @@ The system SHALL support cancellation and timeouts via context.
 - **THEN** operation is cancelled
 - **AND** error displayed: "Operation timed out"
 - **AND** exit code is 1
+
+### Requirement: Test Coverage
+The system SHALL maintain >80% test coverage for all new code.
+
+#### Scenario: CLI layer test coverage
+- **WHEN** implementing `cmd/zerb/config_list.go`
+- **THEN** test file `cmd/zerb/config_list_test.go` SHALL exist
+- **AND** coverage SHALL be >80%
+- **AND** tests SHALL include unit tests with mock service
+- **AND** tests SHALL include integration tests with real service
+
+#### Scenario: Service layer test coverage
+- **WHEN** implementing `internal/service/config_list.go`
+- **THEN** test file `internal/service/config_list_test.go` SHALL exist
+- **AND** coverage SHALL be >80%
+- **AND** all error paths SHALL be tested (empty marker, missing config, etc.)
+
+#### Scenario: Status detection test coverage
+- **WHEN** implementing `internal/config/status.go`
+- **THEN** test file `internal/config/status_test.go` SHALL exist
+- **AND** coverage SHALL be >80%
+- **AND** tests SHALL include tilde path scenarios using `t.Setenv("HOME")`
+- **AND** tests SHALL include nested path scenarios

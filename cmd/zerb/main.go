@@ -49,7 +49,7 @@ func main() {
 			if len(os.Args) < 3 {
 				fmt.Fprintln(os.Stderr, "Error: config subcommand requires an action")
 				fmt.Fprintln(os.Stderr, "Usage: zerb config add [options] <path>...")
-				fmt.Fprintln(os.Stderr, "       (list and remove coming soon)")
+				fmt.Fprintln(os.Stderr, "       zerb config list [options]")
 				os.Exit(1)
 			}
 			switch os.Args[2] {
@@ -58,10 +58,15 @@ func main() {
 					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 					os.Exit(1)
 				}
+			case "list":
+				if err := runConfigList(os.Args[3:]); err != nil {
+					fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+					os.Exit(1)
+				}
 			default:
 				fmt.Fprintf(os.Stderr, "Error: unknown config action: %s\n", os.Args[2])
 				fmt.Fprintln(os.Stderr, "Usage: zerb config add [options] <path>...")
-				fmt.Fprintln(os.Stderr, "       (list and remove coming soon)")
+				fmt.Fprintln(os.Stderr, "       zerb config list [options]")
 				os.Exit(1)
 			}
 			return
@@ -82,6 +87,7 @@ func main() {
 	fmt.Println("  zerb activate <shell>      Generate shell activation script (bash, zsh, fish)")
 	fmt.Println("  zerb drift [options]       Check for environment drift")
 	fmt.Println("  zerb config add [options]  Add config files to tracking")
+	fmt.Println("  zerb config list [options] List tracked config files")
 	fmt.Println()
 	fmt.Println("Coming soon:")
 	fmt.Println("  zerb add                   Add tools to your environment")

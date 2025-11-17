@@ -155,18 +155,24 @@ func (c *Client) HasFile(ctx context.Context, path string) (bool, error) {
     // 1. Use config.NormalizeConfigPath to get canonical path (security)
     // 2. Map to chezmoi source-relative path
     // 3. Check filesystem directly
-    // 4. Wrap errors with redactSensitiveInfo (never expose internal paths)
+    // 4. Wrap errors with RedactedError (preserve error chain while hiding paths)
 }
 ```
 
 **Key Requirements**:
 - **Interface-based**: Service layer depends on `Chezmoi` interface, not `*Client`
 - **Path safety**: MUST reuse `config.NormalizeConfigPath` for canonical paths
-- **Error redaction**: Wrap all errors to hide internal chezmoi paths
+- **Error redaction**: Use `RedactedError` wrapper type to preserve error chain while hiding sensitive info
 - **Fast**: Direct filesystem check, no chezmoi binary invocation
 
 **Alternative Considered**: Invoke `chezmoi managed` command
 - Rejected: Slower, more complex, same result
+
+**Error Handling Design**:
+- Implement `RedactedError` type with `Unwrap()` method
+- Preserves error chain for `errors.Is/errors.As` checks
+- Redacts sensitive information (paths, "chezmoi" mentions)
+- Enables upstream code to handle specific error types while maintaining security
 
 ### 6. Historical Config Listing (--all)
 
@@ -217,9 +223,11 @@ sort.Slice(configs, func(i, j int) {
 - `ErrInvalidPath`: Path validation failed
 
 **Error Redaction**:
-- All errors from `HasFile` MUST be wrapped with `redactSensitiveInfo`
+- All errors from `HasFile` MUST be wrapped with `RedactedError` type
+- `RedactedError` implements `Unwrap()` to preserve error chains
 - Never expose internal paths (`~/.config/zerb/chezmoi/source`)
 - Never expose "chezmoi" in user-facing messages
+- Enables `errors.Is/errors.As` checks while maintaining security
 
 **User-Facing Messages**:
 - Clear, actionable
@@ -232,7 +240,43 @@ Error: ZERB not initialized
 Run: zerb init
 ```
 
-### 9. Context Support
+### 9. Path Normalization Strategy
+
+**Decision**: Service layer normalizes paths before passing to detector (Option A).
+
+**Rationale**:
+- **Single normalization point**: Happens once for all operations
+- **Detector receives clean data**: Simpler detector implementation
+- **Better error context**: Service can provide user-friendly errors about which config failed
+- **Consistent with other layers**: Service orchestrates, detector executes
+- **Easier testing**: Detector tests can assume normalized paths
+
+**Data Flow**:
+```
+Service.List()
+  ├─ For each config:
+  │   ├─ normalizedPath = NormalizeConfigPath(cfg.Path)
+  │   ├─ Update cfg.Path with normalized path
+  │   └─ Pass normalized configs to detector
+  └─ Detector uses pre-normalized paths directly
+```
+
+**Implementation Location**:
+- **Service layer** (`internal/service/config_list.go`): Normalizes before detection
+- **Detector** (`internal/config/status.go`): Uses pre-normalized paths (documents this assumption)
+- **Chezmoi** (`internal/chezmoi/chezmoi.go`): HasFile already normalizes (unchanged)
+
+**Alternatives Considered**:
+- **Option B (Detector normalizes)**: Rejected - would normalize twice (os.Stat + HasFile)
+- **Option C (Hybrid with extra field)**: Rejected - over-engineered, requires type changes
+
+**Benefits**:
+- Fixes tilde path bug (paths like `~/.zshrc` now work correctly)
+- Single normalization per config (performance)
+- Clear separation of concerns (service validates, detector executes)
+- No breaking changes to types
+
+### 10. Context Support
 
 **Decision**: Full context support for cancellation and timeouts via `--timeout` flag.
 
@@ -267,16 +311,27 @@ result, err := service.List(ctx, request)
 - Test status detection logic in isolation
 - Mock filesystem and chezmoi client
 - Test edge cases (missing files, permission errors)
+- **CRITICAL**: Test tilde paths (`~/.zshrc`) using `t.Setenv("HOME")`
+- Test nested paths (`~/.config/nvim/init.lua`)
 
 **Service Layer**:
 - Test with mock parser, chezmoi, filesystem
-- Test each output format
-- Test error conditions
+- Test path normalization before detection
+- Test error conditions (empty marker, missing config)
+- **Target**: >80% coverage (currently 78.1%, needs 2 more test cases)
 
 **CLI Layer**:
-- Test flag parsing
+- **CRITICAL**: Create `cmd/zerb/config_list_test.go` (currently missing)
+- Test flag parsing (`--verbose`, `--timeout`)
+- Test output formatting (mock service layer)
 - Test help text
-- Test output formatting
+- **Integration tests**: Real service with temp filesystem (CI/CD safe)
+
+**Chezmoi Layer**:
+- Test `HasFile` method with various path types
+- Test `RedactedError` preserves error chain
+- Test error redaction (paths, "chezmoi" → "config manager")
+- Test context cancellation
 
 ### Integration Tests
 
@@ -295,9 +350,14 @@ result, err := service.List(ctx, request)
 ### Test Coverage Goal
 
 >80% coverage for all new code:
-- `cmd/zerb/config_list.go`: >80%
-- `internal/service/config_list.go`: >80%
-- `internal/config/status.go`: >80%
+- `cmd/zerb/config_list.go`: >80% (**Currently 0% - SHIP BLOCKER**)
+- `internal/service/config_list.go`: >80% (**Currently 78.1% - needs 2 test cases**)
+- `internal/config/status.go`: >80% (**Currently 100% ✓**)
+- `internal/chezmoi/chezmoi.go` (HasFile): >80% (**Currently 84.2% ✓**)
+
+**Ship Blockers**:
+1. Add CLI test file with 15-20 test cases
+2. Complete service layer coverage (empty marker, missing config tests)
 
 ## Performance Considerations
 
@@ -433,3 +493,52 @@ Changes from 20250115T140000Z to 20250116T143022Z:
 - **Related Commands**: `zerb config add` (similar patterns)
 - **Related Components**: Drift detection (similar status detection)
 - **External Tools**: None (pure Go implementation)
+
+## Code Review Findings & Resolutions
+
+**Review Date**: 2025-11-17  
+**Reviewers**: golang-pro, test-automator, code-reviewer  
+**Overall Score**: 93/100
+
+### Critical Issues: None ✅
+
+### High Priority Issues (Ship Blockers)
+
+**H1: Status Detection Tilde Path Bug** - RESOLVED
+- **Issue**: `os.Stat(cfg.Path)` doesn't expand `~/.zshrc`
+- **Resolution**: Service layer normalizes paths before detection (Option A)
+- **Implementation**: See section 9 "Path Normalization Strategy"
+
+**H2: CLI Layer Untested** - IN PROGRESS
+- **Issue**: 0% coverage on `cmd/zerb/config_list.go` (314 lines)
+- **Resolution**: Create test file with unit + integration tests
+- **Target**: >80% coverage with 15-20 test cases
+
+**H3: Service Coverage Below Threshold** - IN PROGRESS
+- **Issue**: 78.1% vs 80% required
+- **Resolution**: Add 2 test cases (empty marker, missing config)
+
+### Medium Priority Issues
+
+**M1: RedactedError Implementation** - RESOLVED
+- **Issue**: Error wrapping loses type information for `errors.Is/errors.As`
+- **Resolution**: Implement `RedactedError` type with `Unwrap()` method
+- **Location**: `internal/chezmoi/chezmoi.go`
+
+**M2: Duplicate StatusDetector Interface** - TRACKED
+- **Issue**: Interface defined in both `service` and `config` packages
+- **Resolution**: Remove from service, use `config.StatusDetector`
+
+**M3-M6: Error Wrapping Consistency** - TRACKED
+- Context errors should preserve chain with `%w`
+- Service layer config errors should wrap with `%w`
+- Flag parse errors should include context
+
+### Design Decisions from Review
+
+1. **Path Normalization**: Service layer (Option A) - See section 9
+2. **Error Handling**: RedactedError wrapper type - See section 5
+3. **Interface Deduplication**: Use config.StatusDetector everywhere
+4. **Testing Strategy**: CLI unit tests + integration tests - See Testing Strategy
+
+**Test-to-Code Ratio**: 1.2:1 (739 test lines / 608 impl lines) ✓
