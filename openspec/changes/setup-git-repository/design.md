@@ -78,20 +78,24 @@ worktree.Commit("Initialize ZERB environment", &git.CommitOptions{
 ```
 
 **Migration path:**
-- Current `internal/git/git.go` uses `exec.CommandContext("git", ...)`
-- This change migrates to go-git for: `Init`, `Configure`, `Add`, `Commit`
+- Current `internal/git/git.go` uses `exec.CommandContext("git", ...)` for `Stage`, `Commit`, `GetHeadCommit`
+- This change migrates ALL git operations to go-git: `Init`, `Configure`, `Add`, `Commit`, `Stage`, `GetHeadCommit`
+- Removes CLI subprocess management entirely (`translateGitError`, `extractGitError`)
 - Future Component 07 (git operations) will continue with go-git for: `Status`, `Log`, `Remote`, `Fetch`, `Pull`, `Push`
 
 **Alternatives considered:**
 - Continue with system git: Violates project architecture, creates security/isolation risks
-- Hybrid approach (go-git for some, system git for others): Inconsistent, maintains security risks
+- Hybrid approach (go-git for some, system git for others): **REJECTED** - Inconsistent, maintains security risks, violates architectural decision
 - Shell out with trusted paths: Still violates isolation principle, complex platform handling
+
+**Code Review Note:** Initial implementation used hybrid approach (go-git for init, system git for stage/commit). This was identified as critical violation of Decision 0 and must be fixed before merge.
 
 **Impact:**
 - Add `github.com/go-git/go-git/v5` dependency to `go.mod`
-- All git operations in this change use go-git APIs
+- **ALL** git operations in this change use go-git APIs (no hybrid approach)
 - No CLI subprocess management needed
 - Error handling uses Go errors, not stderr parsing
+- Remove `translateGitError()` and `extractGitError()` functions (CLI error parsing no longer needed)
 
 ### Decision 0.1: ZERB Directory Security (Permissions)
 
@@ -168,11 +172,13 @@ func createDirectoryStructure(zerbDir string) error {
 
 ### Decision 2: Git User Configuration Strategy
 
-**Choice:** Three-tier fallback system (environment → ZERB config → placeholders)
+**Choice:** Three-tier fallback system (environment → ZERB config → placeholders) with **all-or-nothing** per tier
 
-1. Try environment variables (`ZERB_GIT_NAME`, `ZERB_GIT_EMAIL`, or `GIT_AUTHOR_NAME`, `GIT_AUTHOR_EMAIL`)
+1. Try environment variables (`ZERB_GIT_NAME` **AND** `ZERB_GIT_EMAIL` together, or `GIT_AUTHOR_NAME` **AND** `GIT_AUTHOR_EMAIL` together)
 2. Try ZERB-local configuration (future: `git.user.*` in `zerb.lua`)
 3. Use placeholder values (`ZERB User`, `zerb@localhost`)
+
+**Partial environment variables are rejected:** If only name or only email is set in a tier, fall through to next tier rather than mixing values.
 
 **Rationale:**
 - **Isolation principle**: Never read or write global git config (`~/.gitconfig`) to maintain complete ZERB isolation
@@ -192,22 +198,24 @@ type GitUserInfo struct {
 }
 
 func detectGitUser(cfg *config.Config) GitUserInfo {
-    // 1. Try ZERB-specific environment variables first
-    if name := os.Getenv("ZERB_GIT_NAME"); name != "" {
-        email := os.Getenv("ZERB_GIT_EMAIL")
-        return GitUserInfo{Name: name, Email: email, FromEnv: true}
+    // 1. Try ZERB-specific environment variables (both required)
+    zerbName := os.Getenv("ZERB_GIT_NAME")
+    zerbEmail := os.Getenv("ZERB_GIT_EMAIL")
+    if zerbName != "" && zerbEmail != "" {
+        return GitUserInfo{Name: zerbName, Email: zerbEmail, FromEnv: true}
     }
     
-    // 2. Try standard git environment variables
-    if name := os.Getenv("GIT_AUTHOR_NAME"); name != "" {
-        email := os.Getenv("GIT_AUTHOR_EMAIL")
-        return GitUserInfo{Name: name, Email: email, FromEnv: true}
+    // 2. Try standard git environment variables (both required)
+    gitName := os.Getenv("GIT_AUTHOR_NAME")
+    gitEmail := os.Getenv("GIT_AUTHOR_EMAIL")
+    if gitName != "" && gitEmail != "" {
+        return GitUserInfo{Name: gitName, Email: gitEmail, FromEnv: true}
     }
     
     // 3. Try ZERB config (future: cfg.Git.User.Name / cfg.Git.User.Email)
     // Not implemented in this change
     
-    // 4. Fallback to placeholders
+    // 4. Fallback to placeholders (both values together)
     return GitUserInfo{
         Name:      "ZERB User",
         Email:     "zerb@localhost",
@@ -372,11 +380,14 @@ ZERB follows a strict separation:
   Your ZERB environment is working, but configuration changes
   are not being tracked in version history.
   
-  To enable versioning and sync:
-    zerb git init
+  To enable versioning and sync (temporary workaround):
+    rm ~/.config/zerb/.zerb-no-git
+    zerb uninit && zerb init
   
   (This message appears once per activate until git is set up)
 ```
+
+**Note:** The workaround shown is temporary. Future work will add `zerb git init` command for deferred git setup. See `openspec/future-proposal-information/git-deferred-init.md` for planned approach.
 
 **Implementation approach:**
 Using go-git library:
@@ -408,7 +419,7 @@ func initGitRepo(zerbDir string) error {
 - Warn every command: Too noisy, user fatigue
 
 **Future enhancement:**
-- `zerb git init` command to initialize git in already-initialized ZERB environment
+- `zerb git init` command to initialize git in already-initialized ZERB environment (see `openspec/future-proposal-information/git-deferred-init.md`)
 - `zerb doctor` check for git status and recommendations
 
 ### Decision 6: Repository Location
@@ -450,11 +461,17 @@ func initGitRepo(zerbDir string) error {
 
 **Mitigation:**
 - Strict TDD methodology required (RED → GREEN → REFACTOR)
-- Minimum 80% test coverage enforced
-- Unit tests for all git operations methods
+- Minimum 80% test coverage enforced (measured: 77.1% initially, must reach >80% before merge)
+- Unit tests for all git initialization methods
 - Integration tests for end-to-end `zerb init` workflow
-- Error path testing (missing git, invalid repo, config failures)
-- Test with real git commands to verify go-git operations
+- Error path testing (missing git, invalid repo, config failures, permission errors)
+- Test all go-git operations (no system git in tests)
+- Specific critical tests added per code review:
+  - `GetHeadCommit()` test (currently 0% coverage)
+  - `WriteGitignore()` error paths (permission denied, disk full)
+  - Corrupted repository detection
+  - ZERB root directory 0700 permissions verification
+  - CLI-level `runInit()` integration test (currently 0% coverage)
 
 ### Trade-off: Auto-init vs manual git setup
 

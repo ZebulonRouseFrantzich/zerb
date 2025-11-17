@@ -16,7 +16,7 @@ All tasks MUST follow strict test-first methodology as mandated by project stand
 
 The tasks are organized by feature area for clarity, but implementation MUST proceed test-first within each task.
 
-**Key Architecture Decision:** This change migrates to **go-git** library (pure Go, no system git dependency) per `project.md` requirements and subagent recommendations.
+**Key Architecture Decision:** This change migrates to **go-git** library exclusively (pure Go, no system git dependency) per `project.md` requirements and code review findings. **ALL** git operations must use go-git - hybrid approaches are rejected as architectural violations.
 
 ---
 
@@ -26,7 +26,7 @@ The tasks are organized by feature area for clarity, but implementation MUST pro
 - [x] 0.2 Review go-git documentation and examples
 - [x] 0.3 Verify go-git compatibility with ZERB's supported platforms (Linux amd64/arm64)
 
-## 1. Git Repository Setup (using go-git)
+## 1. Git Repository Setup (using go-git exclusively)
 
 - [x] 1.1 Extend `internal/git` interface with initialization methods
   - Add `InitRepo(ctx context.Context) error` method to interface
@@ -47,13 +47,26 @@ The tasks are organized by feature area for clarity, but implementation MUST pro
   - Stage files via `worktree.Add(filename)` for each file
   - Create commit via `worktree.Commit(message, &git.CommitOptions{})`
   - Set commit author from `GitUserInfo`
-- [x] 1.5 Add unit tests for git initialization methods
+- [ ] 1.5 **CRITICAL: Migrate remaining git operations to go-git**
+  - Replace `Stage()` implementation (lines 63-81) with go-git worktree API
+  - Replace `Commit()` implementation (lines 84-101) with go-git worktree API
+  - Replace `GetHeadCommit()` implementation (lines 108-118) with go-git reference API
+  - Remove `translateGitError()` function (lines 120-145) - no longer needed
+  - Remove `extractGitError()` function (lines 148-173) - no longer needed
+  - Remove all `exec.CommandContext("git", ...)` calls
+  - Ensure zero system git dependencies
+- [x] 1.6 Add unit tests for git initialization methods
   - Test successful repo creation
   - Test detecting existing valid repository
   - Test detecting invalid/corrupt repository
   - Test user configuration (verify config file contents)
   - Test commit creation (verify git history)
-- [x] 1.6 Add integration test for full init workflow with go-git
+- [ ] 1.7 **CRITICAL: Add unit tests for migrated git operations**
+  - Test `Stage()` with go-git implementation
+  - Test `Commit()` with go-git implementation
+  - Test `GetHeadCommit()` with go-git implementation (currently 0% coverage)
+  - Verify no system git calls in any tests
+- [x] 1.8 Add integration test for full init workflow with go-git
   - Verify `.git` directory structure created
   - Verify repository is valid (can be opened with go-git)
   - Verify initial commit exists with correct files and message
@@ -68,11 +81,15 @@ The tasks are organized by feature area for clarity, but implementation MUST pro
 - [x] 2.4 Add `WriteGitignore(path string) error` function in `internal/git`
   - Write template to specified path with 0644 permissions
   - Create parent directories if needed
-- [x] 2.5 Test .gitignore effectiveness with go-git status check
+- [ ] 2.5 **HIGH PRIORITY: Add error path tests for WriteGitignore()**
+  - Test permission denied scenario (read-only directory)
+  - Test disk full simulation (write failure)
+  - Currently only success path tested (66.7% coverage)
+- [x] 2.6 Test .gitignore effectiveness with go-git status check
   - Create test files in excluded directories
   - Use `worktree.Status()` to verify files are ignored
   - Verify `configs/` files are NOT ignored
-- [x] 2.6 Document rationale for excluding generated configs (derived from zerb.lua)
+- [x] 2.7 Document rationale for excluding generated configs (derived from zerb.lua)
 
 ## 3. Init Command Integration
 
@@ -89,42 +106,55 @@ The tasks are organized by feature area for clarity, but implementation MUST pro
   - If exists and valid: skip initialization, print message
   - If doesn't exist: initialize, configure, commit
   - If init fails: create `.zerb-no-git` marker, print warning, continue
-- [x] 3.3 Implement git user detection with new fallback chain
+- [ ] 3.3 **HIGH PRIORITY: Handle errors from git operations**
+  - Handle error from `.zerb-no-git` marker write (lines 454, 472)
+  - Handle error from `IsGitRepo()` check before commit (line 523)
+  - Never ignore errors (project standard)
+  - Log failures to stderr with actionable guidance
+- [x] 3.4 Implement git user detection with new fallback chain
   - Check `ZERB_GIT_NAME` / `ZERB_GIT_EMAIL` environment variables first
   - Fallback to `GIT_AUTHOR_NAME` / `GIT_AUTHOR_EMAIL`
   - Fallback to placeholder (`ZERB User`, `zerb@localhost`)
   - Return `GitUserInfo` struct with source indicator
-- [x] 3.4 Add warning message when placeholder git user is used
+- [x] 3.5 Add warning message when placeholder git user is used
   - Display clear message during init
   - Provide instructions to set environment variables
   - Explain implications (commits will have placeholder author)
-- [x] 3.5 Handle git initialization failure gracefully
+- [x] 3.6 Handle git initialization failure gracefully
   - Catch errors from go-git operations
   - Create `.zerb-no-git` marker file
   - Print warning with troubleshooting steps
   - Continue init successfully (git is optional)
-- [x] 3.6 Update success message to mention git repository creation
+- [x] 3.7 Update success message to mention git repository creation
   - Include git status in final init summary
   - Show git user info if configured
   - Mention version control is enabled
 
 ## 4. Git User Configuration
 
-- [x] 4.1 Implement fallback logic: ZERB env vars → git env vars → placeholders
+- [ ] 4.1 **HIGH PRIORITY: Fix fallback logic to reject partial environment variables**
+  - Require **both** ZERB_GIT_NAME **and** ZERB_GIT_EMAIL together (all-or-nothing)
+  - Require **both** GIT_AUTHOR_NAME **and** GIT_AUTHOR_EMAIL together (all-or-nothing)
+  - Never mix name from one tier with email from another
+  - Fall through to next tier if only one variable is set
   - Never read global git config (isolation principle)
-  - Check environment variables in order
   - Return struct indicating source
-- [x] 4.2 Warn user if placeholder values are used
-  - Clear, actionable warning message
+- [ ] 4.2 **HIGH PRIORITY: Improve placeholder warning message**
+  - Emphasize ZERB uses repository-local git config (not global ~/.gitconfig)
+  - Explain isolation principle clearly
   - Show how to set environment variables
-  - Explain why git user info matters
+  - Mention re-running `zerb init` after setting vars
+  - Clear, actionable warning message
 - [x] 4.3 Provide instructions to configure git user info
   - Document recommended approach: export ZERB_GIT_NAME/EMAIL in shell rc
   - Alternative: set per-command with environment
   - Future: mention `zerb.lua` config option (not implemented yet)
-- [x] 4.4 Test with various configuration states
-  - Test with ZERB env vars set
-  - Test with GIT_AUTHOR env vars set
+- [ ] 4.4 **HIGH PRIORITY: Add missing edge case tests**
+  - Test GIT_AUTHOR_NAME only (no email) → should use placeholders
+  - Test ZERB_GIT_EMAIL only (no name) → should use placeholders
+  - Test mixed vars (ZERB_GIT_NAME + GIT_AUTHOR_EMAIL) → should use placeholders
+  - Test with ZERB env vars set (both)
+  - Test with GIT_AUTHOR env vars set (both)
   - Test with no env vars (placeholders)
   - Test that global git config is NEVER read
   - Verify repository-local config is written correctly
@@ -138,10 +168,12 @@ The tasks are organized by feature area for clarity, but implementation MUST pro
 - [x] 5.2 Verify subdirectories inherit or use 0700 permissions
   - All sensitive subdirectories (`configs/`, `.git/`, `cache/`, etc.) should be 0700
   - Only public subdirectories (if any) can be more permissive
-- [x] 5.3 Add test verifying ZERB directory permissions
-  - Assert `zerbDir` has mode `0700` after init
+- [ ] 5.3 **CRITICAL: Add test verifying ZERB ROOT directory permissions**
+  - Current test only checks subdirectories, missing root check
+  - Assert `zerbDir` itself has mode `0700` after init
   - Assert `.git` subdirectory is within `0700` parent
   - Test on Linux (MVP platform)
+  - Add test after line 23 in `cmd/zerb/init_test.go`
 - [x] 5.4 Add test for multi-user protection
   - Simulate multi-user scenario (if possible in test environment)
   - Verify other users cannot access ZERB directory
@@ -185,6 +217,10 @@ The tasks are organized by feature area for clarity, but implementation MUST pro
 - [x] 7.1.10 Test `CreateInitialCommit()` includes .gitignore file
 - [x] 7.1.11 Test `CreateInitialCommit()` includes timestamped config file
 - [x] 7.1.12 Test `CreateInitialCommit()` stages .gitignore before config
+- [ ] 7.1.13 **CRITICAL: Test `GetHeadCommit()` returns valid commit hash** (currently 0% coverage)
+- [ ] 7.1.14 **HIGH PRIORITY: Test `Stage()` stages files correctly** (go-git implementation)
+- [ ] 7.1.15 **HIGH PRIORITY: Test `Commit()` creates commit from staged files** (go-git implementation)
+- [ ] 7.1.16 **MEDIUM: Test `CreateInitialCommit()` file staging failure** (non-existent file)
 
 ### 7.2 Integration Tests (TDD - Write First)
 - [x] 7.2.1 Test `zerb init` creates .git directory using go-git
@@ -200,12 +236,32 @@ The tasks are organized by feature area for clarity, but implementation MUST pro
 - [x] 7.2.11 Test idempotency (running init twice should detect existing repo)
 - [x] 7.2.12 Test ZERB directory created with 0700 permissions
 - [x] 7.2.13 Test with clean environment (no git env vars set)
+- [ ] 7.2.14 **CRITICAL: Test complete `runInit()` workflow** (currently 0% coverage)
+  - Clean directory → repo initialized
+  - .gitignore created and committed
+  - Initial commit with correct message and files
+  - Verify 7-step sequence executes correctly
+- [ ] 7.2.15 **HIGH PRIORITY: Test .gitignore creation in runInit()**
+  - Verify .gitignore file exists after init
+  - Verify file has correct permissions (0644)
+- [ ] 7.2.16 **MEDIUM: Test corrupted git repository handling**
+  - Create invalid .git directory
+  - Verify warning about corruption
+  - Verify .zerb-no-git marker created
 
 ### 7.3 Coverage Requirements
-- [x] 7.3.1 Run `go test -cover ./internal/git` and verify >80% coverage
-- [x] 7.3.2 Run `go test -cover ./cmd/zerb` and verify init command coverage
+- [ ] 7.3.1 **CRITICAL: Reach >80% coverage in `internal/git`** (currently 77.1%)
+  - Add `GetHeadCommit()` test (+2%)
+  - Add `WriteGitignore()` error path tests (+1%)
+  - Remove `extractGitError()` (will eliminate uncovered code)
+  - Target: 84-86% after improvements
+- [ ] 7.3.2 **CRITICAL: Add `cmd/zerb/init.go` coverage for `runInit()`** (currently 0%)
+  - Add CLI-level integration test
+  - Estimated +15% coverage
 - [x] 7.3.3 Generate coverage report: `go test -coverprofile=coverage.out ./...`
-- [x] 7.3.4 Review coverage report for untested edge cases
+- [ ] 7.3.4 Review coverage report for untested edge cases
+  - Focus on error paths
+  - Verify all spec scenarios covered
 
 ## 8. Validation
 
@@ -236,9 +292,11 @@ The tasks are organized by feature area for clarity, but implementation MUST pro
   - Read marker file to determine if git is unavailable
   - Display warning if marker exists
   - Proceed with activation (non-blocking)
-- [x] 9.2 Implement warning message for git unavailable
+- [ ] 9.2 **HIGH PRIORITY: Update warning message with temporary workaround**
   - Clear explanation that versioning is disabled
-  - Instructions to run `zerb git init` (future command)
+  - Provide temporary workaround: `rm ~/.config/zerb/.zerb-no-git && zerb uninit && zerb init`
+  - Note that `zerb git init` command will be added in future
+  - Reference future proposal: `openspec/future-proposal-information/git-deferred-init.md`
   - Emphasize lack of sync/rollback capability
 - [x] 9.3 Test warning appears on activate when git unavailable
 - [x] 9.4 Test no warning when git is properly initialized

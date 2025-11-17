@@ -33,17 +33,26 @@ The system SHALL initialize a git repository during `zerb init` in the ZERB dire
 The system SHALL configure git user information using a three-tier fallback strategy without accessing global git configuration.
 
 #### Scenario: Environment variables available (ZERB-specific)
-- **WHEN** `ZERB_GIT_NAME` and `ZERB_GIT_EMAIL` environment variables are set
+- **WHEN** `ZERB_GIT_NAME` and `ZERB_GIT_EMAIL` environment variables are **both** set
 - **THEN** those values are used for the repository-local git config
 - **AND** no warning is displayed
 - **AND** global git config is NOT read or modified
 
 #### Scenario: Environment variables available (git standard)
-- **WHEN** `ZERB_GIT_NAME` / `ZERB_GIT_EMAIL` are not set
-- **AND** `GIT_AUTHOR_NAME` and `GIT_AUTHOR_EMAIL` environment variables are set
+- **WHEN** `ZERB_GIT_NAME` / `ZERB_GIT_EMAIL` are not set (or only one is set)
+- **AND** `GIT_AUTHOR_NAME` and `GIT_AUTHOR_EMAIL` environment variables are **both** set
 - **THEN** those values are used for repository-local git config
 - **AND** no warning is displayed
 - **AND** global git config is NOT read or modified
+
+#### Scenario: Partial environment variables rejected
+- **WHEN** only `ZERB_GIT_NAME` is set (no `ZERB_GIT_EMAIL`)
+- **OR** only `ZERB_GIT_EMAIL` is set (no `ZERB_GIT_NAME`)
+- **OR** only `GIT_AUTHOR_NAME` is set (no `GIT_AUTHOR_EMAIL`)
+- **OR** only `GIT_AUTHOR_EMAIL` is set (no `GIT_AUTHOR_NAME`)
+- **THEN** system falls through to next tier in fallback chain
+- **AND** does NOT use placeholder email with provided name
+- **AND** both name and email must be set together per tier (all-or-nothing)
 
 #### Scenario: ZERB config available (future)
 - **WHEN** environment variables are not set
@@ -53,10 +62,12 @@ The system SHALL configure git user information using a three-tier fallback stra
 - **Note**: This scenario is for future implementation; not in scope for this change
 
 #### Scenario: Placeholder values used
-- **WHEN** no environment variables are set
+- **WHEN** no complete environment variable pairs are set (both name and email)
 - **AND** no ZERB config available
 - **THEN** placeholder values ("ZERB User", "zerb@localhost") are used
 - **AND** warning message is displayed indicating placeholder values
+- **AND** warning emphasizes repository-local git config (not global ~/.gitconfig)
+- **AND** warning explains ZERB isolation principle
 - **AND** instructions are provided to configure git user info via environment variables
 - **AND** global git config is NOT read or modified
 
@@ -170,13 +181,14 @@ The system SHALL exclude generated configuration files from git tracking, as the
 
 ### Requirement: Git Unavailable Warning on Activate
 
-The system SHALL warn users about missing git versioning on `zerb activate` when git was not initialized.
+The system SHALL warn users about missing git versioning on `zerb activate` when git was not initialized, with temporary workaround instructions.
 
 #### Scenario: Warning displayed on activate when git unavailable
 - **WHEN** `.zerb-no-git` marker file exists
 - **AND** user runs `zerb activate`
 - **THEN** warning message is displayed explaining git is not initialized
-- **AND** message includes instructions to run `zerb git init` (future command)
+- **AND** message includes temporary workaround: `rm ~/.config/zerb/.zerb-no-git && zerb uninit && zerb init`
+- **AND** message notes that `zerb git init` command will be added in future (see `openspec/future-proposal-information/git-deferred-init.md`)
 - **AND** warning emphasizes lack of version history and sync capability
 - **AND** activation proceeds normally (non-blocking warning)
 
@@ -214,15 +226,40 @@ The system SHALL create the ZERB root directory with restrictive permissions to 
 - **THEN** config files are doubly protected (file + directory permissions)
 - **AND** no information leakage through directory enumeration or git history access
 
-### Requirement: Test Coverage
+### Requirement: Complete go-git Migration
+
+The system SHALL use the go-git library exclusively for all git operations, with no system git binary dependencies.
+
+#### Scenario: All git operations use go-git
+- **WHEN** any git operation is performed (init, stage, commit, config, status)
+- **THEN** operation uses go-git library exclusively
+- **AND** no `exec.CommandContext("git", ...)` calls are made
+- **AND** no CLI subprocess management is used
+- **AND** errors are Go errors, not stderr parsing
+
+#### Scenario: Error handling uses Go errors
+- **WHEN** a git operation fails
+- **THEN** error is a Go error from go-git library
+- **AND** error is NOT parsed from CLI stderr output
+- **AND** error is wrapped with context using `fmt.Errorf("context: %w", err)`
+
+#### Scenario: No system git dependency
+- **WHEN** ZERB is installed on a system
+- **THEN** system git binary is NOT required for any git operations
+- **AND** git operations work identically regardless of system git version
+- **AND** git operations work even if system git is not in PATH
+
+**Code Review Note:** Initial implementation used hybrid approach (go-git for init, system git for stage/commit). This violates architectural decision and must be fixed by migrating `Stage()`, `Commit()`, and `GetHeadCommit()` to go-git, and removing `translateGitError()` and `extractGitError()` functions.
 
 The system SHALL have comprehensive test coverage for all git initialization functionality.
 
 #### Scenario: Unit test coverage
 - **WHEN** running `go test -cover ./internal/git`
-- **THEN** coverage is at least 80%
+- **THEN** coverage is at least 80% (currently 77.1%, must improve)
 - **AND** all git initialization methods have unit tests
 - **AND** all error paths are tested
+- **AND** `GetHeadCommit()` has tests (currently 0% coverage)
+- **AND** `WriteGitignore()` error paths are tested (permission denied, write failure)
 
 #### Scenario: Integration test coverage
 - **WHEN** running integration tests for `zerb init`
@@ -231,6 +268,8 @@ The system SHALL have comprehensive test coverage for all git initialization fun
 - **AND** tests verify initial commit contents
 - **AND** tests verify `.gitignore` effectiveness
 - **AND** tests verify git user configuration
+- **AND** complete `runInit()` workflow is tested (currently 0% coverage)
+- **AND** `.gitignore` file creation is verified in integration test
 
 #### Scenario: Test-driven development
 - **WHEN** implementing git initialization features
@@ -242,7 +281,19 @@ The system SHALL have comprehensive test coverage for all git initialization fun
 - **WHEN** testing error handling
 - **THEN** test covers git initialization failure scenario (using go-git)
 - **AND** test covers invalid existing git repository scenario
+- **AND** test covers corrupted git repository scenario (malformed .git directory)
 - **AND** test covers git commit failures
 - **AND** test covers placeholder git user values scenario
 - **AND** test covers directory permission scenarios (0700 enforcement)
+- **AND** test covers ZERB root directory permission verification (currently missing)
+- **AND** test covers `.zerb-no-git` marker write failures
+- **AND** test covers `IsGitRepo()` check failures before commit
+
+**Code Review Note:** Current test suite is missing:
+1. ZERB root directory 0700 permission check (only subdirectories tested)
+2. Corrupted git repository detection test
+3. `GetHeadCommit()` test (0% coverage)
+4. `WriteGitignore()` error path tests
+5. Integration test for complete `runInit()` workflow
+6. Git user detection edge cases (partial env vars, mixed tiers)
 

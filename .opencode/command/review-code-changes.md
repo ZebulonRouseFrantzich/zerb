@@ -1,6 +1,6 @@
 ---
 description: Review the recent changes made in the current branch
-agent: plan
+agent: build
 subtask: false
 ---
 
