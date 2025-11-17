@@ -11,6 +11,7 @@ import (
 
 	"github.com/ZebulonRouseFrantzich/zerb/internal/binary"
 	"github.com/ZebulonRouseFrantzich/zerb/internal/config"
+	"github.com/ZebulonRouseFrantzich/zerb/internal/git"
 	"github.com/ZebulonRouseFrantzich/zerb/internal/platform"
 	"github.com/ZebulonRouseFrantzich/zerb/internal/shell"
 )
@@ -36,9 +37,10 @@ func createDirectoryStructure(zerbDir string) error {
 		filepath.Join(zerbDir, "chezmoi", "source"),
 	}
 
-	// Create each directory with 0755 permissions
+	// Create each directory with 0700 permissions (user-only access for security)
+	// This protects git history and config files on multi-user systems
 	for _, dir := range dirs {
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := os.MkdirAll(dir, 0700); err != nil {
 			return fmt.Errorf("create directory %s: %w", dir, err)
 		}
 	}
@@ -431,7 +433,70 @@ func runInit(args []string) error {
 	fmt.Printf("✓ Created %s\n", zerbDir)
 	fmt.Printf("✓ Created configs/ subdirectory\n")
 
-	// Step 2: Detect platform
+	// Step 2: Write .gitignore file
+	fmt.Printf("\nSetting up git repository...\n")
+	gitignorePath := filepath.Join(zerbDir, ".gitignore")
+	if err := git.WriteGitignore(gitignorePath); err != nil {
+		return fmt.Errorf("write .gitignore: %w", err)
+	}
+
+	// Step 3: Initialize git repository
+	gitClient := git.NewClient(zerbDir)
+
+	// Check if git repo already exists
+	isRepo, err := gitClient.IsGitRepo(ctx)
+	if err != nil {
+		// Invalid/corrupted repository - warn and skip git initialization
+		fmt.Fprintf(os.Stderr, "⚠ Warning: Invalid git repository detected\n")
+		fmt.Fprintf(os.Stderr, "  Skipping git initialization.\n")
+		fmt.Fprintf(os.Stderr, "  Fix or remove .git directory to enable versioning.\n")
+		// Create .zerb-no-git marker
+		markerPath := filepath.Join(zerbDir, ".zerb-no-git")
+		if writeErr := os.WriteFile(markerPath, []byte("git initialization failed: invalid repository\n"), 0600); writeErr != nil {
+			fmt.Fprintf(os.Stderr, "⚠ Warning: Failed to create marker file: %v\n", writeErr)
+		}
+	} else if isRepo {
+		fmt.Printf("✓ Git repository already exists\n")
+	} else {
+		// Initialize new git repository
+		if err := gitClient.InitRepo(ctx); err != nil {
+			// Git initialization failed - warn but continue
+			fmt.Fprintf(os.Stderr, "\n⚠ Warning: Unable to initialize git repository\n")
+			fmt.Fprintf(os.Stderr, "  Git versioning not available.\n")
+			fmt.Fprintf(os.Stderr, "  \n")
+			fmt.Fprintf(os.Stderr, "  To set up git versioning later:\n")
+			fmt.Fprintf(os.Stderr, "    1. Ensure write permissions in %s\n", zerbDir)
+			fmt.Fprintf(os.Stderr, "    2. Run: zerb git init\n")
+			fmt.Fprintf(os.Stderr, "  \n")
+			fmt.Fprintf(os.Stderr, "  ZERB will continue without version control.\n\n")
+
+			// Create .zerb-no-git marker
+			markerPath := filepath.Join(zerbDir, ".zerb-no-git")
+			if writeErr := os.WriteFile(markerPath, []byte("git initialization failed\n"), 0600); writeErr != nil {
+				fmt.Fprintf(os.Stderr, "⚠ Warning: Failed to create marker file: %v\n", writeErr)
+			}
+		} else {
+			fmt.Printf("✓ Initialized git repository\n")
+
+			// Step 4: Configure git user
+			userInfo := git.DetectGitUser()
+			if err := gitClient.ConfigureUser(ctx, userInfo); err != nil {
+				fmt.Fprintf(os.Stderr, "⚠ Warning: Failed to configure git user: %v\n", err)
+			} else {
+				if userInfo.IsDefault {
+					fmt.Fprintf(os.Stderr, "⚠ Note: Using placeholder git identity (%s <%s>)\n", userInfo.Name, userInfo.Email)
+					fmt.Fprintf(os.Stderr, "  ZERB maintains complete isolation and does not read global git config.\n")
+					fmt.Fprintf(os.Stderr, "  To set your git identity for ZERB, use environment variables:\n")
+					fmt.Fprintf(os.Stderr, "    export ZERB_GIT_NAME=\"Your Name\"\n")
+					fmt.Fprintf(os.Stderr, "    export ZERB_GIT_EMAIL=\"you@example.com\"\n")
+				} else {
+					fmt.Printf("✓ Configured git user: %s <%s>\n", userInfo.Name, userInfo.Email)
+				}
+			}
+		}
+	}
+
+	// Step 5: Detect platform
 	fmt.Printf("\nDetecting platform...\n")
 	platformInfo, err := detectPlatform(ctx)
 	if err != nil {
@@ -460,10 +525,30 @@ func runInit(args []string) error {
 	}
 	fmt.Printf("✓ Created initial config\n")
 
-	// Step 5: Detect shell (for showing appropriate instructions)
+	// Step 5: Create initial commit (if git is initialized)
+	isRepo, _ = gitClient.IsGitRepo(ctx)
+	if isRepo {
+		// Find the timestamped config file that was just created
+		markerPath := filepath.Join(zerbDir, ".zerb-active")
+		markerContent, err := os.ReadFile(markerPath)
+		if err == nil {
+			configFilename := strings.TrimSpace(string(markerContent))
+			configPath := filepath.Join("configs", configFilename)
+
+			// Create initial commit with .gitignore and config
+			files := []string{".gitignore", configPath}
+			if err := gitClient.CreateInitialCommit(ctx, "Initialize ZERB environment", files); err != nil {
+				fmt.Fprintf(os.Stderr, "⚠ Warning: Failed to create initial commit: %v\n", err)
+			} else {
+				fmt.Printf("✓ Created initial commit\n")
+			}
+		}
+	}
+
+	// Step 6: Detect shell (for showing appropriate instructions)
 	detectedShell := detectUserShell()
 
-	// Step 6: Check if zerb is on PATH and show appropriate success message
+	// Step 7: Check if zerb is on PATH and show appropriate success message
 	zerbPath := checkZerbOnPath()
 	if zerbPath == "" {
 		// zerb is not on PATH - print warning with install instructions
