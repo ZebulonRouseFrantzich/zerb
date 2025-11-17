@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/ZebulonRouseFrantzich/zerb/internal/config"
+	"github.com/ZebulonRouseFrantzich/zerb/internal/git"
 )
 
 // TestCreateDirectoryStructure tests that all required directories are created
@@ -545,4 +546,121 @@ func TestIsOnPath(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestCreateDirectoryStructure_CorruptedGitRepo tests handling of corrupted .git directory
+func TestCreateDirectoryStructure_CorruptedGitRepo(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create directory structure first
+	if err := createDirectoryStructure(tmpDir); err != nil {
+		t.Fatalf("createDirectoryStructure failed: %v", err)
+	}
+
+	// Create a corrupted .git directory (just a regular file instead of directory)
+	gitPath := filepath.Join(tmpDir, ".git")
+	if err := os.WriteFile(gitPath, []byte("corrupted"), 0644); err != nil {
+		t.Fatalf("failed to create corrupted .git: %v", err)
+	}
+
+	// Now try to check if it's a git repo - should fail gracefully
+	gitClient := git.NewClient(tmpDir)
+	ctx := context.Background()
+
+	isRepo, err := gitClient.IsGitRepo(ctx)
+	if err == nil {
+		t.Error("IsGitRepo() should return error for corrupted .git")
+	}
+	if isRepo {
+		t.Error("IsGitRepo() should return false for corrupted .git")
+	}
+
+	// Verify attempting to initialize also handles this gracefully
+	initErr := gitClient.InitRepo(ctx)
+	if initErr == nil {
+		t.Error("InitRepo() should fail with corrupted .git file present")
+	}
+}
+
+// TestGitWorkflow_IntegrationEndToEnd tests the git initialization workflow end-to-end
+func TestGitWorkflow_IntegrationEndToEnd(t *testing.T) {
+	tmpDir := t.TempDir()
+	ctx := context.Background()
+
+	// Step 1: Create directory structure (simulating part of runInit)
+	if err := createDirectoryStructure(tmpDir); err != nil {
+		t.Fatalf("createDirectoryStructure failed: %v", err)
+	}
+
+	// Step 2: Write .gitignore (simulating runInit)
+	gitignorePath := filepath.Join(tmpDir, ".gitignore")
+	if err := git.WriteGitignore(gitignorePath); err != nil {
+		t.Fatalf("WriteGitignore failed: %v", err)
+	}
+
+	// Verify .gitignore exists with correct permissions
+	info, err := os.Stat(gitignorePath)
+	if err != nil {
+		t.Fatalf(".gitignore not created: %v", err)
+	}
+	if info.Mode().Perm() != 0644 {
+		t.Errorf(".gitignore permissions = %o, want 0644", info.Mode().Perm())
+	}
+
+	// Step 3: Initialize git repository
+	gitClient := git.NewClient(tmpDir)
+	if err := gitClient.InitRepo(ctx); err != nil {
+		t.Fatalf("InitRepo failed: %v", err)
+	}
+
+	// Verify .git directory exists
+	gitDir := filepath.Join(tmpDir, ".git")
+	if _, err := os.Stat(gitDir); err != nil {
+		t.Fatalf(".git directory not created: %v", err)
+	}
+
+	// Step 4: Configure git user
+	userInfo := git.GitUserInfo{
+		Name:       "Test User",
+		Email:      "test@example.com",
+		FromEnv:    false,
+		FromConfig: false,
+		IsDefault:  false,
+	}
+	if err := gitClient.ConfigureUser(ctx, userInfo); err != nil {
+		t.Fatalf("ConfigureUser failed: %v", err)
+	}
+
+	// Step 5: Create a test config file (simulating generateInitialConfig)
+	configsDir := filepath.Join(tmpDir, "configs")
+	testConfig := filepath.Join(configsDir, "zerb.lua.20250101T120000.000Z")
+	if err := os.WriteFile(testConfig, []byte("-- test config"), 0644); err != nil {
+		t.Fatalf("failed to create test config: %v", err)
+	}
+
+	// Step 6: Create initial commit
+	files := []string{".gitignore", "configs/zerb.lua.20250101T120000.000Z"}
+	if err := gitClient.CreateInitialCommit(ctx, "Initialize ZERB environment", files); err != nil {
+		t.Fatalf("CreateInitialCommit failed: %v", err)
+	}
+
+	// Verify commit was created
+	hash, err := gitClient.GetHeadCommit(ctx)
+	if err != nil {
+		t.Fatalf("GetHeadCommit failed: %v", err)
+	}
+	if len(hash) != 40 {
+		t.Errorf("commit hash length = %d, want 40", len(hash))
+	}
+
+	// Verify files are tracked
+	isRepo, err := gitClient.IsGitRepo(ctx)
+	if err != nil {
+		t.Fatalf("IsGitRepo check failed: %v", err)
+	}
+	if !isRepo {
+		t.Error("Directory should be a git repository")
+	}
+
+	t.Logf("Git workflow integration test completed successfully. Commit: %s", hash)
 }

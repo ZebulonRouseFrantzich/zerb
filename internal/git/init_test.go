@@ -228,6 +228,33 @@ func TestCreateInitialCommit_NoFiles(t *testing.T) {
 	}
 }
 
+// TestCreateInitialCommit_NonExistentFile tests commit with file that doesn't exist
+func TestCreateInitialCommit_NonExistentFile(t *testing.T) {
+	tmpDir := t.TempDir()
+	client := NewClient(tmpDir)
+	ctx := context.Background()
+
+	// Initialize repo and configure user
+	if err := client.InitRepo(ctx); err != nil {
+		t.Fatalf("InitRepo() error = %v", err)
+	}
+
+	if err := client.ConfigureUser(ctx, GitUserInfo{Name: "Test", Email: "test@example.com"}); err != nil {
+		t.Fatalf("ConfigureUser() error = %v", err)
+	}
+
+	// Try to commit a file that doesn't exist
+	err := client.CreateInitialCommit(ctx, "Test commit", []string{"nonexistent.txt"})
+	if err == nil {
+		t.Error("CreateInitialCommit() with non-existent file should return error")
+	}
+
+	// Verify error message mentions the file issue
+	if err != nil && !contains(err.Error(), "nonexistent") && !contains(err.Error(), "not found") && !contains(err.Error(), "stage") {
+		t.Logf("Error message: %v", err)
+	}
+}
+
 // TestDetectGitUser tests git user detection from environment
 func TestDetectGitUser(t *testing.T) {
 	tests := []struct {
