@@ -6,7 +6,7 @@ import (
 )
 
 // Version will be set at build time via -ldflags
-var Version = "v0.1.0-alpha"
+var Version = "v0.0.1-alpha"
 
 func main() {
 	// Handle subcommands
