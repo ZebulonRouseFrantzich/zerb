@@ -14,6 +14,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"github.com/ZebulonRouseFrantzich/zerb/internal/config"
 )
 
 // Error types for user-facing errors (never mention "chezmoi")
@@ -23,6 +25,41 @@ var (
 	ErrChezmoiInvocation          = errors.New("failed to add configuration file")
 	ErrTransactionExists          = errors.New("another configuration operation is in progress")
 )
+
+// RedactedError wraps an error with a user-friendly message while preserving
+// the error chain for errors.Is/errors.As checks.
+type RedactedError struct {
+	message string
+	wrapped error
+}
+
+// Error returns the redacted error message.
+func (e *RedactedError) Error() string {
+	return e.message
+}
+
+// Unwrap returns the wrapped error, preserving the error chain.
+func (e *RedactedError) Unwrap() error {
+	return e.wrapped
+}
+
+// newRedactedError creates a RedactedError with sensitive information removed.
+func newRedactedError(err error, context string) error {
+	if err == nil {
+		return nil
+	}
+
+	// Redact the error message
+	redactedMsg := redactSensitiveInfo(err.Error())
+
+	// Combine context with redacted message
+	message := fmt.Sprintf("%s: %s", context, redactedMsg)
+
+	return &RedactedError{
+		message: message,
+		wrapped: err,
+	}
+}
 
 // AddOptions configures the behavior of adding a config file.
 type AddOptions struct {
@@ -36,6 +73,7 @@ type AddOptions struct {
 // Following Go best practices: accept interfaces, return structs.
 type Chezmoi interface {
 	Add(ctx context.Context, path string, opts AddOptions) error
+	HasFile(ctx context.Context, path string) (bool, error)
 }
 
 // Client implements the Chezmoi interface.
@@ -100,6 +138,70 @@ func (c *Client) Add(ctx context.Context, path string, opts AddOptions) error {
 	}
 
 	return nil
+}
+
+// HasFile checks if a path is managed by ZERB.
+// Returns true if the file exists in the chezmoi source directory.
+//
+// This method performs direct filesystem checks rather than invoking the chezmoi binary
+// for performance. It uses NormalizeConfigPath for security and error redaction.
+func (c *Client) HasFile(ctx context.Context, path string) (bool, error) {
+	// Check context first
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+
+	// Use NormalizeConfigPath for canonical path and security
+	normalizedPath, err := config.NormalizeConfigPath(path)
+	if err != nil {
+		return false, newRedactedError(err, "normalize path")
+	}
+
+	// Get home directory for mapping to chezmoi source path
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false, fmt.Errorf("get home directory: %w", err)
+	}
+
+	// Convert user path to chezmoi source path
+	// For example: ~/.zshrc -> dot_zshrc, ~/.config/nvim/init.lua -> dot_config/nvim/init.lua
+	relPath, err := filepath.Rel(home, normalizedPath)
+	if err != nil {
+		return false, newRedactedError(err, "compute relative path")
+	}
+
+	// Map path to chezmoi naming convention
+	sourcePath := pathToChezmoiSource(relPath)
+	fullSourcePath := filepath.Join(c.src, sourcePath)
+
+	// Check if file or directory exists in source
+	_, err = os.Stat(fullSourcePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return false, nil
+		}
+		// Other errors (permission denied, etc.)
+		return false, newRedactedError(err, "check source path")
+	}
+
+	return true, nil
+}
+
+// pathToChezmoiSource converts a relative home path to chezmoi source naming.
+// Examples:
+//
+//	.zshrc -> dot_zshrc
+//	.config/nvim/init.lua -> dot_config/nvim/init.lua
+//	.ssh/config -> dot_ssh/config
+func pathToChezmoiSource(relPath string) string {
+	parts := strings.Split(relPath, string(filepath.Separator))
+
+	// Convert first component if it starts with dot
+	if len(parts) > 0 && strings.HasPrefix(parts[0], ".") {
+		parts[0] = "dot_" + parts[0][1:]
+	}
+
+	return filepath.Join(parts...)
 }
 
 // translateChezmoiError maps chezmoi errors to user-friendly ZERB errors.
