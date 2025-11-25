@@ -61,7 +61,11 @@ func AcquireLock(dir string) (*Lock, error) {
 		return nil, fmt.Errorf("write lock data: %w", err)
 	}
 
-	file.Sync()
+	if err := file.Sync(); err != nil {
+		file.Close()
+		os.Remove(lockPath)
+		return nil, fmt.Errorf("sync lock file: %w", err)
+	}
 
 	return &Lock{
 		path: lockPath,

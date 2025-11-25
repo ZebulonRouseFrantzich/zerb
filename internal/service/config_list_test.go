@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ZebulonRouseFrantzich/zerb/internal/config"
@@ -344,7 +345,7 @@ func TestConfigListService_List_TildePathNormalization(t *testing.T) {
 
 	// Verify paths were normalized (no tilde)
 	for _, path := range receivedPaths {
-		if filepath.HasPrefix(path, "~") {
+		if strings.HasPrefix(path, "~") {
 			t.Errorf("path %q was not normalized (still has tilde)", path)
 		}
 		if !filepath.IsAbs(path) {

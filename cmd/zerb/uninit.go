@@ -216,7 +216,7 @@ func findActivationLineNumber(rcPath string) int {
 	if err != nil {
 		return 0
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	scanner := bufio.NewScanner(file)
 	lineNum := 0

@@ -208,7 +208,13 @@ func (v *Verifier) verifyGPG(binaryPath, signaturePath string, binary Binary) (*
 	_, err = openpgp.CheckArmoredDetachedSignature(keyring, binaryFile, strings.NewReader(string(sigData)), nil)
 	if err != nil {
 		// Try non-armored signature
-		binaryFile.Seek(0, io.SeekStart)
+		if _, seekErr := binaryFile.Seek(0, io.SeekStart); seekErr != nil {
+			return &VerificationResult{
+				Method:  VerificationGPG,
+				Success: false,
+				Error:   fmt.Errorf("seek binary file: %w", seekErr),
+			}, seekErr
+		}
 		_, err = openpgp.CheckDetachedSignature(keyring, binaryFile, strings.NewReader(string(sigData)), nil)
 	}
 	if err != nil {
@@ -381,7 +387,9 @@ func (v *Verifier) loadKeyring(binary Binary) (openpgp.EntityList, error) {
 	keyring, err := openpgp.ReadArmoredKeyRing(keyringFile)
 	if err != nil {
 		// Try reading as non-armored keyring
-		keyringFile.Seek(0, io.SeekStart)
+		if _, seekErr := keyringFile.Seek(0, io.SeekStart); seekErr != nil {
+			return nil, fmt.Errorf("seek keyring file: %w", seekErr)
+		}
 		keyring, err = openpgp.ReadKeyRing(keyringFile)
 		if err != nil {
 			return nil, fmt.Errorf("read keyring: %w", err)

@@ -99,7 +99,7 @@ func (s *ConfigAddService) Execute(ctx context.Context, req AddRequest) (*AddRes
 	if err != nil {
 		return nil, fmt.Errorf("acquire transaction lock: %w", err)
 	}
-	defer lock.Release()
+	defer func() { _ = lock.Release() }()
 
 	// 2. Validate and normalize all paths
 	normalizedPaths := make(map[string]string) // original -> normalized
@@ -234,12 +234,7 @@ Example:
 
 			// Provide recovery instructions
 			txnFile := filepath.Join(txnDir, fmt.Sprintf("txn-config-add-%s.json", txn.ID))
-			return nil, fmt.Errorf(`failed to add %q to config manager: %w
-
-Transaction state saved for recovery.
-To view details: cat %s
-
-Note: You may need to manually clean up files in the config manager's source directory.`, path, err, txnFile)
+			return nil, fmt.Errorf("failed to add %q to config manager: %w (transaction state saved to %s)", path, err, txnFile)
 		}
 
 		// Mark as completed
