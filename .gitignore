@@ -43,4 +43,4 @@ vendor/
 .DS_Store
 Thumbs.db
 
-zerb
+/zerb
