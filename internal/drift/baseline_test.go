@@ -1,6 +1,7 @@
 package drift
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -82,7 +83,7 @@ func TestQueryBaseline(t *testing.T) {
 			}
 
 			// Test QueryBaseline
-			got, err := QueryBaseline(configPath)
+			got, err := QueryBaseline(context.Background(), configPath)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("QueryBaseline() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -132,7 +133,7 @@ func TestQueryBaseline_FileErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			configPath := tt.setup(t)
-			_, err := QueryBaseline(configPath)
+			_, err := QueryBaseline(context.Background(), configPath)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("QueryBaseline() error = %v, wantErr %v", err, tt.wantErr)
 			}

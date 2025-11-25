@@ -283,66 +283,60 @@ func TestGetVersionTimeout(t *testing.T) {
 }
 
 func TestDetectVersionCached(t *testing.T) {
-	// Clear cache before test
-	versionCache.Lock()
-	versionCache.entries = make(map[string]versionCacheEntry)
-	versionCache.Unlock()
+	// Create a fresh cache for testing
+	cache := NewVersionCache()
 
 	tmpDir := t.TempDir()
 	mockPath := CreateMockBinary(t, tmpDir, "test-tool", "1.0.0")
 
 	// First call - cache miss
-	version1, err := DetectVersionCached(context.Background(), mockPath, false)
+	version1, err := DetectVersionWithCache(context.Background(), mockPath, false, cache)
 	if err != nil {
-		t.Fatalf("DetectVersionCached() first call error = %v", err)
+		t.Fatalf("DetectVersionWithCache() first call error = %v", err)
 	}
 	if version1 != "1.0.0" {
-		t.Errorf("DetectVersionCached() first call = %q, want %q", version1, "1.0.0")
+		t.Errorf("DetectVersionWithCache() first call = %q, want %q", version1, "1.0.0")
 	}
 
 	// Second call - cache hit (should return same version without subprocess)
-	version2, err := DetectVersionCached(context.Background(), mockPath, false)
+	version2, err := DetectVersionWithCache(context.Background(), mockPath, false, cache)
 	if err != nil {
-		t.Fatalf("DetectVersionCached() second call error = %v", err)
+		t.Fatalf("DetectVersionWithCache() second call error = %v", err)
 	}
 	if version2 != "1.0.0" {
-		t.Errorf("DetectVersionCached() second call = %q, want %q", version2, "1.0.0")
+		t.Errorf("DetectVersionWithCache() second call = %q, want %q", version2, "1.0.0")
 	}
 
 	// Third call with forceRefresh - should bypass cache
-	version3, err := DetectVersionCached(context.Background(), mockPath, true)
+	version3, err := DetectVersionWithCache(context.Background(), mockPath, true, cache)
 	if err != nil {
-		t.Fatalf("DetectVersionCached() forceRefresh call error = %v", err)
+		t.Fatalf("DetectVersionWithCache() forceRefresh call error = %v", err)
 	}
 	if version3 != "1.0.0" {
-		t.Errorf("DetectVersionCached() forceRefresh call = %q, want %q", version3, "1.0.0")
+		t.Errorf("DetectVersionWithCache() forceRefresh call = %q, want %q", version3, "1.0.0")
 	}
 }
 
 func TestDetectVersionCached_Expiry(t *testing.T) {
-	// Clear cache before test
-	versionCache.Lock()
-	versionCache.entries = make(map[string]versionCacheEntry)
-	versionCache.Unlock()
+	// Create a cache with very short TTL for testing expiry
+	cache := NewVersionCacheWithOptions(1*time.Millisecond, 100)
 
 	tmpDir := t.TempDir()
 	mockPath := CreateMockBinary(t, tmpDir, "test-tool", "2.0.0")
 
-	// Populate cache with expired entry
-	versionCache.Lock()
-	versionCache.entries[mockPath] = versionCacheEntry{
-		version:   "1.0.0",                           // Old version
-		timestamp: time.Now().Add(-10 * time.Minute), // Expired (TTL is 5 minutes)
-	}
-	versionCache.Unlock()
+	// Populate cache
+	cache.Set(mockPath, "1.0.0") // Old version
+
+	// Wait for cache to expire
+	time.Sleep(5 * time.Millisecond)
 
 	// Call should detect new version because cache is expired
-	version, err := DetectVersionCached(context.Background(), mockPath, false)
+	version, err := DetectVersionWithCache(context.Background(), mockPath, false, cache)
 	if err != nil {
-		t.Fatalf("DetectVersionCached() error = %v", err)
+		t.Fatalf("DetectVersionWithCache() error = %v", err)
 	}
 	if version != "2.0.0" {
-		t.Errorf("DetectVersionCached() = %q, want %q (cache should have expired)", version, "2.0.0")
+		t.Errorf("DetectVersionWithCache() = %q, want %q (cache should have expired)", version, "2.0.0")
 	}
 }
 
@@ -359,24 +353,22 @@ func TestQueryActive_ForceRefresh(t *testing.T) {
 	// Set test PATH
 	os.Setenv("PATH", testPATH)
 
-	// Clear cache
-	versionCache.Lock()
-	versionCache.entries = make(map[string]versionCacheEntry)
-	versionCache.Unlock()
+	// Create fresh cache for this test
+	cache := NewVersionCache()
 
 	// First call without force refresh
-	tools1, err := QueryActive(context.Background(), []string{"node"}, false)
+	tools1, err := QueryActiveWithCache(context.Background(), []string{"node"}, false, cache)
 	if err != nil {
-		t.Fatalf("QueryActive() first call error = %v", err)
+		t.Fatalf("QueryActiveWithCache() first call error = %v", err)
 	}
 	if len(tools1) != 1 {
-		t.Fatalf("QueryActive() returned %d tools, want 1", len(tools1))
+		t.Fatalf("QueryActiveWithCache() returned %d tools, want 1", len(tools1))
 	}
 
 	// Second call with force refresh
-	tools2, err := QueryActive(context.Background(), []string{"node"}, true)
+	tools2, err := QueryActiveWithCache(context.Background(), []string{"node"}, true, cache)
 	if err != nil {
-		t.Fatalf("QueryActive() second call error = %v", err)
+		t.Fatalf("QueryActiveWithCache() second call error = %v", err)
 	}
 	if len(tools2) != 1 {
 		t.Fatalf("QueryActive() returned %d tools, want 1", len(tools2))
@@ -384,15 +376,13 @@ func TestQueryActive_ForceRefresh(t *testing.T) {
 
 	// Both should return same version
 	if tools1[0].Version != tools2[0].Version {
-		t.Errorf("QueryActive() versions differ: %q vs %q", tools1[0].Version, tools2[0].Version)
+		t.Errorf("QueryActiveWithCache() versions differ: %q vs %q", tools1[0].Version, tools2[0].Version)
 	}
 }
 
 func TestCachePruning(t *testing.T) {
-	// Clear cache before test
-	versionCache.Lock()
-	versionCache.entries = make(map[string]versionCacheEntry)
-	versionCache.Unlock()
+	// Create fresh cache with max 100 entries
+	cache := NewVersionCacheWithOptions(5*time.Minute, 100)
 
 	tmpDir := t.TempDir()
 
@@ -405,61 +395,59 @@ func TestCachePruning(t *testing.T) {
 	// Add entries to fill cache beyond maxCacheEntries
 	for i := 0; i < 110; i++ {
 		toolPath := filepath.Join(tmpDir, fmt.Sprintf("tool%d", i))
-		_, err := DetectVersionCached(context.Background(), toolPath, false)
+		_, err := DetectVersionWithCache(context.Background(), toolPath, false, cache)
 		if err != nil {
-			t.Fatalf("DetectVersionCached() error = %v", err)
+			t.Fatalf("DetectVersionWithCache() error = %v", err)
 		}
 	}
 
-	// Check that cache was pruned
-	versionCache.RLock()
-	cacheSize := len(versionCache.entries)
-	versionCache.RUnlock()
+	// Check that cache was pruned by trying to get all entries
+	// The cache should have been pruned to maxCacheEntries
+	cachedCount := 0
+	for i := 0; i < 110; i++ {
+		toolPath := filepath.Join(tmpDir, fmt.Sprintf("tool%d", i))
+		if _, ok := cache.Get(toolPath); ok {
+			cachedCount++
+		}
+	}
 
-	if cacheSize > maxCacheEntries {
-		t.Errorf("Cache size = %d, want <= %d", cacheSize, maxCacheEntries)
+	if cachedCount > 100 {
+		t.Errorf("Cache size = %d, want <= %d", cachedCount, 100)
 	}
 }
 
 func TestCachePruning_ExpiredEntries(t *testing.T) {
-	// Clear cache before test
-	versionCache.Lock()
-	versionCache.entries = make(map[string]versionCacheEntry)
-	versionCache.Unlock()
+	// Create cache with very short TTL
+	cache := NewVersionCacheWithOptions(1*time.Millisecond, 100)
 
 	tmpDir := t.TempDir()
-	mockPath := CreateMockBinary(t, tmpDir, "test-tool", "1.0.0")
 
-	// Add an expired entry
-	versionCache.Lock()
-	versionCache.entries[mockPath] = versionCacheEntry{
-		version:   "1.0.0",
-		timestamp: time.Now().Add(-10 * time.Minute), // Expired (TTL is 5 minutes)
-	}
-	// Add many more entries to trigger pruning
-	for i := 0; i < 105; i++ {
+	// Add entries
+	for i := 0; i < 50; i++ {
 		fakePath := fmt.Sprintf("/fake/path/%d", i)
-		versionCache.entries[fakePath] = versionCacheEntry{
-			version:   "1.0.0",
-			timestamp: time.Now().Add(-10 * time.Minute), // All expired
-		}
+		cache.Set(fakePath, "1.0.0")
 	}
-	versionCache.Unlock()
 
-	// Trigger cache pruning by adding a new entry
+	// Wait for entries to expire
+	time.Sleep(5 * time.Millisecond)
+
+	// Add a new tool to potentially trigger pruning
 	newPath := filepath.Join(tmpDir, "new-tool")
 	CreateMockBinary(t, tmpDir, "new-tool", "2.0.0")
-	_, err := DetectVersionCached(context.Background(), newPath, false)
+	_, err := DetectVersionWithCache(context.Background(), newPath, false, cache)
 	if err != nil {
-		t.Fatalf("DetectVersionCached() error = %v", err)
+		t.Fatalf("DetectVersionWithCache() error = %v", err)
 	}
 
-	// Check that expired entries were pruned
-	versionCache.RLock()
-	cacheSize := len(versionCache.entries)
-	versionCache.RUnlock()
+	// The new entry should be in cache
+	if version, ok := cache.Get(newPath); !ok {
+		t.Error("New entry should be in cache")
+	} else if version != "2.0.0" {
+		t.Errorf("New entry version = %q, want %q", version, "2.0.0")
+	}
 
-	if cacheSize > maxCacheEntries {
-		t.Errorf("Cache size after pruning = %d, want <= %d", cacheSize, maxCacheEntries)
+	// Old expired entries should not be retrievable
+	if _, ok := cache.Get("/fake/path/0"); ok {
+		t.Error("Expired entry should not be retrievable")
 	}
 }

@@ -257,20 +257,20 @@ func TestApplyAdopt_Integration(t *testing.T) {
     "python@3.12.1",
   }
 }`
-	initialConfigPath := filepath.Join(configsDir, "zerb.lua.20250113T120000.000Z")
+	initialConfigPath := filepath.Join(configsDir, "zerb.20250113T120000.000Z.lua")
 	if err := os.WriteFile(initialConfigPath, []byte(initialConfig), 0644); err != nil {
 		t.Fatalf("failed to write initial config: %v", err)
 	}
 
 	// Create marker file
 	markerPath := filepath.Join(tmpDir, ".zerb-active")
-	if err := os.WriteFile(markerPath, []byte("zerb.lua.20250113T120000.000Z"), 0644); err != nil {
+	if err := os.WriteFile(markerPath, []byte("zerb.20250113T120000.000Z.lua"), 0644); err != nil {
 		t.Fatalf("failed to write marker: %v", err)
 	}
 
 	// Create symlink
-	symlinkPath := filepath.Join(tmpDir, "zerb.lua.active")
-	symlinkTarget := filepath.Join("configs", "zerb.lua.20250113T120000.000Z")
+	symlinkPath := filepath.Join(tmpDir, "zerb.active.lua")
+	symlinkTarget := filepath.Join("configs", "zerb.20250113T120000.000Z.lua")
 	if err := os.Symlink(symlinkTarget, symlinkPath); err != nil {
 		t.Fatalf("failed to create symlink: %v", err)
 	}
@@ -417,14 +417,14 @@ func TestApplyDriftAction(t *testing.T) {
     "node@20.11.0",
   }
 }`
-			configPath := filepath.Join(configsDir, "zerb.lua.20250113T120000.000Z")
+			configPath := filepath.Join(configsDir, "zerb.20250113T120000.000Z.lua")
 			os.WriteFile(configPath, []byte(initialConfig), 0644)
 
 			// Create marker and symlink
 			markerPath := filepath.Join(tmpDir, ".zerb-active")
-			os.WriteFile(markerPath, []byte("zerb.lua.20250113T120000.000Z"), 0644)
-			symlinkPath := filepath.Join(tmpDir, "zerb.lua.active")
-			os.Symlink(filepath.Join("configs", "zerb.lua.20250113T120000.000Z"), symlinkPath)
+			os.WriteFile(markerPath, []byte("zerb.20250113T120000.000Z.lua"), 0644)
+			symlinkPath := filepath.Join(tmpDir, "zerb.active.lua")
+			os.Symlink(filepath.Join("configs", "zerb.20250113T120000.000Z.lua"), symlinkPath)
 
 			// Create mock mise
 			miseScript := `#!/bin/sh

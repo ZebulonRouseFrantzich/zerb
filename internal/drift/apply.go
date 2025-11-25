@@ -81,9 +81,10 @@ func applyAdopt(result DriftResult, configPath string, zerbDir string) error {
 	}
 
 	// Create timestamped config
+	// Format: zerb.TIMESTAMP.lua (ending in .lua for editor syntax highlighting)
 	timestamp := time.Now().UTC().Format("20060102T150405.000Z")
 	configsDir := filepath.Join(zerbDir, "configs")
-	newConfigFilename := fmt.Sprintf("zerb.lua.%s", timestamp)
+	newConfigFilename := fmt.Sprintf("zerb.%s.lua", timestamp)
 	newConfigPath := filepath.Join(configsDir, newConfigFilename)
 
 	// Write new config (0600 for security - may contain sensitive data)
@@ -98,7 +99,7 @@ func applyAdopt(result DriftResult, configPath string, zerbDir string) error {
 	}
 
 	// Update symlink
-	symlinkPath := filepath.Join(zerbDir, "zerb.lua.active")
+	symlinkPath := filepath.Join(zerbDir, "zerb.active.lua")
 	if err := os.Remove(symlinkPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove old symlink: %w", err)
 	}
@@ -141,6 +142,10 @@ func applyRevert(ctx context.Context, result DriftResult, miseBinary string, zer
 		}
 
 	case DriftExtra:
+		// Validate managed version before uninstall
+		if result.ManagedVersion == "" {
+			return fmt.Errorf("cannot uninstall tool %s: managed version unknown", result.Tool)
+		}
 		// Uninstall extra tool with version spec (important when multiple versions installed)
 		toolSpec := fmt.Sprintf("%s@%s", result.Tool, result.ManagedVersion)
 		if err := executeMiseInstallOrUninstall(ctx, miseBinary, zerbDir, "uninstall", toolSpec); err != nil {

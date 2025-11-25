@@ -96,16 +96,17 @@ func (g *Generator) GenerateTimestamped(ctx context.Context, config *Config, git
 	var buf bytes.Buffer
 
 	// Generate timestamp
+	// Format: zerb.TIMESTAMP.lua (ending in .lua for editor syntax highlighting)
 	timestamp := time.Now().UTC()
 	timestampStr := timestamp.Format("20060102T150405Z")
-	filename = fmt.Sprintf("zerb.lua.%s", timestampStr)
+	filename = fmt.Sprintf("zerb.%s.lua", timestampStr)
 
 	// Write header with metadata
 	buf.WriteString("-- ZERB CONFIG - Timestamped Snapshot\n")
 	buf.WriteString(fmt.Sprintf("-- Created: %s\n", timestamp.Format(time.RFC3339)))
 	buf.WriteString("--\n")
 	buf.WriteString("-- This is a versioned snapshot. To make changes:\n")
-	buf.WriteString("--   1. Edit: vim ~/.config/zerb/zerb.lua.active\n")
+	buf.WriteString("--   1. Edit: vim ~/.config/zerb/zerb.active.lua\n")
 	buf.WriteString("--   2. Apply: zerb sync\n")
 	buf.WriteString("\n")
 

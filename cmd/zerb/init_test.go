@@ -194,7 +194,7 @@ func TestIsAlreadyInitialized(t *testing.T) {
 			name: ".zerb-active marker exists - initialized",
 			setup: func(dir string) error {
 				markerPath := filepath.Join(dir, ".zerb-active")
-				return os.WriteFile(markerPath, []byte("zerb.lua.20250101T120000.000Z"), 0644)
+				return os.WriteFile(markerPath, []byte("zerb.20250101T120000.000Z.lua"), 0644)
 			},
 			expected: true,
 		},
@@ -243,7 +243,7 @@ func TestIsAlreadyInitialized_FullyInitialized(t *testing.T) {
 
 	// Create marker
 	markerPath := filepath.Join(tmpDir, ".zerb-active")
-	if err := os.WriteFile(markerPath, []byte("zerb.lua.20250101T120000.000Z"), 0644); err != nil {
+	if err := os.WriteFile(markerPath, []byte("zerb.20250101T120000.000Z.lua"), 0644); err != nil {
 		t.Fatalf("create marker failed: %v", err)
 	}
 
@@ -281,10 +281,10 @@ func TestGenerateInitialConfig(t *testing.T) {
 		t.Error("marker file is empty")
 	}
 
-	// Verify filename format (zerb.lua.YYYYMMDDTHHMMSS.SSSZ with milliseconds)
-	filenameRegex := regexp.MustCompile(`^zerb\.lua\.\d{8}T\d{6}\.\d{3}Z$`)
+	// Verify filename format (zerb.YYYYMMDDTHHMMSS.SSSZ.lua with milliseconds)
+	filenameRegex := regexp.MustCompile(`^zerb\.\d{8}T\d{6}\.\d{3}Z\.lua$`)
 	if !filenameRegex.MatchString(configFilename) {
-		t.Errorf("marker filename has invalid format: %s (expected zerb.lua.YYYYMMDDTHHMMSS.SSSZ)", configFilename)
+		t.Errorf("marker filename has invalid format: %s (expected zerb.YYYYMMDDTHHMMSS.SSSZ.lua)", configFilename)
 	}
 
 	// Verify timestamped config file exists
@@ -318,7 +318,7 @@ func TestGenerateInitialConfig(t *testing.T) {
 	}
 
 	// Verify symlink exists and points to correct file
-	symlinkPath := filepath.Join(tmpDir, "zerb.lua.active")
+	symlinkPath := filepath.Join(tmpDir, "zerb.active.lua")
 	linkTarget, err := os.Readlink(symlinkPath)
 	if err != nil {
 		t.Fatalf("failed to read symlink: %v", err)
@@ -352,7 +352,7 @@ func TestGenerateInitialConfig_ParseableByParser(t *testing.T) {
 	}
 
 	// Read generated config
-	symlinkPath := filepath.Join(tmpDir, "zerb.lua.active")
+	symlinkPath := filepath.Join(tmpDir, "zerb.active.lua")
 	configContent, err := os.ReadFile(symlinkPath)
 	if err != nil {
 		t.Fatalf("failed to read generated config: %v", err)
@@ -443,7 +443,7 @@ func TestRunInit_AlreadyInitialized(t *testing.T) {
 	}
 
 	markerPath := filepath.Join(tmpDir, ".zerb-active")
-	if err := os.WriteFile(markerPath, []byte("zerb.lua.20250101T120000.000Z"), 0644); err != nil {
+	if err := os.WriteFile(markerPath, []byte("zerb.20250101T120000.000Z.lua"), 0644); err != nil {
 		t.Fatalf("create marker failed: %v", err)
 	}
 
@@ -633,13 +633,13 @@ func TestGitWorkflow_IntegrationEndToEnd(t *testing.T) {
 
 	// Step 5: Create a test config file (simulating generateInitialConfig)
 	configsDir := filepath.Join(tmpDir, "configs")
-	testConfig := filepath.Join(configsDir, "zerb.lua.20250101T120000.000Z")
+	testConfig := filepath.Join(configsDir, "zerb.20250101T120000.000Z.lua")
 	if err := os.WriteFile(testConfig, []byte("-- test config"), 0644); err != nil {
 		t.Fatalf("failed to create test config: %v", err)
 	}
 
 	// Step 6: Create initial commit
-	files := []string{".gitignore", "configs/zerb.lua.20250101T120000.000Z"}
+	files := []string{".gitignore", "configs/zerb.20250101T120000.000Z.lua"}
 	if err := gitClient.CreateInitialCommit(ctx, "Initialize ZERB environment", files); err != nil {
 		t.Fatalf("CreateInitialCommit failed: %v", err)
 	}

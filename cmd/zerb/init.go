@@ -150,8 +150,9 @@ func generateInitialConfig(ctx context.Context, zerbDir string) error {
 	}
 
 	// Create timestamped config filename with milliseconds to ensure uniqueness
+	// Format: zerb.TIMESTAMP.lua (ending in .lua for editor syntax highlighting)
 	timestamp := time.Now().UTC().Format("20060102T150405.000Z")
-	configFilename := fmt.Sprintf("zerb.lua.%s", timestamp)
+	configFilename := fmt.Sprintf("zerb.%s.lua", timestamp)
 	configPath := filepath.Join(zerbDir, "configs", configFilename)
 
 	// Write config file (0600 for security - may contain sensitive data)
@@ -166,7 +167,7 @@ func generateInitialConfig(ctx context.Context, zerbDir string) error {
 	}
 
 	// Create symlink to active config (idempotent: remove existing first)
-	symlinkPath := filepath.Join(zerbDir, "zerb.lua.active")
+	symlinkPath := filepath.Join(zerbDir, "zerb.active.lua")
 	symlinkTarget := filepath.Join("configs", configFilename)
 
 	// Remove existing symlink/file if present

@@ -36,7 +36,7 @@ mise/config.toml
 chezmoi/config.toml
 
 # Symlinks (recreated locally)
-zerb.lua.active
+zerb.active.lua
 
 # Deprecated marker (to be removed)
 .zerb-active

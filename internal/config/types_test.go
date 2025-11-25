@@ -160,15 +160,15 @@ func TestConfigVersion(t *testing.T) {
 	now := time.Now()
 	cv := ConfigVersion{
 		Timestamp: now,
-		Filename:  "zerb.lua.20250115T143022Z",
+		Filename:  "zerb.20250115T143022Z.lua",
 		IsActive:  true,
 	}
 
 	if cv.Timestamp != now {
 		t.Errorf("ConfigVersion.Timestamp = %v, want %v", cv.Timestamp, now)
 	}
-	if cv.Filename != "zerb.lua.20250115T143022Z" {
-		t.Errorf("ConfigVersion.Filename = %s, want zerb.lua.20250115T143022Z", cv.Filename)
+	if cv.Filename != "zerb.20250115T143022Z.lua" {
+		t.Errorf("ConfigVersion.Filename = %s, want zerb.20250115T143022Z.lua", cv.Filename)
 	}
 	if !cv.IsActive {
 		t.Error("ConfigVersion.IsActive = false, want true")

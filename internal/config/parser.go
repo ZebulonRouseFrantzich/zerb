@@ -2,6 +2,7 @@ package config
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -338,7 +339,8 @@ func sanitizeLuaError(err error) string {
 // FormatError formats a ParseError for user display.
 // In verbose mode, show the raw Lua error. Otherwise, show friendly message.
 func FormatError(err error, verbose bool) string {
-	if parseErr, ok := err.(*ParseError); ok {
+	var parseErr *ParseError
+	if errors.As(err, &parseErr) {
 		if verbose {
 			return fmt.Sprintf("%s\n\nDetails:\n%s", parseErr.Message, parseErr.Detail)
 		}

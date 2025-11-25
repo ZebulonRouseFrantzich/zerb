@@ -26,7 +26,7 @@ func TestDataCollection_Integration(t *testing.T) {
 	}
 
 	// 2. Test baseline collection
-	baseline, err := QueryBaseline(configPath)
+	baseline, err := QueryBaseline(context.Background(), configPath)
 	if err != nil {
 		t.Fatalf("QueryBaseline() error = %v", err)
 	}
@@ -120,7 +120,7 @@ func TestDataCollection_WithBackends(t *testing.T) {
 		t.Fatalf("failed to write config: %v", err)
 	}
 
-	baseline, err := QueryBaseline(configPath)
+	baseline, err := QueryBaseline(context.Background(), configPath)
 	if err != nil {
 		t.Fatalf("QueryBaseline() error = %v", err)
 	}
@@ -210,7 +210,7 @@ func TestDriftDetection_EndToEnd(t *testing.T) {
 	}
 
 	// Parse baseline
-	baseline, err := QueryBaseline(configPath)
+	baseline, err := QueryBaseline(context.Background(), configPath)
 	if err != nil {
 		t.Fatalf("QueryBaseline() error = %v", err)
 	}
@@ -362,7 +362,7 @@ func TestDriftDetection_ManagedButNotActive(t *testing.T) {
 		t.Fatalf("failed to write config: %v", err)
 	}
 
-	baseline, err := QueryBaseline(configPath)
+	baseline, err := QueryBaseline(context.Background(), configPath)
 	if err != nil {
 		t.Fatalf("QueryBaseline() error = %v", err)
 	}
@@ -420,7 +420,7 @@ func TestDriftDetection_VersionUnknown(t *testing.T) {
 		t.Fatalf("failed to write config: %v", err)
 	}
 
-	baseline, err := QueryBaseline(configPath)
+	baseline, err := QueryBaseline(context.Background(), configPath)
 	if err != nil {
 		t.Fatalf("QueryBaseline() error = %v", err)
 	}

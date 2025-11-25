@@ -52,7 +52,7 @@ func TestWriteGitignore(t *testing.T) {
 		".direnv/",
 		"mise/config.toml",
 		"chezmoi/config.toml",
-		"zerb.lua.active",
+		"zerb.active.lua",
 		".zerb-active",
 		"keyrings/",
 		".zerb-no-git",
@@ -131,7 +131,7 @@ func TestGitignoreEffectiveness(t *testing.T) {
 	}
 
 	// Create specific ignored files
-	os.WriteFile(filepath.Join(tmpDir, "zerb.lua.active"), []byte("test"), 0644)
+	os.WriteFile(filepath.Join(tmpDir, "zerb.active.lua"), []byte("test"), 0644)
 	os.WriteFile(filepath.Join(tmpDir, ".zerb-active"), []byte("test"), 0644)
 	os.WriteFile(filepath.Join(tmpDir, ".zerb-no-git"), []byte("test"), 0644)
 	os.MkdirAll(filepath.Join(tmpDir, "mise"), 0755)
@@ -171,7 +171,7 @@ func TestGitignoreEffectiveness(t *testing.T) {
 
 		// Check if file is specifically ignored
 		ignoredFiles := []string{
-			"zerb.lua.active",
+			"zerb.active.lua",
 			".zerb-active",
 			".zerb-no-git",
 			"mise/config.toml",

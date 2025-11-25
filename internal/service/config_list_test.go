@@ -39,7 +39,7 @@ func TestConfigListService_List(t *testing.T) {
 
 	// Create active marker
 	activeMarker := filepath.Join(tmpDir, ".zerb-active")
-	activeFilename := "zerb.lua.20250116T143022Z"
+	activeFilename := "zerb.20250116T143022Z.lua"
 	if err := os.WriteFile(activeMarker, []byte(activeFilename), 0644); err != nil {
 		t.Fatalf("failed to create active marker: %v", err)
 	}
@@ -124,7 +124,7 @@ func TestConfigListService_List_NoConfigs(t *testing.T) {
 
 	// Create active marker
 	activeMarker := filepath.Join(tmpDir, ".zerb-active")
-	activeFilename := "zerb.lua.20250116T143022Z"
+	activeFilename := "zerb.20250116T143022Z.lua"
 	if err := os.WriteFile(activeMarker, []byte(activeFilename), 0644); err != nil {
 		t.Fatalf("failed to create active marker: %v", err)
 	}
@@ -170,7 +170,7 @@ func TestConfigListService_List_ParseError(t *testing.T) {
 
 	// Create active marker
 	activeMarker := filepath.Join(tmpDir, ".zerb-active")
-	activeFilename := "zerb.lua.20250116T143022Z"
+	activeFilename := "zerb.20250116T143022Z.lua"
 	if err := os.WriteFile(activeMarker, []byte(activeFilename), 0644); err != nil {
 		t.Fatalf("failed to create active marker: %v", err)
 	}
@@ -210,7 +210,7 @@ func TestConfigListService_List_DetectorError(t *testing.T) {
 
 	// Create active marker
 	activeMarker := filepath.Join(tmpDir, ".zerb-active")
-	activeFilename := "zerb.lua.20250116T143022Z"
+	activeFilename := "zerb.20250116T143022Z.lua"
 	if err := os.WriteFile(activeMarker, []byte(activeFilename), 0644); err != nil {
 		t.Fatalf("failed to create active marker: %v", err)
 	}
@@ -284,7 +284,7 @@ func TestConfigListService_List_TildePathNormalization(t *testing.T) {
 
 	// Create active marker
 	activeMarker := filepath.Join(tmpDir, ".zerb-active")
-	activeFilename := "zerb.lua.20250116T143022Z"
+	activeFilename := "zerb.20250116T143022Z.lua"
 	if err := os.WriteFile(activeMarker, []byte(activeFilename), 0644); err != nil {
 		t.Fatalf("failed to create active marker: %v", err)
 	}
@@ -400,7 +400,7 @@ func TestConfigListService_List_MissingActiveConfig(t *testing.T) {
 
 	// Create active marker pointing to non-existent config
 	activeMarker := filepath.Join(tmpDir, ".zerb-active")
-	activeFilename := "zerb.lua.99999999T999999Z"
+	activeFilename := "zerb.99999999T999999Z.lua"
 	if err := os.WriteFile(activeMarker, []byte(activeFilename), 0644); err != nil {
 		t.Fatalf("failed to create active marker: %v", err)
 	}
