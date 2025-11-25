@@ -52,6 +52,8 @@ jobs:
           go-version: '1.24'
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v9
         with:
-          version: latest
+          # Pin to v2.x to match .golangci.yml version: "2" format
+          # Keep in sync with local development version
+          version: v2.6.1

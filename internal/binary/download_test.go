@@ -49,7 +49,9 @@ func TestDownloaderDownloadToFile(t *testing.T) {
 				}
 
 				w.WriteHeader(tt.statusCode)
-				w.Write([]byte(tt.body))
+				if _, err := w.Write([]byte(tt.body)); err != nil {
+					t.Errorf("failed to write response: %v", err)
+				}
 			}))
 			defer server.Close()
 
@@ -98,7 +100,9 @@ func TestDownloaderRetryLogic(t *testing.T) {
 		}
 		// Succeed on third attempt
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("success"))
+		if _, err := w.Write([]byte("success")); err != nil {
+			t.Errorf("failed to write response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -128,7 +132,9 @@ func TestDownloaderContextCancellation(t *testing.T) {
 		// Simulate slow response
 		time.Sleep(100 * time.Millisecond)
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("too late"))
+		if _, err := w.Write([]byte("too late")); err != nil {
+			t.Errorf("failed to write response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -155,7 +161,9 @@ func TestDownloaderDownloadBinary(t *testing.T) {
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(mockContent))
+		if _, err := w.Write([]byte(mockContent)); err != nil {
+			t.Errorf("failed to write response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -216,7 +224,9 @@ func TestDownloaderDownloadSignature(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, ".asc") || strings.HasSuffix(r.URL.Path, ".sig") {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(mockSig))
+			if _, err := w.Write([]byte(mockSig)); err != nil {
+				t.Errorf("failed to write response: %v", err)
+			}
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)
@@ -254,7 +264,9 @@ func TestDownloaderDownloadChecksums(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "checksums.txt") {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(mockChecksums))
+			if _, err := w.Write([]byte(mockChecksums)); err != nil {
+				t.Errorf("failed to write response: %v", err)
+			}
 			return
 		}
 		w.WriteHeader(http.StatusNotFound)
@@ -289,7 +301,9 @@ func TestDownloaderDownloadChecksums(t *testing.T) {
 func TestDownloaderCreatesNestedDirectories(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("test"))
+		if _, err := w.Write([]byte("test")); err != nil {
+			t.Errorf("failed to write response: %v", err)
+		}
 	}))
 	defer server.Close()
 
@@ -321,7 +335,9 @@ func TestFileExists(t *testing.T) {
 			name: "existing_file",
 			setup: func() string {
 				path := filepath.Join(tmpDir, "exists.txt")
-				os.WriteFile(path, []byte("content"), 0644)
+				if err := os.WriteFile(path, []byte("content"), 0644); err != nil {
+					t.Fatalf("failed to write file: %v", err)
+				}
 				return path
 			},
 			expected: true,
@@ -330,7 +346,9 @@ func TestFileExists(t *testing.T) {
 			name: "empty_file",
 			setup: func() string {
 				path := filepath.Join(tmpDir, "empty.txt")
-				os.WriteFile(path, []byte(""), 0644)
+				if err := os.WriteFile(path, []byte(""), 0644); err != nil {
+					t.Fatalf("failed to write file: %v", err)
+				}
 				return path
 			},
 			expected: false, // Empty files return false
@@ -339,7 +357,9 @@ func TestFileExists(t *testing.T) {
 			name: "directory",
 			setup: func() string {
 				path := filepath.Join(tmpDir, "dir")
-				os.MkdirAll(path, 0755)
+				if err := os.MkdirAll(path, 0755); err != nil {
+					t.Fatalf("failed to create directory: %v", err)
+				}
 				return path
 			},
 			expected: false,
@@ -375,7 +395,9 @@ func TestDownloaderRedirectHandling(t *testing.T) {
 			return
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(finalContent))
+		if _, err := w.Write([]byte(finalContent)); err != nil {
+			t.Errorf("failed to write response: %v", err)
+		}
 	}))
 	defer server.Close()
 

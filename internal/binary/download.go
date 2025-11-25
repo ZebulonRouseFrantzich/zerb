@@ -97,7 +97,7 @@ func (d *Downloader) downloadOnce(ctx context.Context, url, destPath string) err
 	if err != nil {
 		return fmt.Errorf("execute request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	// Check status code
 	if resp.StatusCode != http.StatusOK {
@@ -120,9 +120,9 @@ func (d *Downloader) downloadOnce(ctx context.Context, url, destPath string) err
 	// Track whether we need to clean up the temp file
 	cleanupNeeded := true
 	defer func() {
-		tmpFile.Close()
+		_ = tmpFile.Close()
 		if cleanupNeeded {
-			os.Remove(tmpPath) // Clean up on error
+			_ = os.Remove(tmpPath) // Clean up on error
 		}
 	}()
 

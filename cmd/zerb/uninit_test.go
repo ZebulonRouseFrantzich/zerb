@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -441,8 +442,10 @@ func TestRemoveZerbDirectory_KeepConfigs(t *testing.T) {
 
 	// Set HOME for backup directory
 	originalHome := os.Getenv("HOME")
-	os.Setenv("HOME", tmpDir)
-	defer os.Setenv("HOME", originalHome)
+	if err := os.Setenv("HOME", tmpDir); err != nil {
+		t.Fatalf("Failed to set HOME: %v", err)
+	}
+	defer func() { _ = os.Setenv("HOME", originalHome) }()
 
 	// Create ZERB directory structure
 	configsDir := filepath.Join(zerbDir, "configs")
@@ -602,7 +605,7 @@ func TestAnalyzeInstallation(t *testing.T) {
 	}
 
 	// Analyze
-	plan, err := analyzeInstallation(nil, zerbDir)
+	plan, err := analyzeInstallation(context.Background(), zerbDir)
 	if err != nil {
 		t.Fatalf("analyzeInstallation() error = %v", err)
 	}
@@ -634,7 +637,7 @@ func TestAnalyzeInstallation_NotInstalled(t *testing.T) {
 	zerbDir := filepath.Join(tmpDir, "nonexistent-zerb")
 
 	// Analyze non-existent installation
-	plan, err := analyzeInstallation(nil, zerbDir)
+	plan, err := analyzeInstallation(context.Background(), zerbDir)
 	if err != nil {
 		t.Fatalf("analyzeInstallation() error = %v", err)
 	}
