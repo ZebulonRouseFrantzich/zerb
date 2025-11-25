@@ -39,11 +39,12 @@ func main() {
 			return
 		case "drift":
 			// Handle zerb drift subcommand
-			if err := runDrift(os.Args[2:]); err != nil {
+			exitCode, err := runDrift(os.Args[2:])
+			if err != nil {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 				os.Exit(1)
 			}
-			return
+			os.Exit(exitCode)
 		case "config":
 			// Handle zerb config subcommand
 			if len(os.Args) < 3 {

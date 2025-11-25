@@ -9,7 +9,12 @@ import (
 )
 
 // QueryBaseline parses the active config and returns declared tools
-func QueryBaseline(configPath string) ([]ToolSpec, error) {
+func QueryBaseline(ctx context.Context, configPath string) ([]ToolSpec, error) {
+	// Check context before reading file
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("operation cancelled: %w", err)
+	}
+
 	// Read config file
 	content, err := os.ReadFile(configPath)
 	if err != nil {
@@ -18,7 +23,7 @@ func QueryBaseline(configPath string) ([]ToolSpec, error) {
 
 	// Parse Lua config
 	parser := config.NewParser(nil) // No platform detection needed for drift
-	cfg, err := parser.ParseString(context.Background(), string(content))
+	cfg, err := parser.ParseString(ctx, string(content))
 	if err != nil {
 		return nil, fmt.Errorf("parse config: %w", err)
 	}

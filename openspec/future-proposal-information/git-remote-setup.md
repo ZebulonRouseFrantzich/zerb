@@ -2,8 +2,9 @@
 
 **Status:** Planning  
 **Depends On:** `setup-git-repository` change  
-**Target:** Post-MVP  
+**Target:** MVP  
 **Created:** 2025-11-16  
+**Last Updated:** 2025-11-25  
 
 ---
 
@@ -11,17 +12,34 @@
 
 This document captures the design for automated git remote repository configuration and synchronization. This builds on the local git repository infrastructure established by the `setup-git-repository` change.
 
+**Design Philosophy:**
+- Git is completely invisible to users except for providing the remote URL
+- Users interact with "local baseline" and "remote baseline" concepts
+- No git commands are ever shown or required from users
+
 **Current State:**
 - `zerb init` creates local git repository only
-- Users must manually configure remotes: `git remote add origin <url>`
-- Basic `zerb push`/`zerb pull` planned as simple git wrappers
+- Users must manually configure remotes (not acceptable for MVP)
+- Basic sync commands not yet implemented
 
 **Future Vision:**
-- Users declare remotes in `zerb.lua` (declarative approach)
-- `zerb init` supports `--remote` and `--from` flags (imperative approach)
-- Smart detection of existing ZERB repositories on remote
-- Automatic baseline sync across machines
+- Users configure remote via `zerb remote set <url>` or `zerb init --from <url>`
+- `zerb push` / `zerb pull` / `zerb status` for baseline synchronization
+- Automatic merge when possible, interactive conflict resolution when needed
 - Seamless first-machine vs second-machine setup
+
+---
+
+## Terminology
+
+| Term | Meaning |
+|------|---------|
+| **Local Baseline** | The active config on this machine (`~/.config/zerb/zerb.active.lua`) |
+| **Remote Baseline** | The config stored in the git remote (source of truth across machines) |
+
+This maps to how users think about synchronization:
+- "I changed my local setup, now I want to push it so my other machines can get it"
+- "I want to pull the latest from my remote baseline"
 
 ---
 
@@ -32,45 +50,53 @@ This document captures the design for automated git remote repository configurat
 **Scenario:** Developer creates new ZERB environment and wants to push to GitHub.
 
 ```bash
-# Option A: Declarative (config-first)
-cat > ~/.config/zerb/zerb.lua <<EOF
-zerb = {
-  tools = { "node@20" },
-  git = {
-    remote = "git@github.com:myuser/dotfiles.git"
-  }
-}
-EOF
-zerb init
-# → Detects remote in config, pushes initial commit
+$ zerb init
+✓ ZERB initialized at ~/.config/zerb
 
-# Option B: Imperative (flag-first)
-zerb init --remote git@github.com:myuser/dotfiles.git
-# → Adds remote, pushes initial commit, updates zerb.lua
+To sync your baseline across machines, set up a git remote:
+
+  1. Create a private git repository (GitHub, GitLab, etc.)
+  2. Run: zerb remote set <repository-url>
+  3. Run: zerb push
+
+Example:
+  zerb remote set git@github.com:username/dotfiles.git
+  zerb push
+
+$ zerb remote set git@github.com:myuser/dotfiles.git
+✓ Remote configured: git@github.com:myuser/dotfiles.git
+
+Run 'zerb push' to upload your baseline.
+
+$ zerb push
+Pushing local baseline to remote...
+✓ Remote baseline updated
 ```
 
 **Expected Behavior:**
 1. Initialize local git repository
-2. Add remote as `origin`
-3. Try to fetch from remote
-4. If remote is empty/new → push initial commit
-5. If remote has ZERB configs → warn about conflict, ask user to choose
-6. Update `zerb.lua` to include `git.remote` (if using `--remote` flag)
+2. Show guidance about remote setup
+3. User configures remote via `zerb remote set`
+4. User explicitly pushes with `zerb push`
+5. Remote URL stored in `zerb.lua` under `git.remote`
 
 ### Story 2: Second Machine Setup (Clone Existing Baseline)
 
 **Scenario:** Developer sets up ZERB on new laptop, wants to clone existing config.
 
 ```bash
-# Option A: Clone existing config
-zerb init --from git@github.com:myuser/dotfiles.git
-# → Clones remote, activates latest config, sets up environment
+$ zerb init --from git@github.com:myuser/dotfiles.git
+Downloading baseline from remote...
+✓ ZERB initialized from remote baseline
+✓ Remote configured
 
-# Option B: Pull after init
-zerb init
-zerb remote add git@github.com:myuser/dotfiles.git
-zerb sync
-# → Pulls existing baseline, resolves drift interactively
+Installing tools...
+  ✓ node@20.11.0
+  ✓ python@3.12
+
+Applying configs...
+  ✓ ~/.zshrc
+  ✓ ~/.gitconfig
 ```
 
 **Expected Behavior:**
@@ -78,8 +104,8 @@ zerb sync
 2. Initialize git repository
 3. Add remote as `origin`
 4. Pull existing configs from remote
-5. Detect latest config: `ls configs/ | sort -r | head -1`
-6. Activate latest config (create symlink)
+5. Detect latest config timestamp
+6. Activate latest config
 7. Install tools and apply configs per baseline
 
 ### Story 3: Offline Development (Deferred Sync)
@@ -88,27 +114,27 @@ zerb sync
 
 ```bash
 # Initial setup (offline)
-zerb init
-# → Creates local repo, no remote configured
+$ zerb init
+✓ ZERB initialized at ~/.config/zerb
+# (guidance about remote setup shown)
 
 # Work offline
-zerb add node@20
-zerb config add ~/.zshrc
+$ zerb config add ~/.zshrc
+$ zerb config add ~/.gitconfig
 
 # Later, when online
-cat >> ~/.config/zerb/configs/zerb.lua.active <<EOF
-git = {
-  remote = "git@github.com:myuser/dotfiles.git"
-}
-EOF
-zerb sync
-# → Pushes local commits to remote
+$ zerb remote set git@github.com:myuser/dotfiles.git
+✓ Remote configured
+
+$ zerb push
+Pushing local baseline to remote...
+✓ Remote baseline updated
 ```
 
 **Expected Behavior:**
 1. Init works without network
-2. Local git commits created as normal
-3. When remote configured + network available → sync
+2. Local changes are tracked automatically (git commits happen internally)
+3. When remote configured + network available, user runs `zerb push`
 4. Graceful handling of unreachable remotes
 
 ---
@@ -141,34 +167,152 @@ zerb = {
 **New Flags for `zerb init`:**
 
 ```bash
-# Initialize with remote (first machine)
-zerb init --remote <url>
-  # Adds remote, pushes initial commit
-  # Updates zerb.lua to include git.remote
-
 # Initialize from existing remote (second machine)
 zerb init --from <url>
   # Clones remote, pulls configs, activates latest baseline
   # Sets up local structure, installs tools
 
-# Local-only (current behavior)
+# Local-only (current behavior, shows guidance)
 zerb init
-  # No remote configured
+  # No remote configured, shows setup instructions
 ```
 
 **New Subcommands:**
 
 ```bash
 # Manage remotes
-zerb remote add <url>       # Add remote to config and git
-zerb remote remove          # Remove remote from config and git
-zerb remote show            # Display current remote configuration
-zerb remote set-url <url>   # Change remote URL
+zerb remote set <url>   # Configure remote repository URL
+zerb remote show        # Display current remote configuration
+zerb remote clear       # Remove remote configuration
 
-# Sync operations (already planned in Component 07)
-zerb sync                   # Pull + drift detection + interactive resolution
-zerb push                   # Push local commits to remote
-zerb pull                   # Pull remote commits to local
+# Sync operations
+zerb push               # Push local baseline to remote
+zerb pull               # Pull remote baseline to local (auto-merge + conflict resolution)
+zerb status             # Compare local vs remote baseline
+```
+
+### Example Messages
+
+**`zerb remote set`:**
+```
+$ zerb remote set git@github.com:user/dotfiles.git
+✓ Remote configured: git@github.com:user/dotfiles.git
+
+Run 'zerb push' to upload your baseline.
+```
+
+**`zerb remote show`:**
+```
+$ zerb remote show
+Remote: git@github.com:user/dotfiles.git
+```
+
+**`zerb remote show` (no remote):**
+```
+$ zerb remote show
+No remote configured.
+
+Run 'zerb remote set <url>' to configure one.
+```
+
+**`zerb push` (success):**
+```
+$ zerb push
+Pushing local baseline to remote...
+✓ Remote baseline updated
+```
+
+**`zerb push` (no remote):**
+```
+$ zerb push
+No remote configured.
+
+Run 'zerb remote set <url>' to configure one.
+```
+
+**`zerb pull` (success, no changes):**
+```
+$ zerb pull
+Pulling remote baseline...
+✓ Already up to date
+```
+
+**`zerb pull` (success, with auto-merge):**
+```
+$ zerb pull
+Pulling remote baseline...
+✓ Merged changes from remote
+
+Changes:
+  + Added: ~/.config/starship.toml
+  ~ Updated: node@20.10.0 → node@20.11.0
+```
+
+**`zerb pull` (conflict - see Conflict Resolution section):**
+```
+$ zerb pull
+Pulling remote baseline...
+
+Conflict detected between local and remote baselines.
+
+[CONFLICT] python
+  Local:   python@3.12
+  Remote:  python@3.11
+
+Resolution:
+  1. Keep local (python@3.12)
+  2. Accept remote (python@3.11)
+
+Choice [1-2]: 1
+
+✓ Resolved: keeping local version
+✓ Local baseline updated
+
+Run 'zerb push' to update remote with your resolution.
+```
+
+**`zerb status` (in sync):**
+```
+$ zerb status
+Local baseline:  zerb.lua.20250115T143022Z
+Remote baseline: zerb.lua.20250115T143022Z
+
+✓ Local and remote baselines are in sync
+```
+
+**`zerb status` (local ahead):**
+```
+$ zerb status
+Local baseline:  zerb.lua.20250115T160000Z
+Remote baseline: zerb.lua.20250115T143022Z
+
+Local is ahead of remote by 2 changes.
+
+Run 'zerb push' to update remote baseline.
+```
+
+**`zerb status` (remote ahead):**
+```
+$ zerb status
+Local baseline:  zerb.lua.20250115T143022Z
+Remote baseline: zerb.lua.20250115T180000Z
+
+Remote is ahead of local by 3 changes.
+
+Run 'zerb pull' to update local baseline.
+```
+
+**`zerb status` (diverged):**
+```
+$ zerb status
+Local baseline:  zerb.lua.20250115T160000Z
+Remote baseline: zerb.lua.20250115T180000Z
+
+Local and remote have diverged.
+  Local:  1 unpushed change
+  Remote: 2 new changes
+
+Run 'zerb pull' to merge remote changes, then 'zerb push'.
 ```
 
 ### Remote Detection Logic
@@ -176,22 +320,22 @@ zerb pull                   # Pull remote commits to local
 **Decision Tree:**
 
 ```
-Is git.remote configured? (in zerb.lua or --remote flag)
+Is git.remote configured? (in zerb.lua or --from flag)
 ├─ No → Skip remote setup (local-only mode)
-│        User can add remote later via config or command
+│        User can add remote later via `zerb remote set`
 │
 └─ Yes → Try to fetch from remote
     │
     ├─ Fetch fails (timeout, 404, auth failure)
     │  └─ Warn: "Remote configured but not reachable"
     │     Continue with local-only initialization
-    │     User can run `zerb push` or `zerb sync` later
+    │     User can run `zerb push` later
     │
     └─ Fetch succeeds → Check remote contents
         │
         ├─ Remote is empty (no commits)
-        │  └─ Push initial commit
-        │     Success: "Pushed initial configuration to remote"
+        │  └─ Ready for push
+        │     Success: "Remote configured, run 'zerb push' to upload"
         │
         ├─ Remote has commits but NO configs/ directory
         │  └─ Warn: "Remote exists but doesn't contain ZERB configuration"
@@ -242,9 +386,9 @@ func setupRemote(cfg *Config, zerbDir string) error {
         return handleExistingRemote(repo, zerbDir)
     } else if err != nil {
         // Remote unreachable (offline, auth failure, doesn't exist)
-        fmt.Fprintf(os.Stderr, "⚠️  Remote configured but not reachable: %v\n", err)
-        fmt.Fprintf(os.Stderr, "   Continuing with local-only setup.\n")
-        fmt.Fprintf(os.Stderr, "   Run 'zerb push' when remote is ready.\n")
+        fmt.Fprintf(os.Stderr, "Remote configured but not reachable: %v\n", err)
+        fmt.Fprintf(os.Stderr, "Continuing with local-only setup.\n")
+        fmt.Fprintf(os.Stderr, "Run 'zerb push' when remote is ready.\n")
         return nil
     }
     
@@ -260,8 +404,8 @@ func handleExistingRemote(repo *git.Repository, zerbDir string) error {
         // Remote exists but not ZERB
         return fmt.Errorf("remote exists but doesn't contain ZERB configuration")
     } else {
-        // Remote is empty, push initial commit
-        return pushInitialCommit(repo)
+        // Remote is empty, ready for push
+        return nil
     }
 }
 ```
@@ -305,7 +449,7 @@ Supported formats:
   SSH:   git@github.com:username/repo.git
   HTTPS: https://github.com/username/repo.git
 
-See: zerb help remote
+See: zerb remote --help
 ```
 
 ### Smart Repository Detection
@@ -368,6 +512,93 @@ func detectZerbRepo(repo *git.Repository) (bool, error) {
 }
 ```
 
+### Conflict Resolution
+
+**Design Philosophy:**
+- Git auto-merges when possible
+- Show "Merged changes from remote" message on successful auto-merge
+- When conflicts occur, present them as baseline differences (drift-style), not git markers
+- Binary choice for MVP: keep local or accept remote
+- Always interactive for MVP (no scripting flags)
+
+**How Conflict Resolution Works:**
+
+1. `zerb pull` does a `git fetch` (hidden from user)
+2. Attempts `git merge` (hidden from user)
+3. If merge succeeds:
+   - Update local baseline
+   - Show "Merged changes from remote" with summary of changes
+4. If merge conflicts:
+   - Parse both versions of zerb.lua programmatically
+   - Compare the configs to identify specific differences
+   - Present conflicts as baseline differences (similar to drift detection)
+   - User chooses: keep local or accept remote
+   - Zerb generates the resolved config and commits internally
+
+**Conflict Resolution UX:**
+
+```
+$ zerb pull
+Pulling remote baseline...
+
+Conflict detected between local and remote baselines.
+
+[CONFLICT] python
+  Local:   python@3.12
+  Remote:  python@3.11
+
+Resolution:
+  1. Keep local (python@3.12)
+  2. Accept remote (python@3.11)
+
+Choice [1-2]: 1
+
+✓ Resolved: keeping local version
+✓ Local baseline updated
+
+Run 'zerb push' to update remote with your resolution.
+```
+
+**Multiple Conflicts:**
+
+```
+$ zerb pull
+Pulling remote baseline...
+
+Conflict detected between local and remote baselines.
+
+[CONFLICT] python
+  Local:   python@3.12
+  Remote:  python@3.11
+
+[CONFLICT] ~/.config/nvim/
+  Local:   (added)
+  Remote:  (not present)
+
+Resolution for python:
+  1. Keep local (python@3.12)
+  2. Accept remote (python@3.11)
+
+Choice [1-2]: 1
+
+Resolution for ~/.config/nvim/:
+  1. Keep local (added)
+  2. Accept remote (not present)
+
+Choice [1-2]: 1
+
+✓ Resolved: keeping local versions
+✓ Local baseline updated
+
+Run 'zerb push' to update remote with your resolution.
+```
+
+**Benefits of This Approach:**
+- User never sees git conflict markers
+- Resolution is domain-aware (tools, configs) not line-based
+- Consistent UX with existing drift detection
+- Git is purely an implementation detail
+
 ### Authentication Handling
 
 **SSH Authentication:**
@@ -385,7 +616,7 @@ func detectZerbRepo(repo *git.Repository) (bool, error) {
 ```go
 if err := repo.Push(&git.PushOptions{RemoteName: "origin"}); err != nil {
     if err == git.ErrNonFastForwardUpdate {
-        return fmt.Errorf("remote has diverged, pull first: zerb sync")
+        return fmt.Errorf("remote has changed, run 'zerb pull' first")
     } else if strings.Contains(err.Error(), "authentication") {
         return fmt.Errorf("authentication failed\n\n" +
             "For SSH: Ensure SSH keys are configured with git hosting provider\n" +
@@ -401,55 +632,52 @@ if err := repo.Push(&git.PushOptions{RemoteName: "origin"}); err != nil {
 
 ## Implementation Scope
 
-### MVP Features (Post-MVP, Pre-1.0):
+### MVP Features:
 
 - [ ] Read `git.remote` and `git.branch` from `zerb.lua`
-- [ ] Add `--remote <url>` flag to `zerb init`
 - [ ] Add `--from <url>` flag to `zerb init`
+- [ ] Add guidance message after `zerb init` (no remote)
 - [ ] Remote URL validation (SSH and HTTPS)
 - [ ] Smart detection of existing ZERB repos
-- [ ] Push initial commit on first machine
-- [ ] Pull existing baseline on second machine
+- [ ] Push initial commit on first machine (`zerb push`)
+- [ ] Pull existing baseline on second machine (`zerb pull`)
+- [ ] Auto-merge with "Merged changes from remote" message
+- [ ] Interactive conflict resolution (drift-style UX)
 - [ ] Graceful offline handling (warn and continue)
-- [ ] Add `zerb remote add/remove/show` subcommands
-- [ ] Update `zerb sync` to use configured remote
+- [ ] Add `zerb remote set/show/clear` subcommands
+- [ ] Add `zerb push` command
+- [ ] Add `zerb pull` command
+- [ ] Add `zerb status` command
 - [ ] Integration tests for all remote scenarios
 
-### Post-1.0 Features (Future):
+### Post-MVP Features (Future):
 
+- [ ] Scripting flags for conflict resolution (`--theirs` / `--ours`)
 - [ ] Multiple remotes support (origin, backup, etc.)
 - [ ] Remote URL auto-detection from GitHub CLI (`gh repo view --json url`)
 - [ ] Interactive remote setup wizard (`zerb init --interactive`)
-- [ ] Remote health checks (`zerb remote status`)
+- [ ] Remote health checks
 - [ ] Automatic remote creation (`zerb init --create-remote`)
 - [ ] GitLab/Bitbucket/Gitea URL templates
 - [ ] Remote backup and restore workflows
+- [ ] Granular conflict resolution (per-item choices)
 
 ---
 
-## Open Questions
+## Resolved Design Questions
 
 ### Q1: Should `--from` clone or pull?
 
-**Options:**
-1. Clone entire repo, replace local structure
-2. Pull into existing structure (preserves local uncommitted work)
-
-**Recommendation:** Pull into existing structure (Option 2)
+**Decision:** Pull into existing structure
 
 **Rationale:**
 - More flexible (user can have local changes)
-- Consistent with `zerb sync` workflow
+- Consistent with `zerb pull` workflow
 - Safer (doesn't delete local work)
 
 ### Q2: How to handle auth failures?
 
-**Options:**
-1. Retry with exponential backoff
-2. Surface error immediately and fail
-3. Fallback to local-only with warning
-
-**Recommendation:** Option 3 (fallback to local-only)
+**Decision:** Fallback to local-only with warning
 
 **Rationale:**
 - Auth setup is outside ZERB's control
@@ -459,11 +687,7 @@ if err := repo.Push(&git.PushOptions{RemoteName: "origin"}); err != nil {
 
 ### Q3: Should we validate SSH keys before attempting operations?
 
-**Options:**
-1. Pre-check: `ssh -T git@github.com` before git operations
-2. No pre-check: let git handle auth, surface errors
-
-**Recommendation:** Option 2 (no pre-check)
+**Decision:** No pre-check, let git handle auth
 
 **Rationale:**
 - git/SSH already provide good error messages
@@ -473,27 +697,42 @@ if err := repo.Push(&git.PushOptions{RemoteName: "origin"}); err != nil {
 
 ### Q4: What if remote and local both have unpushed commits?
 
-**Options:**
-1. Auto-merge (risky)
-2. Fail and require manual resolution
-3. Interactive conflict resolution
-
-**Recommendation:** Option 2 for MVP, Option 3 post-MVP
+**Decision:** Auto-merge when possible, interactive resolution for conflicts
 
 **Rationale:**
-- Auto-merge can lose data (especially with immutable timestamped configs)
-- Manual resolution keeps user in control
-- Post-MVP: add interactive resolution via `zerb sync --resolve`
+- Auto-merge handles the common case silently with a message
+- Conflicts require user input to avoid data loss
+- Drift-style UX keeps git invisible
 
 ### Q5: Should `git.remote` be required or optional?
 
-**Recommendation:** Optional
+**Decision:** Optional
 
 **Rationale:**
 - Local-only workflows are valid (single machine, testing, etc.)
 - Users can add remote later
 - Avoids forcing sync on every user
 - Aligns with progressive disclosure (simple first, advanced later)
+
+### Q6: Should push be automatic after local changes?
+
+**Decision:** No, user must explicitly run `zerb push`
+
+**Rationale:**
+- User controls when changes are shared
+- Avoids unexpected network activity
+- Works well with offline workflows
+- Explicit is better than implicit
+
+### Q7: How visible should git be?
+
+**Decision:** Completely invisible except for providing remote URL
+
+**Rationale:**
+- Users shouldn't need to know git to use zerb
+- Remote URL is the only git-specific concept users need
+- All sync operations use zerb terminology (push/pull/status)
+- Error messages avoid git jargon where possible
 
 ---
 
@@ -502,12 +741,11 @@ if err := repo.Push(&git.PushOptions{RemoteName: "origin"}); err != nil {
 Create `openspec/changes/setup-git-remote/` proposal when:
 
 - [x] `setup-git-repository` change is merged and deployed
-- [ ] Component 07 Git Operations has basic `push`/`pull` implemented
-- [ ] User feedback confirms remote is high priority
-- [ ] At least one team member has tested local-only workflow
-- [ ] Design questions above are answered with real-world data
+- [x] Design decisions finalized (this document)
+- [ ] Ready to begin implementation
+- [ ] Component 07 Git Operations architecture reviewed
 
-**Estimated Timeline:** Q1 2026 (post-MVP release)
+**Estimated Timeline:** MVP implementation
 
 ---
 
@@ -515,11 +753,10 @@ Create `openspec/changes/setup-git-remote/` proposal when:
 
 ### Current Work
 - `openspec/changes/setup-git-repository/` - Local git repository setup
-- `.ai-workflow/implementation-planning/components/07-git-operations.md` - Git operations architecture
 
 ### Related Components
 - Component 02: Lua Config - Where `git.remote` is parsed
-- Component 05: Drift Detection - Integrated with `zerb sync`
+- Component 05: Drift Detection - UX pattern for conflict resolution
 - Component 07: Git Operations - Push/pull/conflict resolution
 
 ### External Documentation
@@ -533,17 +770,24 @@ Create `openspec/changes/setup-git-remote/` proposal when:
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
+| **Commands** | `zerb push`, `zerb pull`, `zerb status` | Short, memorable, familiar pattern |
+| **Remote management** | `zerb remote set/show/clear` | Simple imperative interface |
 | **Config location** | `git.remote` in `zerb.lua` | Single source of truth, declarative |
-| **CLI flags** | `--remote` and `--from` | Imperative alternative for quick setup |
+| **Init flag** | `--from <url>` only | Clone from existing baseline |
+| **Init guidance** | Show setup instructions | Help users understand next steps |
 | **URL formats** | SSH and HTTPS | Standard git, broad compatibility |
 | **Auth handling** | Defer to git/SSH | Don't reinvent auth, use system config |
 | **Offline behavior** | Warn and continue | Graceful degradation, no blocking |
 | **Remote detection** | Check for `configs/` dir | Reliable indicator of ZERB repo |
-| **Conflict handling** | Fail, require manual resolution (MVP) | Safety first, avoid data loss |
+| **Auto-push** | No | User explicitly pushes changes |
+| **Auto-merge** | Yes, with message | Show "Merged changes from remote" |
+| **Conflict handling** | Interactive, drift-style UX | Binary choice: local or remote |
+| **Conflict scripting** | Post-MVP | `--theirs`/`--ours` flags later |
+| **Git visibility** | Invisible except remote URL | Users don't need to know git |
 | **Remote requirement** | Optional | Support local-only workflows |
 
 ---
 
-**Document Version:** 1.0  
-**Last Updated:** 2025-11-16  
-**Status:** Ready for review and refinement based on MVP feedback
+**Document Version:** 2.0  
+**Last Updated:** 2025-11-25  
+**Status:** Design finalized, ready for implementation planning

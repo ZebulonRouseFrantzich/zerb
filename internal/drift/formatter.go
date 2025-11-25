@@ -8,6 +8,8 @@ import (
 // FormatDriftReport formats drift results for user display
 func FormatDriftReport(results []DriftResult) string {
 	var sb strings.Builder
+	// Pre-allocate for typical report size (header + entries + summary)
+	sb.Grow(1024 + len(results)*256)
 
 	sb.WriteString("\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n")
 	sb.WriteString("DRIFT REPORT\n")
@@ -75,6 +77,8 @@ func FormatDriftReport(results []DriftResult) string {
 // formatDriftEntry formats a single drift entry
 func formatDriftEntry(r DriftResult) string {
 	var sb strings.Builder
+	// Pre-allocate for typical entry size
+	sb.Grow(512)
 
 	switch r.DriftType {
 	case DriftExternalOverride:

@@ -117,8 +117,8 @@ func TestGenerator_GenerateTimestamped(t *testing.T) {
 	}
 
 	// Check filename format
-	if !strings.HasPrefix(filename, "zerb.lua.") {
-		t.Errorf("filename = %s, want prefix 'zerb.lua.'", filename)
+	if !strings.HasPrefix(filename, "zerb.") || !strings.HasSuffix(filename, ".lua") {
+		t.Errorf("filename = %s, want pattern 'zerb.TIMESTAMP.lua'", filename)
 	}
 	if !strings.Contains(filename, "T") {
 		t.Errorf("filename = %s, want ISO 8601 timestamp format", filename)

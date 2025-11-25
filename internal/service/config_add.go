@@ -147,7 +147,7 @@ Example:
 		return nil, fmt.Errorf("operation cancelled: %w", err)
 	}
 
-	activeConfigPath := filepath.Join(s.zerbDir, "zerb.lua.active")
+	activeConfigPath := filepath.Join(s.zerbDir, "zerb.active.lua")
 	cfgData, err := os.ReadFile(activeConfigPath)
 	if err != nil {
 		return nil, fmt.Errorf("read active config: %w", err)
@@ -227,7 +227,10 @@ Example:
 		if err := s.chezmoi.Add(ctx, path, chezmoiOpts); err != nil {
 			// Mark as failed and save transaction
 			txn.UpdatePathState(path, transaction.StateFailed, nil, err)
-			txn.Save(txnDir)
+			if saveErr := txn.Save(txnDir); saveErr != nil {
+				// Log warning but continue with the primary error
+				fmt.Fprintf(os.Stderr, "Warning: failed to save transaction state: %v\n", saveErr)
+			}
 
 			// Provide recovery instructions
 			txnFile := filepath.Join(txnDir, fmt.Sprintf("txn-config-add-%s.json", txn.ID))
@@ -324,7 +327,7 @@ Note: You may need to manually clean up files in the config manager's source dir
 	filesToStage := []string{
 		filepath.Join("configs", newConfigFilename),
 		".zerb-active",
-		"zerb.lua.active",
+		"zerb.active.lua",
 	}
 
 	// Also stage chezmoi source files
