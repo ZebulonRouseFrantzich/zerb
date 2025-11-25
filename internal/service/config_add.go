@@ -95,7 +95,7 @@ func (s *ConfigAddService) Execute(ctx context.Context, req AddRequest) (*AddRes
 
 	// 1. Acquire transaction lock
 	txnDir := filepath.Join(s.zerbDir, ".txn")
-	lock, err := transaction.AcquireLock(txnDir)
+	lock, err := transaction.AcquireLock(ctx, txnDir)
 	if err != nil {
 		return nil, fmt.Errorf("acquire transaction lock: %w", err)
 	}

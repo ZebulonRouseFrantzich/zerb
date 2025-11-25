@@ -1,6 +1,7 @@
 package transaction
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -11,6 +12,10 @@ import (
 const (
 	// StaleLockThreshold is the maximum age of a lock before it's considered stale.
 	StaleLockThreshold = 10 * time.Minute
+
+	// LockFileName is the name of the lock file used for all config operations.
+	// Using a single lock file prevents races between add/remove/list operations.
+	LockFileName = "config.lock"
 )
 
 var (
@@ -26,12 +31,23 @@ type Lock struct {
 
 // AcquireLock attempts to acquire an exclusive lock for config operations.
 // Uses O_CREATE|O_EXCL for atomic lock creation.
-func AcquireLock(dir string) (*Lock, error) {
+// The context is used for cancellation and timeout support.
+func AcquireLock(ctx context.Context, dir string) (*Lock, error) {
+	// Check context before any operations
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("acquire lock: %w", err)
+	}
+
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, fmt.Errorf("create lock directory: %w", err)
 	}
 
-	lockPath := filepath.Join(dir, "config-add.lock")
+	lockPath := filepath.Join(dir, LockFileName)
+
+	// Check context again before attempting lock
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("acquire lock: %w", err)
+	}
 
 	// Try to create lock file exclusively
 	file, err := os.OpenFile(lockPath, os.O_CREATE|os.O_EXCL|os.O_RDWR, 0600)

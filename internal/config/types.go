@@ -107,6 +107,111 @@ type Override struct {
 	Options *Options `json:"options,omitempty"`
 }
 
+// FindConfig returns the ConfigFile matching the given path, or nil if not found.
+// Path comparison is done after normalization to handle tilde vs absolute paths.
+func (c *Config) FindConfig(path string) *ConfigFile {
+	normalized, err := NormalizeConfigPath(path)
+	if err != nil {
+		return nil
+	}
+
+	for i := range c.Configs {
+		existingNorm, err := NormalizeConfigPath(c.Configs[i].Path)
+		if err != nil {
+			continue
+		}
+		if existingNorm == normalized {
+			return &c.Configs[i]
+		}
+	}
+	return nil
+}
+
+// RemoveConfig returns a new Configs slice with the specified path removed.
+// Returns the new slice and a boolean indicating if a config was removed.
+// The original Config is not modified.
+func (c *Config) RemoveConfig(path string) ([]ConfigFile, bool) {
+	normalized, err := NormalizeConfigPath(path)
+	if err != nil {
+		return c.Configs, false
+	}
+
+	result := make([]ConfigFile, 0, len(c.Configs))
+	removed := false
+
+	for _, cfg := range c.Configs {
+		existingNorm, err := NormalizeConfigPath(cfg.Path)
+		if err != nil {
+			result = append(result, cfg)
+			continue
+		}
+		if existingNorm == normalized {
+			removed = true
+			continue // Skip this config (remove it)
+		}
+		result = append(result, cfg)
+	}
+
+	return result, removed
+}
+
+// DeduplicatePaths removes duplicate paths from a slice.
+// Paths are compared after normalization, so "~/.zshrc" and "/home/user/.zshrc"
+// are considered duplicates. The first occurrence is kept.
+func DeduplicatePaths(paths []string) []string {
+	if len(paths) == 0 {
+		return paths
+	}
+
+	seen := make(map[string]struct{})
+	result := make([]string, 0, len(paths))
+
+	for _, p := range paths {
+		normalized, err := NormalizeConfigPath(p)
+		if err != nil {
+			// Keep paths that can't be normalized (will be validated later)
+			result = append(result, p)
+			continue
+		}
+		if _, ok := seen[normalized]; !ok {
+			seen[normalized] = struct{}{}
+			result = append(result, p)
+		}
+	}
+
+	return result
+}
+
+// IsWithinHome checks if a path is within the user's home directory.
+// This is a safety check to prevent deletion of files outside $HOME.
+func IsWithinHome(path string) bool {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+
+	// Expand and normalize the path
+	var absPath string
+	if strings.HasPrefix(path, "~/") {
+		absPath = filepath.Join(home, path[2:])
+	} else if path == "~" {
+		absPath = home
+	} else if filepath.IsAbs(path) {
+		absPath = path
+	} else {
+		return false // Relative paths are not allowed
+	}
+
+	absPath = filepath.Clean(absPath)
+	homeAbs := filepath.Clean(home)
+
+	// Check if path is exactly home or starts with home + separator
+	if absPath == homeAbs {
+		return true
+	}
+	return strings.HasPrefix(absPath, homeAbs+string(filepath.Separator))
+}
+
 // Validate performs basic validation on a Config.
 func (c *Config) Validate() error {
 	// Tool count validation

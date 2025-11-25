@@ -71,21 +71,6 @@ The system SHALL display config flags in a human-readable format.
 - **WHEN** displaying a config with all flags false
 - **THEN** the FLAGS column is empty (no "false" values shown)
 
-### Requirement: User Abstraction
-The system SHALL abstract internal implementation details from user-facing output.
-
-#### Scenario: Never mention "chezmoi" in output
-- **WHEN** any `zerb config list` command is run
-- **THEN** no output contains the word "chezmoi"
-- **AND** managed state is described as "managed by ZERB"
-- **AND** source tracking is described using ZERB-centric terminology
-
-#### Scenario: User-friendly status descriptions
-- **WHEN** verbose mode shows status explanations
-- **THEN** descriptions use terms like "managed by ZERB", "tracked", "declared"
-- **AND** descriptions do NOT reference internal tools or directories
-- **AND** error messages are actionable without implementation knowledge
-
 ### Requirement: Alphabetical Sorting
 The system SHALL sort config paths alphabetically for consistent output.
 
@@ -204,3 +189,30 @@ The system SHALL maintain >80% test coverage for all new code.
 - **AND** coverage SHALL be >80%
 - **AND** tests SHALL include tilde path scenarios using `t.Setenv("HOME")`
 - **AND** tests SHALL include nested path scenarios
+
+## MODIFIED Requirements
+
+### Requirement: User Abstraction
+The system SHALL abstract chezmoi implementation details from user-facing messages.
+
+#### Scenario: Success message abstraction
+- **WHEN** config add succeeds
+- **THEN** success messages MUST NOT mention "chezmoi"
+- **AND** messages use "ZERB" or "tracked configs" terminology
+
+#### Scenario: Error message abstraction
+- **WHEN** chezmoi returns an error
+- **THEN** the error MUST be translated to user-friendly terms
+- **AND** MUST NOT expose chezmoi-specific error messages directly
+
+#### Scenario: Never mention "chezmoi" in list output
+- **WHEN** any `zerb config list` command is run
+- **THEN** no output contains the word "chezmoi"
+- **AND** managed state is described as "managed by ZERB"
+- **AND** source tracking is described using ZERB-centric terminology
+
+#### Scenario: User-friendly status descriptions
+- **WHEN** verbose mode shows status explanations
+- **THEN** descriptions use terms like "managed by ZERB", "tracked", "declared"
+- **AND** descriptions do NOT reference internal tools or directories
+- **AND** error messages are actionable without implementation knowledge

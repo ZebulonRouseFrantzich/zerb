@@ -207,3 +207,257 @@ func TestOverride(t *testing.T) {
 		t.Errorf("Override.ToolsOverride[node] = %s, want 21.0.0", override.ToolsOverride["node"])
 	}
 }
+
+func TestConfig_FindConfig(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	config := &Config{
+		Configs: []ConfigFile{
+			{Path: "~/.zshrc", Template: true},
+			{Path: "~/.gitconfig", Private: true},
+			{Path: "~/.config/nvim/", Recursive: true},
+		},
+	}
+
+	tests := []struct {
+		name       string
+		searchPath string
+		wantFound  bool
+		wantPath   string
+	}{
+		{
+			name:       "find exact match with tilde",
+			searchPath: "~/.zshrc",
+			wantFound:  true,
+			wantPath:   "~/.zshrc",
+		},
+		{
+			name:       "find with absolute path when stored as tilde",
+			searchPath: homeDir + "/.zshrc",
+			wantFound:  true,
+			wantPath:   "~/.zshrc",
+		},
+		{
+			name:       "not found",
+			searchPath: "~/.bashrc",
+			wantFound:  false,
+		},
+		{
+			name:       "find directory path",
+			searchPath: "~/.config/nvim/",
+			wantFound:  true,
+			wantPath:   "~/.config/nvim/",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			found := config.FindConfig(tt.searchPath)
+			if tt.wantFound {
+				if found == nil {
+					t.Errorf("FindConfig(%q) = nil, want non-nil", tt.searchPath)
+					return
+				}
+				if found.Path != tt.wantPath {
+					t.Errorf("FindConfig(%q).Path = %q, want %q", tt.searchPath, found.Path, tt.wantPath)
+				}
+			} else {
+				if found != nil {
+					t.Errorf("FindConfig(%q) = %+v, want nil", tt.searchPath, found)
+				}
+			}
+		})
+	}
+}
+
+func TestConfig_RemoveConfig(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	tests := []struct {
+		name        string
+		configs     []ConfigFile
+		removePath  string
+		wantCount   int
+		wantRemoved bool
+	}{
+		{
+			name: "remove existing config",
+			configs: []ConfigFile{
+				{Path: "~/.zshrc"},
+				{Path: "~/.gitconfig"},
+				{Path: "~/.tmux.conf"},
+			},
+			removePath:  "~/.gitconfig",
+			wantCount:   2,
+			wantRemoved: true,
+		},
+		{
+			name: "remove with absolute path",
+			configs: []ConfigFile{
+				{Path: "~/.zshrc"},
+				{Path: "~/.gitconfig"},
+			},
+			removePath:  homeDir + "/.zshrc",
+			wantCount:   1,
+			wantRemoved: true,
+		},
+		{
+			name: "remove non-existent path",
+			configs: []ConfigFile{
+				{Path: "~/.zshrc"},
+			},
+			removePath:  "~/.bashrc",
+			wantCount:   1,
+			wantRemoved: false,
+		},
+		{
+			name: "remove last config",
+			configs: []ConfigFile{
+				{Path: "~/.zshrc"},
+			},
+			removePath:  "~/.zshrc",
+			wantCount:   0,
+			wantRemoved: true,
+		},
+		{
+			name:        "remove from empty configs",
+			configs:     []ConfigFile{},
+			removePath:  "~/.zshrc",
+			wantCount:   0,
+			wantRemoved: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := &Config{Configs: tt.configs}
+			newConfigs, removed := config.RemoveConfig(tt.removePath)
+
+			if removed != tt.wantRemoved {
+				t.Errorf("RemoveConfig(%q) removed = %v, want %v", tt.removePath, removed, tt.wantRemoved)
+			}
+			if len(newConfigs) != tt.wantCount {
+				t.Errorf("RemoveConfig(%q) returned %d configs, want %d", tt.removePath, len(newConfigs), tt.wantCount)
+			}
+
+			// Verify original config is not modified
+			if len(config.Configs) != len(tt.configs) {
+				t.Error("Original config should not be modified")
+			}
+		})
+	}
+}
+
+func TestDeduplicatePaths(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	tests := []struct {
+		name      string
+		paths     []string
+		wantCount int
+	}{
+		{
+			name:      "no duplicates",
+			paths:     []string{"~/.zshrc", "~/.gitconfig"},
+			wantCount: 2,
+		},
+		{
+			name:      "exact duplicates",
+			paths:     []string{"~/.zshrc", "~/.zshrc"},
+			wantCount: 1,
+		},
+		{
+			name:      "tilde and absolute duplicates",
+			paths:     []string{"~/.zshrc", homeDir + "/.zshrc"},
+			wantCount: 1,
+		},
+		{
+			name:      "preserves order (first occurrence kept)",
+			paths:     []string{"~/.gitconfig", "~/.zshrc", homeDir + "/.gitconfig"},
+			wantCount: 2,
+		},
+		{
+			name:      "empty input",
+			paths:     []string{},
+			wantCount: 0,
+		},
+		{
+			name:      "single path",
+			paths:     []string{"~/.zshrc"},
+			wantCount: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := DeduplicatePaths(tt.paths)
+			if len(result) != tt.wantCount {
+				t.Errorf("DeduplicatePaths() returned %d paths, want %d", len(result), tt.wantCount)
+			}
+		})
+	}
+}
+
+func TestIsWithinHome(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	tests := []struct {
+		name string
+		path string
+		want bool
+	}{
+		{
+			name: "tilde path",
+			path: "~/.zshrc",
+			want: true,
+		},
+		{
+			name: "absolute path within home",
+			path: homeDir + "/.config/nvim",
+			want: true,
+		},
+		{
+			name: "exact home directory",
+			path: homeDir,
+			want: true,
+		},
+		{
+			name: "tilde home",
+			path: "~",
+			want: true,
+		},
+		{
+			name: "path outside home",
+			path: "/etc/passwd",
+			want: false,
+		},
+		{
+			name: "root path",
+			path: "/",
+			want: false,
+		},
+		{
+			name: "tmp path",
+			path: "/tmp/test",
+			want: false,
+		},
+		{
+			name: "path that starts with home prefix but different dir",
+			path: homeDir + "_other/file",
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := IsWithinHome(tt.path)
+			if result != tt.want {
+				t.Errorf("IsWithinHome(%q) = %v, want %v", tt.path, result, tt.want)
+			}
+		})
+	}
+}
