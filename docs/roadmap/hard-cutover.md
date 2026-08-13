@@ -1,233 +1,261 @@
-# Hard Cutover Plan
+# Hard-Cutover Disposition
 
-## Decision
+## Authority and decision
 
-ZERB will replace the current pre-alpha product model in one breaking cutover. The shipped repository will not contain two configuration formats, two state models, compatibility aliases, or deprecated execution paths.
+This document is the exhaustive disposition authority for the pre-alpha product. `product-contract.md` owns public behavior, `architecture.md` owns trust, process, root, and durable-state invariants, `validation.md` owns support claims and evidence, and `delivery-plan.md` owns sequencing. This document decides only what is deleted, replaced, or used as an audit reference before clean reimplementation.
 
-This is a source and product cutover, not permission to delete user data. Legacy installations are detected and preserved, but the new binary does not silently import or reinterpret them.
+There are no supported users and no supported installation or data format to migrate. The target ships in one breaking cutover: no compatibility aliases, legacy parser or importer, feature flag, second public binary, state migration utility, mixed command table, deprecated package, stale export, or hidden fallback. Existing on-disk content is handled only by the generic foreign, malformed, or recognized-state rules in `architecture.md`; the target runtime does not recognize the old product model specially.
 
-## Old and new product models
+Phase 0 is a provisional, proof-oriented documentation baseline. Only the Phase 1 evidence gate may freeze implementation contracts. A proof or support claim is not complete merely because this table names its future gate.
 
-| Current model | Replacement |
-|---|---|
-| `zerb.lua` executable DSL | Versioned environment manifest plus native profile `mise.toml` and chezmoi source fragments |
-| Platform table injected into Lua | Native mise platform/environment support constrained by the approved profile contract |
-| Timestamped generated Lua configs | Exact Git source commits and canonical materialized-candidate digest |
-| `.zerb-active` / `zerb.active.lua` | One atomic `stable/current` record that references and thereby completes an immutable receipt, plus a durable transition journal |
-| `config add/list/remove` structural rewriting | User-authored profile repositories; source authoring commands deferred |
-| Chezmoi source mutations from ZERB config CRUD | One derived effective source; source repos remain immutable during apply |
-| Custom baseline/managed/active drift | Plan and doctor based on source pins, native manager observations, and last completed receipt |
-| Automatic config commits | Explicit user Git workflow; ZERB restore is read-only with respect to source repos |
-| go-git as pure-Go Git engine | Native Git invoked safely for standard credentials and submodules |
-| Parent-shell `mise activate` | `zerb exec` and a clean `zerb shell` child |
-| Transaction/rollback terminology | Journaled resumable convergence with truthful dirty state |
-| Single “reproducible” claim | Independent pinning, integrity, availability, compatibility, and convergence facts |
+## Disposition vocabulary
 
-## CLI cutover
+Every row uses exactly one disposition:
 
-### Initial MVP CLI
+- **`delete`**: remove the artifact and every behavior, test, fixture, dependency, and public claim that exists only for it.
+- **`replace`**: put target-owned content at the same public or repository location; do not preserve old semantics while retaining a filename.
+- **`audit then reimplement`**: treat the old artifact as read-only research, carry over only a concept independently justified by `PC-*`, `ARCH-*`, and `VAL-*`, and implement that concept under the target package and contract. The old tree is still deleted in Phase 6. Target-neutral metadata may be reproduced byte-for-byte only after its audit confirms that it encodes no old behavior.
 
-```text
-zerb bootstrap <source> --profile <name>
-zerb profile list <source>
-zerb plan <source> --profile <name>
-zerb apply --candidate <digest>
-zerb doctor
-zerb recover resume
-zerb recover repair
-zerb exec -- <command> [args...]
-zerb shell
-zerb version
-zerb --version
-```
+An unlisted tracked path, ignored runtime artifact, direct dependency, generated artifact, or newly discovered product surface fails the Phase 6 cutover gate. Owners in this table are responsibility roles, not evidence that their gate has passed.
 
-Exact flags, prompts, output schemas, and exit codes belong in the OpenSpec change.
+## Active and historical change records
 
-### Removed CLI
+`add-config-remove-command`: **superseded/incomplete; delta never adopted**.
 
-The hard cutover removes, without aliases:
+Do not complete, validate, or document that change. In particular, do not add missing end-to-end, interruption, recovery, status-display, or documentation work for it. Four archived old-product change records are historical only. The entire former specification workflow/tree is deleted in Phase 0 after surviving requirements have been cross-walked into roadmap-owned contracts. Exact former paths and content remain available in Git history; they are not relocated into the working tree.
 
-```text
-zerb init
-zerb activate
-zerb uninit
-zerb drift
-zerb config add
-zerb config list
-zerb config remove
-```
+## Former-authority requirement crosswalk
 
-Commands documented but not implemented in the current product, including `add`, `sync`, `push`, `pull`, `restore`, and interactive rollback workflows, are not carried forward merely because old roadmap text mentioned them.
+This crosswalk is the retained Phase 0 migration record for the former canonical specifications, their archived source deltas, the incomplete active delta, future-intent notes, legacy user guides, and project/workflow context. It records semantics, not copies of deleted documents. After deletion, exact former paths, filenames, wording, task state, and content exist only in historical Git objects. They are not relocated or reconstructed in the working tree, and historical commits need not be rewritten.
 
-Post-MVP commands such as profile switching or source authoring receive new proposals based on the new state model; they do not revive old semantics.
+Each `HC-XW-*` row has exactly one terminal outcome: one normative `PC-*`, `ARCH-*`, or `VAL-*` owner; an explicit **Reject** disposition; or an explicit **Defer** disposition to one non-normative section of `post-mvp.md`. A normative destination owns only the behavior stated in that row; it does not import the former data shape, command grammar, algorithm, or implementation. Repeated destinations mean distinct former behaviors converge on one target invariant, not that the behavior has multiple owners.
 
-## Current code disposition
+### Source-family coverage ledger
 
-### Replace and remove
+| Former durable source family | Crosswalk rows accounting for the family | Completeness statement |
+|---|---|---|
+| Canonical configuration-management specification and the archived add/list deltas | HC-XW-001–HC-XW-022 | Every add, list, remove-adjacent, path, transaction, managed-home, managed-tool, preview, confirmation, status, commit, and output-abstraction subject is carried or rejected below. |
+| Canonical initialization specification and its archived source delta | HC-XW-023–HC-XW-031 | Every Git implementation/configuration, initialization ordering, marker, directory, managed-binary, commit, warning, and teardown subject is carried or rejected below. |
+| Canonical drift-detection specification, its archived source delta, and the old user guide | HC-XW-032–HC-XW-037 | Every comparison input, status, formatter, version probe, resolution mode/action, immutable snapshot, and health observation is carried or rejected below. |
+| Cross-cutting executable configuration, generated-manager configuration, CLI, and product-context claims | HC-XW-038–HC-XW-043 and HC-XW-067 | The language/schema, platform injection, generated files, manager exposure, old command table, version output, CLI framework, and target command replacement are all classified. |
+| Incomplete active configuration-removal proposal, design, delta, and task record | HC-XW-004–HC-XW-015 and HC-XW-044 | Its implemented and missing purge/keep, preview, transaction, resume/abort, cancellation, status, documentation, and end-to-end subjects are deliberately not completed or adopted. |
+| Future error-handling and recovery note | HC-XW-045–HC-XW-051 | Atomic persistence, concurrency, forward recovery, redaction, rollback, cache, and offline behavior each has one outcome. |
+| Future remote-source and synchronization note | HC-XW-052–HC-XW-053 | Authoring/synchronization and any future private selected transport intent are separated from the rejected old command/executable-config mechanics; no current mechanism or support claim is created. |
+| Future machine-override note | HC-XW-054–HC-XW-057 | Merge/host-override mechanics, profile lifecycle, encryption, key bootstrap, and multi-recipient intent are all classified. |
+| Future source-hook note | HC-XW-058–HC-XW-060 | Target-schema validation intent is deferred; old snapshot/language checks and exact warning heuristics are rejected. |
+| Future deferred-repository-initialization note | HC-XW-061–HC-XW-062 | Target-compatible offline authoring is deferred; the old command, marker, and automatic-commit mechanics are rejected. |
+| Legacy restore enhancement | HC-XW-063–HC-XW-064 | Old teardown-backup import and conflict mechanics are rejected; only target-state forward recovery survives. |
+| Future platform and execution intent | HC-XW-065–HC-XW-066 | Additional support tuples and optional user-facing execution surfaces remain non-committed; the process boundary needed to retain an MVP tuple is mandatory under `ARCH-010` rather than deferred. |
+| Former project guidance, workflow lifecycle, indexes, task lists, review notes, and status/coverage claims | HC-XW-067–HC-XW-068 | A false framework claim is replaced by the exact contract; the workflow/evidence metadata is deleted and is not promoted into proof. |
 
-These areas encode the obsolete model and should be removed from the shipping cutover rather than wrapped:
+### Requirement and domain mapping
 
-- `internal/config/`: Lua types, parser, sandbox, generator, active markers, and status model.
-- `internal/service/config_add.go`, `config_list.go`, and `config_remove.go`: config CRUD orchestration.
-- `internal/drift/`: custom three-way detection and resolution.
-- `internal/transaction/`: config-add/remove transaction format and recovery assumptions.
-- `internal/git/`: go-git repository manager and automatic commit workflow.
-- `internal/chezmoi/`: current path-translation and source-mutation wrapper.
-- `cmd/zerb/config_*.go`, `drift.go`, `init.go`, `activate.go`, and `uninit.go`: old command contracts.
-- Lua examples and test fixtures tied to the old public configuration format.
+| ID | Former behavior or durable claim | Sole destination or final disposition |
+|---|---|---|
+| HC-XW-001 | Canonicalize user paths; reject traversal, symlink escape, unsafe ancestors, aliases, and targets outside the permitted root before access. | `ARCH-020` |
+| HC-XW-002 | Establish restrictive modes at creation and use temporary-write, file-sync, atomic-rename, and parent-sync persistence rather than repair permissions later. | `ARCH-020` |
+| HC-XW-003 | Wrap causes for programmatic diagnosis while actively redacting internal paths, values, and sensitive names before user-visible formatting. | `PC-013` |
+| HC-XW-004 | Copy one or many live-home files into an implicit product repository with recursive, template, secret, or private flags. | **Reject:** configuration CRUD and live-home source capture are not target product operations. |
+| HC-XW-005 | Detect already-tracked paths or changed flags, preview source mutations, offer dry-run, and let `--yes` bypass those old prompts. | **Reject:** the target's candidate trust and mutation authorization are not CRUD preview semantics. |
+| HC-XW-006 | Treat a batch of copied files as one transaction followed by one automatic Git commit. | **Reject:** automatic commits and implicit repository mutation are removed. |
+| HC-XW-007 | List copied configuration paths in table/verbose forms with only synced, missing, or partial statuses. | **Reject:** the old configuration inventory and its status taxonomy are removed. |
+| HC-XW-008 | Remove tracked configuration with keep/purge choices, home-boundary checks, confirmation, delete-before-forget ordering, and not-found-as-success cleanup. | **Reject:** the incomplete removal delta is superseded and target MVP has no configuration-removal operation. |
+| HC-XW-009 | Implement add/remove by invoking manager source-mutation commands, translating user paths into manager source paths, and maintaining a source mutation wrapper. | **Reject:** target home application consumes one immutable effective source and never exposes CRUD through the adapter. |
+| HC-XW-010 | Hide manager implementation details and internal paths behind product-level user errors. | `PC-013` |
+| HC-XW-011 | Serialize cooperating product writers through exclusive creation and owner-verified release rather than concurrent best effort. | `ARCH-023` |
+| HC-XW-012 | Persist truthful pre-mutation, mutating, completion, and failure boundaries atomically around external mutation. | `ARCH-025` |
+| HC-XW-013 | Resume only through evidence-backed forward convergence and diagnose or repair recognized interruption without claiming rollback. | `ARCH-027` |
+| HC-XW-014 | Propagate catchable cancellation, terminate the controlled process boundary, escalate, and reap under an exact lifecycle policy. | `ARCH-010` |
+| HC-XW-015 | Preserve UUID transaction filenames, a shared old lock name, pending/in-progress/completed/failed enums, add/delete operation fields, created-source cleanup lists, `--resume`/`--abort`, or skip-completed-path mechanics. | **Reject:** target locks, journals, tokens, state transitions, and recovery grammar are independently versioned and frozen; no old record is imported. |
+| HC-XW-016 | Acquire and invoke only an integrity-verified manager executable rather than an ambient manager binary. | `ARCH-012` |
+| HC-XW-017 | Give the home manager an explicit effective source, runtime configuration, cache, persistent state, working tree where required, and destination that cannot discover ambient manager state. | `ARCH-014` |
+| HC-XW-018 | Treat an old fixed binary location plus only source/config flags as complete home-manager isolation. | **Reject:** incomplete isolation is not carried forward; the full Phase 1-frozen process environment is required. |
+| HC-XW-019 | Construct a complete managed-tool environment whose config, data, cache, state, installs, downloads, plugins, shims, discovery, and executable search do not inherit ambient manager controls. | `ARCH-011` |
+| HC-XW-020 | Translate the selected declarations into deterministic supported manager operations and verify requested versus installed tool versions. | `ARCH-013` |
+| HC-XW-021 | Generate parent-shell activation code or mutate the caller's shell environment through manager activation. | **Reject:** target `exec` and `shell` launch children; parent-shell mutation is prohibited. |
+| HC-XW-022 | Generate manager configuration from an executable tools array or choose tools with injected platform predicates. | **Reject:** only bounded native declarations and static composition are accepted. |
+| HC-XW-023 | Use a pure-language Git library for every operation and prohibit the native Git executable. | **Reject:** target source transport uses the verified native Git policy. |
+| HC-XW-024 | Never write system or global Git configuration and never interpolate Git invocation through a shell. | `ARCH-006` |
+| HC-XW-025 | Initialize an implicit local product repository, derive author identity through environment fallback tiers, create repository-local identity, write ignore rules, and make an initial timestamped-config commit in a fixed sequence. | **Reject:** target consumes an explicit source and does not bootstrap or automatically commit an old local repository. |
+| HC-XW-026 | Persist a no-Git marker, conditionally warn from activation/drift, or later clear that marker after Git becomes available. | **Reject:** the marker and dependent warning contract are old state and are neither imported nor recreated. |
+| HC-XW-027 | Safely claim first use with restrictive directories, a durable exclusive initialization record, a single winner, and process-identity-checked takeover. | `ARCH-017` |
+| HC-XW-028 | Treat creation of or recursive deletion of an old per-user configuration root as the product lifecycle. | **Reject:** target state/data roots follow generic clean, foreign, corrupt, and recognized-state handling; there is no old lifecycle command. |
+| HC-XW-029 | Back up the old root and shell files as part of teardown, then report the installation removed. | **Reject:** there is no supported old installation, teardown, backup, or migration contract. |
+| HC-XW-030 | Download exact manager artifacts, verify integrity/provenance, verify executable identity, and promote them into protected storage. | `ARCH-012` |
+| HC-XW-031 | Reject unsafe, ambiguous, linked, special, oversized, partial, corrupt, or modified-after-verification archive content before promotion. | `ARCH-021` |
+| HC-XW-032 | Compare immutable baseline, product-managed installation, and ambient active `PATH` state using the old seven-value drift taxonomy. | **Reject:** the custom three-way drift engine and taxonomy are deleted. |
+| HC-XW-033 | Resolve drift interactively per item or by adopt-all/revert-all/show-only; remove baseline entries on adopt or reinstall through the tool manager on revert. | **Reject:** target has no automatic adopt/revert drift engine or update operation. |
+| HC-XW-034 | Preserve immutable timestamp-named configurations, an active marker, an active-config symlink, and a new automatic commit for every adopted change. | **Reject:** none is target machine truth or a deferred compatibility surface. |
+| HC-XW-035 | Keep managed-tool inspection isolated from ambient manager configuration and state. | `ARCH-013` |
+| HC-XW-036 | Discover arbitrary active tool versions by trying only `--version` and `-v`, then classify unknown output as drift. | **Reject:** target observations are declaration- and adapter-specific evidence, not generic ambient version parsing. |
+| HC-XW-037 | Expose truthful, non-mutating product health observations and actionable recovery admission. | `PC-016` |
+| HC-XW-038 | Execute a Lua configuration DSL with tool/config/Git/meta tables and file flags. | **Reject:** executable product configuration, its parser, and all schema types are deleted. |
+| HC-XW-039 | Inject a mutable or read-only platform table into configuration evaluation and permit host-conditional composition. | **Reject:** host-fact-dependent inputs and executable profile composition are excluded from MVP. |
+| HC-XW-040 | Generate old manager config files from the DSL, ignore those generated files while tracking timestamped source snapshots, and use them as activation truth. | **Reject:** candidates and effective native inputs use target protected layouts and digests, not generated old state. |
+| HC-XW-041 | Retain `init`, `activate`, `uninit`, configuration add/list/remove, drift, sync, add-tool, push, pull, remote, deferred-Git, or restore command forms, including documented-only placeholders. | **Reject:** no old command, alias, placeholder, or fallback survives the atomic cutover. |
+| HC-XW-042 | Emit a stable product name and version for the two supported version forms. | `PC-012` |
+| HC-XW-043 | Replace the old command table in one cutover with one exact, flag-bounded, no-alias target grammar. | `PC-010` |
+| HC-XW-044 | Finish or adopt the active removal delta's missing end-to-end, continuation-on-error, resume, abort, SIGINT, recovery suggestion, confirmation-status, or documentation work. | **Reject:** the delta is superseded/incomplete and its missing work is intentionally not completed. |
+| HC-XW-045 | Use restrictive, atomic, durably synchronized persistence for critical records. | `ARCH-020` |
+| HC-XW-046 | Prevent concurrent durable mutation with identity-proven exclusive ownership rather than age-only locking. | `ARCH-023` |
+| HC-XW-047 | Recover recognized interruption through truthful forward state and admitted recovery commands. | `ARCH-027` |
+| HC-XW-048 | Exclude authentication, provider, rendered, and ambient values from durable records and redact sensitive identities on public/evidence surfaces while binding required protected identity exactly. | `ARCH-028` |
+| HC-XW-049 | Roll back to a previous timestamped configuration when configuration is corrupt. | **Reject:** rollback and timestamped configurations are not target recovery semantics. |
+| HC-XW-050 | Treat cached bytes as disposable and non-authoritative, validating ownership/topology and authenticating content before any reuse. | `ARCH-019` |
+| HC-XW-051 | Promise graceful offline operation merely because old cache content exists. | **Reject:** offline behavior is not an MVP support claim; missing source/tool availability remains an operational failure or truthful dirty prerequisite. |
+| HC-XW-052 | Author, publish, fetch, or reconcile explicit target sources, including second-machine setup or future private selected transport. | **Defer:** `post-mvp.md` §§Source authoring and synchronization and Private selected transport; no current grammar, credential/helper/agent/relay mechanism, transport approval, or support claim is created. |
+| HC-XW-053 | Store remote/branch/credential fields in executable configuration, expose old remote/push/pull/status grammar, choose ambient branches, automatically merge, or retain a dormant transport helper/agent/relay/input path. | **Reject:** future source/private-transport work must define new reviewed contracts and evidence rather than revive these mechanics. |
+| HC-XW-054 | Merge machine override files through add/remove/override precedence, plain or encrypted, or silently vary the selected composition by host. | **Reject:** MVP composition is exact and host-independent; no deep-merge compatibility is deferred. |
+| HC-XW-055 | Add optional whole-profile or selected-file encryption with authenticated metadata, rotation, and protected decryption flow. | **Defer:** `post-mvp.md` §Optional encrypted profiles; no current schema field or provider claim is created. |
+| HC-XW-056 | Bootstrap keys, passphrase-protected recovery material, multi-recipient access, revocation, and team encryption. | **Defer:** `post-mvp.md` §Optional encrypted profiles; a separately reviewed design must prove these subjects. |
+| HC-XW-057 | Update or switch profiles, shrink tools/targets, safely remove owned artifacts, or deliberately abandon an installation after interruption. | **Defer:** `post-mvp.md` §Explicitly owned profile updates, switching, and removal; fresh bootstrap and exact-candidate reapply remain the MVP. |
+| HC-XW-058 | Offer local or CI source validation for target schema, paths, allowlists, duplicate identities, object limits, repository hygiene, or likely credential leakage. | **Defer:** `post-mvp.md` §Source-validation hooks; hooks are advisory and never replace runtime validation. |
+| HC-XW-059 | Reject edits to timestamped configurations or validate the removed executable language in a hook. | **Reject:** the artifacts and language being guarded do not exist in the target. |
+| HC-XW-060 | Preserve exact secret-pattern lists, entropy heuristics, a 10 MiB warning threshold, warning-only outcomes, or an old hook installation/update mechanism as product contract. | **Reject:** a future validation-hook design owns its own evidence-backed rules and exposure policy. |
+| HC-XW-061 | Support offline creation of ordinary schema-versioned source content for later explicit inspection and trust. | **Defer:** `post-mvp.md` §Source authoring and synchronization; no current command name is reserved. |
+| HC-XW-062 | Add a deferred repository-init subcommand that clears the old no-Git marker, commits old configurations, or preserves old idempotency rules. | **Reject:** those marker, repository, and automatic-commit mechanics are removed. |
+| HC-XW-063 | Restore from teardown backups, consume old backup metadata, selectively restore directory/shell state, or offer backup-current/merge/cancel conflict modes. | **Reject:** there is no supported old data format, teardown backup, restore importer, or migration utility. |
+| HC-XW-064 | Diagnose recognized target state and perform only evidence-backed forward recovery without relabeling or destructive cleanup. | `ARCH-027` |
+| HC-XW-065 | Claim macOS, Windows, additional Linux distributions, CPUs, or filesystems based on detection or design alone. | **Defer:** `post-mvp.md` §Additional platforms; each tuple requires a separately accepted complete proof. |
+| HC-XW-066 | Prove a complete controlled lifecycle for every retained process/platform tuple: the MVP same-binary supervisor is mandatory, and if it is insufficient, a cgroup or platform-equivalent job-object boundary is required before retaining the tuple; otherwise remove the tuple. | `ARCH-010` |
+| HC-XW-067 | Describe Cobra/Viper or any other unimplemented framework as the CLI/config owner. | `PC-011` |
+| HC-XW-068 | Preserve deleted proposal/apply/archive tooling, indexes, task checkboxes, coverage percentages, review notes, “ready” labels, or archived completion claims as normative or validation evidence. | **Reject:** workflow metadata is deleted; historical Git is the record, and only observed `VAL-*` evidence can support a claim. |
 
-Associated tests are removed with the obsolete contracts. They are not mechanically ported if they defend behavior the new product rejects.
+The coverage ledger and mapping table are closed together: adding a rediscovered former requirement requires a new `HC-XW-*` row and its source-family range before Phase 0 can pass. A row may be narrowed by Phase 1 proof only in its named current authority; it may not be silently moved to another document.
 
-### Review before selective reuse
+### Working-tree deletion boundary
 
-Reuse is allowed only after behavior and dependencies are re-audited against the new contract:
+The final working tree contains no tooling, directory, command prompt, path literal, link, or case-insensitive textual reference belonging to the removed specification workflow. Generic historical disposition is retained only here. Historical Git commits and objects are immutable evidence and are not rewritten to satisfy a working-tree sweep. A current document or tool that requires an exact former path must instead be deleted or rewritten; Git history is queried deliberately when historical detail is needed.
 
-- `internal/binary/`: archive extraction, download, verification, cache, and pinned-tool acquisition primitives.
-- `internal/platform/`: basic OS and architecture detection without Lua injection or unsupported platform claims.
-- `internal/shell/`: shell detection only; current startup-file mutation and activation behavior are not retained.
-- `internal/testutil/`: disposable environment helpers.
-- Generic secure path, atomic-file, and lock primitives whose semantics pass the new state tests.
-- Build, CI, formatting, linting, and development-environment infrastructure that does not encode old product behavior.
+## Exhaustive tracked-artifact disposition
 
-Before cutover merge, generate and review a disposition manifest for every tracked production source, test, fixture, example, canonical document, build/CI file, and direct dependency: `remove`, `replace`, or `reuse after audit`, with an owner and evidence. An unclassified artifact or dependency fails the cutover gate; broad directory bullets above are not a substitute for this inventory.
+The inventory below covers every path family returned by the Phase 0 tracked-file inventory. File lists are explicit where a broad glob could conceal a stale product surface.
 
-“Review before reuse” is not permission to retain an obsolete public type for convenience. Reused code adopts the new names and contracts directly.
+### Public command package
 
-### New architectural units
+| Tracked artifact or group | Disposition | Owner | Phase | Required proof or gate |
+|---|---|---|---|---|
+| `cmd/zerb/main.go` | `replace` | Primary owner | Phase 6 | Replace atomically with the already exercised `internal/app.Run` adapter; installed-binary acceptance proves the exact `PC-*` grammar, text output, exit mapping, signals, and recovery admission. |
+| `cmd/zerb/activate.go`, `config_add.go`, `config_list.go`, `config_remove.go`, `drift.go`, `init.go`, and `uninit.go` | `delete` | Primary owner | Phase 6 | Final command/help sweep shows no old command, alias, activation path, config CRUD, custom drift path, or fallback. |
+| `cmd/zerb/config_add_test.go`, `config_list_test.go`, `config_remove_test.go`, `drift_test.go`, `init_test.go`, and `uninit_test.go` | `delete` | Primary owner | Phase 6 | Old-contract tests leave with their commands; replacement tests must defend only observable `PC-*` contracts through `internal/app.Run` and the installed binary. |
 
-The replacement needs cohesive implementations for:
+### Internal packages, tests, and fixtures
 
-- Versioned profile manifests.
-- Native Git source resolution and safe materialization.
-- Pinned ZERB-managed mise and chezmoi acquisition.
-- Controlled subprocess environments.
-- Native mise profile composition and observation.
-- Native chezmoi effective-source construction and target mapping.
-- Structural plans, explicit source binding, planned candidate artifacts, and digest-bound trust.
-- Transition locking, journals, atomic stable/current commit, and startup reconciliation.
-- Immutable pending/completed receipts.
-- Recovery admission, revalidation, resume, and forward repair.
-- Command-scoped execution and clean child shells.
-- Sensitive metadata and error redaction.
+| Tracked artifact or group | Disposition | Owner | Phase | Required proof or gate |
+|---|---|---|---|---|
+| Entire `internal/config/` tree: constants, documentation, generator, logger, parser, sandbox, security, status, types, benchmarks, fuzzing, concurrency, integration, path-validation, unit, and security tests | `delete` | Primary owner | Phase 6 | Final import and artifact sweep proves no executable configuration DSL, old marker/status model, parser, generator, or compatibility reader remains. |
+| Entire `internal/service/` tree: `clock.go`, config add/list/remove services, and their tests | `delete` | Primary owner | Phase 6 | Final reachability sweep proves no config CRUD service or orchestration survives. |
+| Entire `internal/drift/` tree: active/apply/baseline/detector/formatter/managed/resolver/type/version code, test utility, and all unit/integration/validation tests | `delete` | Primary owner | Phase 6 | Final reachability sweep proves the custom baseline, managed, active, formatting, and resolution engine is absent. Target planning and health behavior is proven under its own `PC-*` and `VAL-*` rows. |
+| Entire `internal/git/` tree: repository, ignore, initialization, user-configuration code, and tests | `delete` | Native Git/source owner | Phase 6 | Phase 1 native-Git proofs freeze source policy; final dependency/import sweep proves the pure-language Git engine and automatic-commit behavior are absent. |
+| Entire `internal/binary/` source and test tree: documentation, download, extraction, keyring, manager, platform, types, verification, unit tests, and manager integration tests | `audit then reimplement` | Toolchain owner | Phases 1–2; delete old tree in Phase 6 | Reimplement only verified acquisition, integrity, safe extraction, executable identity, and durable promotion in `internal/toolchain`; Phase 1 executable/digest proofs and Phase 2 security review gate retention. **The entire old `internal/binary/` tree is deleted in Phase 6.** |
+| `internal/binary/keyrings/` and `internal/binary/testdata/`, including all public keys, keyrings, checksum/signature samples, generator batch input, test executable, and archive fixture | `audit then reimplement` | Toolchain owner | Phases 1–2; delete old fixtures in Phase 6 | Retain or regenerate only non-sensitive fixtures tied to exact approved acquisition proofs; record provenance and digest in the applicable `VAL-*` evidence. No fixture survives merely because an old test references it. |
+| Entire `internal/chezmoi/` tree and tests | `audit then reimplement` | Effective-home owner | Phases 1–2; delete old tree in Phase 6 | Reimplement approved composition, mapping, invocation, and observation in `internal/home` after real managed-adapter proofs. Source mutation and old path translation are not retained. |
+| Entire `internal/platform/` tree: detection, normalization, types, executable-language injection, benchmarks, examples, and tests | `audit then reimplement` | Host owner | Phases 1–2; delete old tree in Phase 6 | Reimplement only evidence-backed Linux/CPU facts in `internal/host`; no injected platform table or unproved support tuple. **The entire old `internal/platform/` tree is deleted in Phase 6.** |
+| Entire `internal/shell/` tree: activation, constants, detection, documentation, manager, startup-file handling, types, and all tests | `audit then reimplement` | Process-lifecycle owner | Phases 1–3; delete old tree in Phase 6 | Reimplement only the Phase 1-frozen executable resolution, clean child shell, environment, group/session, signal, parent-death, reaping, and exit contracts through `internal/execenv` and `internal/app`. Parent-shell and startup-file mutation are rejected. |
+| Entire `internal/testutil/` tree and tests | `audit then reimplement` | Test-infrastructure owner | Phase 2; delete old tree in Phase 6 | Reimplement useful synthetic HOME/XDG helpers in `internal/testenv` only after checking no real host path, manager state, credential, or ambient environment can leak into tests. |
+| Entire `internal/transaction/` tree: lock and transaction code plus all tests | `audit then reimplement` | State/recovery owner | Phases 1–2; delete old tree in Phase 6 | Old age-based locking and transaction semantics are not reused. Reimplement ownership-token locks and durable forward journal/state transitions in `internal/state` and `internal/recovery`, gated by persistence failure injection and focused security review. **The entire old `internal/transaction/` tree is deleted in Phase 6.** |
 
-The OpenSpec design freezes package boundaries only after the proof spikes.
+No current `internal/` package is omitted: `binary`, `chezmoi`, `config`, `drift`, `git`, `platform`, `service`, `shell`, `testutil`, and `transaction` are all classified above. Audited algorithms must cross the cutover seam through newly written target packages; old packages may not remain as reference or compatibility islands.
 
-## Dependency cutover
+### Examples and documentation
 
-Expected removals include dependencies pulled solely by:
+| Tracked artifact or group | Disposition | Owner | Phase | Required proof or gate |
+|---|---|---|---|---|
+| `examples/full.lua`, `minimal.lua`, and `platforms.lua` | `delete` | Product-contract owner | Phase 6 | Final sweep proves no executable-language example remains; a minimal public superproject fixture replaces them only after schema and static-inspection proofs freeze its form. |
+| `docs/drift-detection.md` | `delete` | Documentation owner | Phase 0 | Any surviving no-follow, persistence, redaction, forward-recovery, or health fact must already have a roadmap requirement ID; old custom-drift behavior is not carried forward. |
+| `docs/enhancements/zerb-restore-command.md` | `delete` | Documentation owner | Phase 0 | Any target-compatible recovery fact must already be owned by `ARCH-*`, `PC-*`, or `VAL-*`; old backup/restore semantics are rejected. |
+| `docs/roadmap/README.md` | `replace` | Primary owner | Phase 0 | Authority order is explicit; Phase 0 is provisional and only Phase 1 freezes implementation. Link check finds no delegation to deleted authority. |
+| `docs/roadmap/architecture.md` | `replace` | Architecture owner | Phase 0, then Phase 1 freeze | Owns `ARCH-*` trust, process, source execution, roots, state, recovery, and storage invariants; proof-driven edits cite redacted evidence. |
+| `docs/roadmap/delivery-plan.md` | `replace` | Delivery owner | Phase 0 | Owns ordering, gates, orchestration, reviews, and completion; no deleted proposal/archive lifecycle is required. |
+| `docs/roadmap/validation.md` | `replace` | Validation owner | Phase 0, then Phase 1 evidence | Owns `VAL-*` support matrix and evidence links; a support tuple is included only after its complete proof. |
+| `docs/roadmap/hard-cutover.md` | `replace` | Primary owner | Phase 0 | This inventory is reconciled against the tracked-file list before documentation deletion and again at Phase 6. |
+| `docs/roadmap/product-contract.md` | `replace` | Product-contract owner | Phase 0, then Phase 1 freeze | Sole owner of `PC-*` CLI, output, schema, digest, trust/approval, and user-visible behavior; exact contracts narrow only from real proof before freeze. |
+| `docs/roadmap/post-mvp.md` | `replace` | Product-contract owner | Phase 0 | Contains target-compatible non-committed intent only and creates no implementation or compatibility obligation. |
+| `docs/roadmap/proof-results.md` | `replace` | Validation owner | Phase 0 onward | Append-only redacted proof records only; it never becomes normative authority and never records invented success or raw sensitive markers. |
+| Entire former specification workflow/tree: project context, canonical specifications, agent guidance, active change, four archived changes, and future-intent notes | `delete` | Documentation owner | Phase 0 | Roadmap crosswalk accounts for every surviving requirement; Git history is the only archive; final case-insensitive forbidden-name sweep is zero. |
 
-- `gopher-lua` and the executable Lua model.
-- `go-git` and its transitive graph.
-- Obsolete signing or platform libraries not used by the approved binary-verification and platform matrix.
+### Workflow prompts, root documents, and repository metadata
 
-Expected runtime prerequisites include:
+| Tracked artifact or group | Disposition | Owner | Phase | Required proof or gate |
+|---|---|---|---|---|
+| Four legacy specification-lifecycle prompts under `.opencode/command/` | `delete` | Developer-workflow owner | Phase 0 | Tracked inventory confirms all four are removed; no proposal/apply/archive command or deleted path remains in workflow guidance. |
+| `.opencode/command/review-code-changes.md` | `replace` | Developer-workflow owner | Phase 0 | Review prompt grounds findings in `PC-*`, `ARCH-*`, `VAL-*`, the current delivery phase, this disposition, and redacted security/recovery evidence. |
+| Root `README.md` | `replace` | Documentation owner | Phase 0, then Phase 6 | Phase 0 version states the target, identifies the still-reachable implementation as obsolete pre-alpha, links the roadmap, uses Go 1.24 development commands, and prohibits real-workstation installation through Phase 6. Installation/usage text appears only after installed-binary acceptance. |
+| Root `AGENTS.md` | `replace` | Developer-workflow owner | Phase 0 | Guidance uses roadmap authority and requirement IDs, Go 1.24, isolation, redaction, process/root/recovery rules, clean cutover, and review gates; no old product instruction remains. |
+| `LICENSE` | `audit then reimplement` | Release owner | Phase 6 | Legal identity and distribution terms are reviewed for the target artifact; unchanged target-neutral content may be reproduced exactly. |
+| `.editorconfig` | `audit then reimplement` | Developer-workflow owner | Phase 6 | Retain only target-neutral editor settings; repository formatting checks prove no obsolete language-specific policy remains. |
+| `.envrc` | `replace` | Build owner | Phase 6 | Development environment targets Go 1.24 and approved proof/build tools without exposing credentials or real HOME/XDG roots. |
+| `.gitignore` | `replace` | Build owner | Phase 6 | Ignore policy mirrors every explicitly classified local/generated class below, including `/zerb`, `bin/`, `.direnv/`, coverage, test, workspace, editor, and OS outputs, and does not conceal tracked source, proof records, durable fixtures, manifests, or lockfiles selected for retention. |
+| `.golangci.yml` | `replace` | Quality owner | Phase 6 | Remove the global `gosec` suppressions for `G204` and `G301`–`G306`; any narrow code-site exception has a contract reason and focused security test. |
+| `Justfile` | `replace` | Build owner | Phase 6 | Commands build and validate only the target binary and current acceptance gates; no old public command or obsolete package remains. |
+| `.github/workflows/ci.yml` | `replace` | Build owner | Phase 6 | CI runs the frozen Go 1.24 build, test, race, vet, lint, and artifact gates on the clean-cutover tree. |
+| `flake.nix` and `flake.lock` | `replace` | Build owner | Phase 6 | Nix environment and lock closure contain the approved Go/toolchain/proof inputs only; regenerate the lock only from the reviewed target flake. |
+| `go.mod` and `go.sum` | `replace` | Dependency owner | Phase 6 | Module graph is reconciled only after all old packages are deleted; `go mod tidy`, dependency inventory, vulnerability review, and clean build provide the gate. |
 
-- Native Git at a specified minimum version.
-- User-controlled SSH-agent or credential-helper infrastructure for private sources.
+### Direct dependency disposition
 
-Mise and chezmoi are not system prerequisites. ZERB acquires verified pinned copies into its own protected toolchain and invokes them by absolute path.
+| Direct dependency or class | Disposition | Owner | Phase | Required proof or gate |
+|---|---|---|---|---|
+| `github.com/go-git/go-git/v5` and its old-only transitive graph | `delete` | Native Git/source owner | Phase 6 | Native-Git proofs pass and final module/import inventory contains no pure-language Git engine. |
+| `github.com/yuin/gopher-lua` and its old-only transitive graph | `delete` | Product-contract owner | Phase 6 | Final module/import/artifact sweep contains no executable configuration language. |
+| `github.com/google/uuid` | `delete` | State owner | Phase 6 | Target instance, operation, and lock tokens use the standard cryptographic random source under `ARCH-*`; final module inventory confirms removal. |
+| `github.com/ProtonMail/go-crypto`, `github.com/sigstore/sigstore`, and `github.com/shirou/gopsutil/v4` | `audit then reimplement` | Toolchain, host, and process owners | Phases 1–2 | Retain a dependency only when a target replacement package imports it for a frozen contract and focused tests justify it; deleted old packages provide no retention reason. |
+| All indirect requirements and checksums in `go.mod`/`go.sum` | `replace` | Dependency owner | Phase 6 | Recomputed by the target import graph after source deletion; every remaining direct and indirect dependency has an owner and reviewed purpose. |
+| Provisional `github.com/pelletier/go-toml/v2` version `v2.4.3` | `replace` | Profile/schema owner | Phase 1 freeze and Phase 2 implementation | Add only after source verification, module checksum capture, and strict schema conformance proof; proof may reject the parser/version or narrow the grammar. |
 
-Dependency removal happens only after retained binary-verification and platform code is re-audited. The cutover should reduce the dependency graph deliberately, not replace it with another broad framework.
+## Ignored, generated, and runtime artifacts
 
-## Local filesystem model
+This inventory is the union of the repository ignore patterns, the Phase 0 actual ignored/untracked survey, and known outputs of the declared build/proof tools. “Regenerate” never means retain: a generated artifact uses disposition `delete`, remains ignored where appropriate, may be reproduced from reviewed tracked inputs, and is removed again at its named gate. The Phase 0 documentation-authority gate requires classification, not deletion of harmless ignored local-development state from an active checkout; such state may remain only until its producing/owning unit's stated cleanup gate and is never evidence or repository authority. Controlled proof and release inventories enforce the absence rules below. A new ignore pattern or newly observed artifact class requires its own row before merge; the catch-all row is a fail-closed discovery rule, not a substitute for inventory.
 
-The OpenSpec design will finalize paths, but the model follows XDG separation:
-```text
-$XDG_CONFIG_HOME/zerb/      reserved; no ambient user-config discovery in the MVP
-$XDG_DATA_HOME/zerb/        managed binaries, Git object stores/materialized trees, tool installs
-$XDG_CACHE_HOME/zerb/       disposable downloads and computed caches
-$XDG_STATE_HOME/zerb/       candidates, journals, receipts, locks, and stable/current record
-```
+| Artifact or ignored class | Disposition | Owner | Phase | Required proof or gate |
+|---|---|---|---|---|
+| `.direnv/`, including the currently present `flake-profile` and `flake-profile-*-link` symlinks and any direnv evaluation/cache state | `delete` | Build owner | After environment use; controlled proof/release cleanup | Keep the class ignored and permit it as local-development state during Phase 0; regenerate only from reviewed `flake.nix`/`flake.lock`. Before a controlled proof inventory or Phase 6 release inventory, remove it and show no retained profile link, copied store path, environment dump, credential, or proof marker. |
+| `.rgignore_config` | `delete` | Developer-workflow owner | After local search use; controlled proof/release cleanup | Permit it as an ignored local search-tool control during Phase 0, never as repository policy or authority. Remove it before controlled proof and Phase 6 artifact inventories; any needed search behavior is supplied outside the repository. |
+| `.ai-workflow/` | `delete` | Developer-workflow owner | Whenever produced and Phase 6 | Keep ignored as local planning scratch only; no plan, prompt, transcript, authority copy, sensitive marker, or acceptance evidence remains there. |
+| `.opencode/package.json`, `.opencode/bun.lock`, and `.opencode/.gitignore` | `delete` | Developer-workflow owner | Phase 0 (completed) | Completed artifact audit records all three files deleted. The surviving review command has no workflow package dependency; no workflow manifest, lockfile, or directory-local ignore policy remains. |
+| `.opencode/node_modules/` and package-manager caches beneath the workflow directory | `delete` | Developer-workflow owner | Phase 0 (completed); after any separately reviewed future use | Completed artifact audit records this generated class absent. It remains absent unless the surviving review command later receives separately reviewed tracked dependencies; only then may package-manager bytes be generated, and they remain untracked, non-authoritative, and deleted after use. |
+| Root `/zerb` binary | `delete` | Build owner | Phase 0 cleanup and Phase 6 release cleanup | Keep ignored. It is never a source artifact; final status and artifact inventory contain no stale root binary. |
+| `bin/`, including `bin/zerb` and any copied installed-binary exercise artifact | `delete` | Build owner | Phase 0 cleanup and after Phase 6 installed-binary exercise | Keep ignored; regenerate from reviewed source for the exercise, record only redacted evidence, then remove the output. |
+| Cross-platform compiler/linker outputs matched by `*.exe`, `*.exe~`, `*.dll`, `*.so`, and `*.dylib` | `delete` | Build owner | Same phase that produced them and Phase 6 | Keep ignored; release inventory admits only the separately reviewed release artifact outside the working tree. No stale or foreign executable/library remains. |
+| Go test binaries matched by `*.test` | `delete` | Quality owner | After the producing test run and Phase 6 | Keep ignored; regenerate only from current source, retain results rather than binaries, and remove before status/marker scans. |
+| Coverage outputs matched by `coverage.out`, `coverage*.out`, `coverage.html`, and `coverage*.html` | `delete` | Quality owner | After the producing validation run and Phase 6 | Keep ignored; coverage is regenerable diagnostic output, not `VAL-*` evidence by itself. Redaction/marker scan precedes deletion and the final artifact inventory is empty. |
+| `.test-tmp/` | `delete` | Test-infrastructure owner | Owning test/proof cleanup and Phase 6 | The currently observed ignored directory may remain only as local-development state until the producing owner cleans it; it cannot support a Phase 0 proof claim. Before accepting any proof that used it, marker scan and confined cleanup show no transcript, sensitive value, fixture spill, socket, process state, or stale durable state; the Phase 6 controlled inventory is empty. |
+| Local Go workspace files `go.work` and `go.work.sum` | `delete` | Dependency owner | Before dependency proof, CI, and Phase 6 | Keep ignored; the accepted module graph is defined only by tracked `go.mod`/`go.sum`, with no local replacement or workspace overlay. |
+| `vendor/` | `delete` | Dependency owner | Before dependency proof and Phase 6 | Keep ignored unless a separately reviewed future supply-chain decision adds a tracked vendor policy and a new disposition; the MVP module inventory must not silently consume local vendored bytes. |
+| Editor/IDE artifacts `.vscode/`, `.idea/`, `*.swp`, `*.swo`, and backup names matched by `*~` | `delete` | Developer-workflow owner | Whenever produced and Phase 6 | Keep ignored as local state; no settings, tasks, history, copied source, credentials, or generated authority enter release review. |
+| OS metadata `.DS_Store` and `Thumbs.db` | `delete` | Build owner | Whenever produced and Phase 6 | Keep ignored; final cross-platform artifact inventory contains neither class. |
+| Nix result links such as root `result`/`result-*`, per-user GC-root links created for this checkout, and any flake profile link outside the classified direnv subtree | `delete` | Build owner | After each Nix build/profile exercise and Phase 6 | Regenerate from reviewed flake inputs only; final symlink inventory contains no checkout-local store result or profile root. |
+| Fuzz scratch, benchmark/CPU/heap profiles, trace files, crash dumps, core files, race logs, and debugger captures | `delete` | Producing quality or proof owner | Same phase that produced them and Phase 6 | Scan before deletion; only a deliberately curated non-sensitive permanent corpus may be added as a separately tracked fixture with an owner and digest. Raw diagnostic output never becomes evidence authority. |
+| Generated archives, extraction trees, downloads, signatures, checksum scratch, and tool-acquisition staging | `delete` | Toolchain/proof owner | Same phase that produced them and Phase 6 | Keep only approved non-sensitive tracked fixtures separately classified above. Authentication/provenance results are distilled into redacted evidence; staging bytes remain outside the final tree. |
+| Disposable HOME/XDG/config/data/cache/state roots, destinations, denied authentication/provider fixtures, outside sentinels, and process/access/write/network captures | `delete` | Proof owner | After each proof and Phase 6 | Enforce the `ARCH-028` sink matrix before confined cleanup: authentication/provider values occur nowhere; rendered content exists only in generated disposable input/live rendering or the intended owner-validated `0600` destination. No helper/agent store, socket, relay, credential fixture, private endpoint, or transport tuple is an allowed MVP proof artifact. |
+| Any other ignored, untracked, generated, runtime, archive, executable, capture, symlink, socket, or temporary artifact discovered during inventory | `delete` | Producing owner | Immediately classify in the phase that discovered it | Discovery fails the phase gate until a specific row or tracked-artifact disposition names its class, owner, regeneration rule, sensitive-data handling, and cleanup proof. |
 
-Defaults follow the platform's XDG conventions. Sensitive roots are `0700`; state and receipt files are `0600`. Mise and chezmoi receive their own descendants beneath these roots.
+Ignored cache content outside the repository is not adopted or broadly deleted by the product. Runtime cache handling follows `ARCH-*`: only the owner-validated per-instance directory is addressed, and every cached byte is authenticated and hashed before parsing or execution.
 
-The real home directory remains the intentional chezmoi destination. It is not treated as isolated storage.
+## Replacement seam
 
-## Legacy installation policy
+The replacement package set is `internal/paths`, `internal/safefs`, `internal/source`, `internal/profile`, `internal/toolchain`, `internal/execenv`, `internal/mise`, `internal/home`, `internal/plan`, `internal/state`, `internal/recovery`, `internal/receipt`, `internal/host`, `internal/app`, and test-only `internal/testenv`. None may import, alias, wrap, re-export, register, or accept a type from any forbidden full old tree: `internal/config`, `internal/service`, `internal/git`, `internal/drift`, `internal/chezmoi`, `internal/transaction`, `internal/shell`, `internal/platform`, `internal/binary`, or `internal/testutil`. The import-DAG gate scans production and `_test.go`: every old-tree import fails in either, `internal/testenv` may be imported only from `_test.go`, and production imports of it fail. An audited concept is rewritten behind replacement-owned types; copying an old public type, state record, command semantic, compatibility branch, bridge, alias, or re-export fails review.
 
-### Detection
+The current `cmd/zerb/main.go` and old command switch remain unchanged and reachable while Phases 1–5 exercise the non-public ARCH-030 `internal/app.Run` seam with immutable `paths.Input`, parse/version-before-root precedence, exactly-once path resolution for well-formed non-version commands, and side-effect-free service constructors. Phase 6 replaces the entrypoint and deletes all old commands and package trees in one integration change. A second executable, build tag, mixed router, temporary public alias, or old-tree test import is prohibited.
 
-The new binary checks for unmistakable legacy artifacts before first initialization, including old active markers, timestamped config layouts, transaction files, and known state directories.
+## Cutover gates
 
-### Behavior
+1. **Phase 0 authority:** Roadmap owners close the source-family ledger and `HC-XW-*` mapping, classify tracked and actual ignored/generated/runtime inventories, replace root guidance, delete the former specification and obsolete documentation/workflow surfaces, and record no invented proof.
+2. **Phase 1 freeze:** Real native Git, managed-adapter, process/shell, filesystem/state, and strict-parser proofs are recorded in redacted form. Owner approval, independent plan review, and focused security review resolve findings before implementation.
+3. **Phase 2 foundations:** New packages satisfy frozen contracts, persistence failure injection, and focused security review before destination or tool mutation integration.
+4. **Phases 3–5 behavior:** `internal/app.Run` is exercised through public-static, mutation, recovery, execution, shell, and selected-gitlink rejection paths. Unselected gitlinks remain zero-access declarations. No credential/helper/agent/relay/private-endpoint or transport-authorization implementation exists. Provider references/functions, retrieval/rendering, and host-fact functions remain statically rejected before candidate creation or any provider channel.
+5. **Phase 6 atomic cutover:** Replace `main.go`; delete every old command, test, package, fixture, example, dependency, prompt, document, generated artifact, and obsolete export; update repository infrastructure; then run the complete installed-binary and support-matrix gate.
 
-When legacy state is found, ZERB MUST:
+## Phase 6 completion checklist
 
-- Make no changes to it.
-- Make no destination or tool mutation.
-- Explain that the installation belongs to the superseded pre-alpha architecture.
-- Show exact paths detected.
-- Provide exact preservation and manual clean-start instructions.
-- Require the user to manually archive or remove every detected legacy root before the default new roots can be initialized.
-
-The MVP has no alternate-root or override escape hatch. This keeps one state topology and prevents a flag from bypassing legacy detection.
-
-ZERB MUST NOT:
-
-- Parse legacy Lua to synthesize a new profile.
-- Rename or delete legacy files automatically.
-- Reuse old transactions or active markers.
-- Claim that the previous machine state can be reconstructed from them.
-- Leave a hidden compatibility reader in production code.
-
-A separately proposed offline migration utility is possible only if user demand justifies it. It must not become part of the normal runtime or weaken the hard cutover.
-
-## Documentation and specification cutover
-
-The release change must replace or remove every canonical claim tied to the old model:
-
-- README name expansion, quick start, roadmap, configuration, architecture, CLI, status, and feature claims.
-- `openspec/project.md` purpose, stack, isolation, configuration, state, security, and testing sections.
-- Canonical config-management, drift-detection, and initialization specifications.
-- Active and future proposals that depend on timestamped Lua configs or automatic source commits.
-- `docs/drift-detection.md`.
-- The old restore enhancement based on uninit backups.
-- Lua examples.
-- Agent/build guidance that names old commands or versions.
-
-Historical OpenSpec archives remain historical records but should receive an unambiguous superseded-context note if readers could mistake them for current direction. Completed history is not rewritten to pretend the old work never happened.
-
-The new README should link to approved specs and this roadmap, but current specs—not roadmap prose—must describe shipped behavior.
-
-## Branch and merge strategy
-
-1. Keep architecture work on a dedicated cutover branch.
-2. Land the initially approved OpenSpec proposal before disposable proof commits; that approval authorizes proofs only.
-3. Incorporate proof results, rerun strict validation, and obtain renewed product/security approval before product implementation.
-4. Build new internals behind tests and disposable integration roots.
-5. Do not expose or document a mixed CLI on the main branch.
-6. Replace the entrypoint and delete obsolete reachable code in the cutover integration change.
-7. Archive the change and apply its deltas to canonical specs atomically within the cutover merge (cutover-specific exception to the normal post-deployment archival flow). Update docs, examples, dependencies, and CI in the same release series.
-8. Run release validation and independent reviews on the final clean-cutover tree.
-9. Merge only when no old compatibility path remains.
-
-A temporary internal adapter used while constructing the branch must be deleted before merge. It is not a deprecation shim.
-
-## Release reversal and host recovery
-
-Because the project is pre-alpha, rollout is a breaking release with explicit notes rather than a compatibility period.
-
-Returning to the previous binary is only a release-version reversal. The previous binary is already released and cannot be modified to detect new-architecture state. If the user has never applied the new architecture, returning to the previous binary with the original legacy state is safe. If the user has applied the new architecture, the old binary MUST NOT be run until all new-architecture roots have been moved aside and the host has been manually restored and validated; the old binary shares default XDG roots with the new architecture and could misinterpret or overwrite new-architecture state.
-
-Before first apply, the new binary states that external backup and manual host recovery remain the user's responsibility. Preserving old state is data retention, not rollback.
-
-## Cutover completion checklist
-
-- [ ] Breaking OpenSpec change initially approved for disposable proofs.
-- [ ] Conflicting active proposal no longer active and recorded as superseded/incomplete without applying its deltas.
-- [ ] External Git/mise/chezmoi/shell/filesystem proofs passed.
-- [ ] Proof results incorporated, strict validation rerun, and renewed product/security approval recorded.
-- [ ] New CLI, including exact-candidate apply and supported recovery, is the only reachable CLI.
-- [ ] Lua configuration and gopher-lua removed.
-- [ ] Config CRUD and custom drift engine removed.
-- [ ] Old active markers and transaction formats removed from runtime.
-- [ ] go-git and automatic commit workflow removed.
-- [ ] Existing mise and chezmoi no-interference suite passed.
-- [ ] Legacy state detected and preserved without interpretation or root override.
-- [ ] README, OpenSpec project context, canonical specs, examples, and developer guidance replaced.
-- [ ] No compatibility aliases, deprecated types, stale exports, or hidden fallback paths remain.
-- [ ] Public and selected-private vertical smoke scenarios passed through both bootstrap and standalone commands.
-- [ ] Exact-candidate idempotence, changed-candidate refusal, recovery, and failure-injection matrices passed.
-- [ ] Secret and sensitive-metadata review passed.
-- [ ] DeepReview and security-review findings resolved with evidence.
-- [ ] Release artifact exercised end to end.
+- [ ] Every tracked, ignored, generated, and runtime artifact is reconciled with this table; no unclassified path, ignore pattern, output class, or dependency remains.
+- [ ] `cmd/zerb/main.go` is the trivial `internal/app.Run` adapter and the target command table is the only reachable public behavior.
+- [ ] All old command files and tests are deleted; there are no aliases or mixed routing.
+- [ ] The entire old `internal/binary/`, `internal/platform/`, and `internal/transaction/` trees, including tests and fixtures, are deleted after approved concepts are independently reimplemented.
+- [ ] Every other old internal tree—`chezmoi`, `config`, `drift`, `git`, `service`, `shell`, and `testutil`—is deleted.
+- [ ] Executable-language configuration, config CRUD, custom drift, automatic commits, parent-shell activation, old markers, and old transaction formats are absent from code, docs, examples, dependencies, and workflow prompts.
+- [ ] Public source, candidate trust, selected-gitlink/private-transport exclusion, environment, descriptor, lifecycle, root, cache, journal, receipt, recovery, redaction, support claims, and provider/host-fact exclusions each have their required `PC-*`, `ARCH-*`, and `VAL-*` evidence; no transport approval or credential mechanism remains.
+- [ ] No compatibility reader, migration path, feature flag, second binary, stale export, deprecated type, or hidden fallback remains.
+- [ ] Root documentation and developer guidance describe the target only after the corresponding implementation gate; before then they truthfully mark the reachable binary obsolete and prohibit real-workstation installation.
+- [ ] Final tracked-file, import, dependency, generated-artifact, old-product, and case-insensitive forbidden-name sweeps pass.
+- [ ] Complete installed-binary scenarios, persistence/cancellation failure matrices, support tuples, marker scans, independent review, focused security review, and release artifact exercise pass with redacted evidence.

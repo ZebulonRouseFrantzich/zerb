@@ -1,355 +1,164 @@
 # Validation and Acceptance Plan
 
-## Purpose
+## Authority and claim rule
 
-ZERB is accepted through end-to-end behavioral evidence, not coverage percentages or mocked wrappers. Unit tests remain useful for pure contracts, but release claims require real pinned Git, mise, and chezmoi processes operating inside disposable roots.
+This document is the sole normative owner of support claims and required evidence. It proves public requirements in [Product contract](product-contract.md) and invariants in [Architecture](architecture.md); it does not redefine either. [Delivery plan](delivery-plan.md) owns when a row gates implementation or release.
 
-The validation strategy must prove three different properties:
+All `VAL-*` rows are provisional Phase 0 proof requirements. Phase 1 can disposition a finite positive row only as `failed`, `inconclusive`, or `implementation-qualified`, and a finite negative row only as `failed`, `inconclusive`, or `exclusion-proven`; none is a support state. A Linux/platform/filesystem tuple, public native Git identity, shell, mise declaration/backend/package class, chezmoi entry/template behavior, or parser behavior is **unsupported** until VAL-001 and its complete Phase 6 installed-binary vertical pass. Selected gitlinks, private transport/authentication, provider-backed rendering, and host-fact-dependent behavior are exclusions and can never become support through an MVP proof row.
 
-1. The intended profile converges successfully.
-2. Existing machine-manager installations and state are not touched.
-3. Failure is represented truthfully and does not enable unsafe follow-on mutation.
+## Support matrix and evidence model
 
-## MVP support matrix
-
-The formal OpenSpec proposal MUST freeze:
-
-- Linux distributions supported in the MVP.
-- CPU architectures supported in the MVP.
-- Minimum native Git version.
-- Exact ZERB-managed mise and chezmoi versions.
-- Supported shells for `zerb shell`.
-- Supported mise backends and package classes.
-- Supported chezmoi source entry and template features.
-- Supported Git transports and credential mechanisms.
-- Supported secret providers.
-
-A platform, backend, source control, or provider is unsupported until its full vertical scenario passes. Runtime detection without an apply test is not platform support.
-
-## Test environment model
-
-Every integration scenario runs in a filesystem/process sandbox that cannot address the developer's real home or credentials. Within that sandbox, use three distinct fixture layers:
-
-1. **ZERB roots:** temporary XDG config, data, cache, and state roots; managed binary roots; Git object/materialization roots; and injected transition controls.
-2. **Host-manager roots:** a disposable `HOME` populated with hostile pre-existing mise and chezmoi defaults, binaries, config, data, cache, state, hooks, filters, trust data, and shell startup files.
-3. **Shared destination:** the same disposable home destination containing unowned files, ZERB-receipted files when applicable, collision targets, and an optional non-cooperating writer process.
-
-Fixtures also provide dedicated public/private Git endpoints at exact commits, isolated credential-helper and SSH-agent processes, distinct deterministic marker providers, and real pinned Git/mise/chezmoi binaries.
-
-The harness MUST combine:
-
-- Before/after bytes, paths, modes, ownership, and directory-entry manifests.
-- Process-tree capture of executable identity, argv, constructed environment, cwd, inherited descriptors, and descendants.
-- Filesystem-access tracing or an equivalent deny-by-default namespace that proves which configured files and roots were opened, read, executed, created, renamed, or removed—not merely whether bytes changed.
-- A write allowlist covering ZERB roots, explicitly planned shared-home targets, and explicitly permitted fixture-owned roots (approved helper/agent storage, approved provider-owned ephemeral storage). An outside sentinel and trace detect escape.
-- Network endpoint/authentication-attempt capture for selected and unselected sources.
-- Failure injection and hard process termination at every persistence and external-mutation boundary.
-
-Mock processes are appropriate for unit-level error mapping. They are not evidence of upstream isolation, native authentication, target mapping, process inheritance, filesystem non-access, or end-to-end behavior.
-
-## No-interference acceptance suite
-
-### Existing mise fixture
-
-Populate the host-manager layer with:
-
-- A binary earlier in `PATH` that records execution and fails.
-- User, environment, global, and system configs containing hooks/tasks and access sentinels.
-- Nearby project config and legacy version files that would alter resolution if discovered.
-- Existing data, cache, state, plugins, shims, installs, downloads, trust records, and an active parent-shell environment.
-- A tool version intentionally different from the ZERB profile.
-
-After direct `plan`, `apply`, `exec`, child-shell exit, recovery, and failure scenarios, prove:
-
-- The existing mise binary was never executed.
-- Access traces show that ZERB orchestration code did not open, read, execute, or write any pre-existing mise config, version file, data, cache, state, plugin, shim, install, download, or trust path.
-- No sentinel hook or task ran.
-- Parent-shell `PATH`, hooks, command resolution, and mise variables are unchanged.
-- ZERB orchestration used the canonical absolute managed binary and only the explicit manager state roots and permitted fixture-owned roots.
-- The selected command resolves the managed tool only inside `zerb exec` or `zerb shell`; exit restores the exact pre-ZERB command resolution.
-
-Hashes alone cannot prove non-access. Access tracing/denial and process identity are release evidence.
-
-### Poisoned-parent environment
-
-Inject each cleared environment class from the process environment policy matrix and prove the managed descendant does not receive or act on it:
-
-| Injected class | Example variables | Required observation |
+| ID | Requirements proved | Scenario and required evidence |
 |---|---|---|
-| mise/asdf/rtx controls | `MISE_`, `RTX_`, `ASDF_` prefixes | Not present in descendant env; no side effects. |
-| chezmoi controls | `CHEZMOI_` prefix | Not present in descendant env. |
-| Git/SSH controls | `GIT_CONFIG_*`, `GIT_*`, `SSH_AUTH_SOCK`, unsafe `ProxyCommand` | Only explicitly approved channels present; unapproved values absent. |
-| HOME/XDG | Injected hostile `HOME`, `XDG_*` paths | Managed descendants use synthetic ZERB-owned roots, not injected values. |
-| PATH/shims | Hostile `PATH` with pre-existing mise/chezmoi shims | Managed binary resolved by absolute path; shim not executed. |
-| Proxy/prompt/provider | `HTTP_PROXY`, `PS1`, provider env vars | Only approved channels present; no ambient secrets leaked. |
-| Inherited FDs | Open hostile file descriptors | Managed descendants do not inherit or use unapproved descriptors. |
-| Ambient marker | High-entropy sentinel in environment | Not present in any descendant output, cache, state, log, receipt, or temp file. |
+| VAL-001 | PC-001, PC-070; ARCH-001, ARCH-029 | Support promotion is evaluated only after Phase 6. Start from one `implementation-qualified` Phase 1 public candidate and require its exact Linux distribution/kernel/CPU/filesystem tuple; public native Git and canonical executable identity; sole public embedded source surface; exact managed mise/chezmoi identities; shell; declaration/backend/package and entry/target/static-template surfaces; complete environment/lifecycle/root/state/recovery contracts; and installed-binary vertical. Require the selected-gitlink/private-transport exclusion row to be `exclusion-proven`; it promotes no transport support. |
+| VAL-002 | PC-001, PC-060; ARCH-016, ARCH-017 | Run every proof under a disposable `HOME` and explicitly rooted XDG data/cache/state, manager, destination, generated-source, evidence, and outside-sentinel paths that cannot address the developer's real home, credentials, manager state, destination, or repository. Resolve and record every canonical path and device/inode identity before the run. No authentication/helper/agent/relay fixture store is an allowed MVP root. |
+| VAL-003 | PC-001, PC-070; ARCH-009, ARCH-011, ARCH-020 | Capture before/after bytes, paths, modes, ownership, links, inodes, and directory entries; process executable identity, argv, complete environment, cwd, descriptors, groups/sessions, descendants, and exit; access trace or deny-namespace observations; endpoint/authentication attempts; resource observations; and a write allowlist. The allowlist contains only protected ZERB roots, declared destination targets, and approved non-credential proof fixtures. An outside sentinel detects escape; helper/agent/relay/private-endpoint access is always zero. |
+| VAL-004 | PC-013, PC-070; ARCH-015, ARCH-028 | Append one redacted result per proof to `proof-results.md`: requirement IDs and proof-candidate row; exact upstream version and canonical executable identity; reviewed public URL or typed static-locator reference; fixture/revision/tree identity; argv/environment shape; process tree; access trace; write set; resource observations; result; rejected assumption; and resulting contract edit. Selected-gitlink exclusion evidence records zero authentication/network/candidate/manager/mutation activity, not a transport tuple or approval identity. |
+| VAL-005 | PC-013, PC-070; ARCH-011, ARCH-028 | Use independent generated high-entropy rendered-content and ambient markers under the closed sink matrix. Do not generate or admit authentication or provider markers/values: they are allowed nowhere in the MVP. Require each rendered marker at every intended sink and absent elsewhere after success, failure, cancellation, and hard death; require ambient markers absent from every child and persisted surface. Comparisons occur in memory and retained artifacts contain only permitted fingerprints. Any transient spill fails. |
 
-For every poisoned-parent case, assert exact direct and descendant environment against the frozen process-environment matrix and zero sentinel access while approved auth/provider channels still work.
+Mock processes may test local error mapping, but they are never evidence for upstream isolation, target mapping, process inheritance, non-access, filesystem durability, or end-to-end support.
 
-### Existing chezmoi fixture
+### Closed Phase 1 proof-candidate matrix — explicitly unsupported
 
-Populate the host-manager and shared-destination layers with:
+This is the complete Phase 1 proof universe. Every row begins `not run`; a passing positive row may become only `implementation-qualified`, and a passing negative row only `exclusion-proven`. Neither is support. No positive row is supported until VAL-001 accepts its Phase 6 installed-binary vertical. Adding a surface requires editing this matrix before running its proof; an unlisted surface is excluded rather than implicitly retained.
 
-- A binary earlier in `PATH` that records execution and fails.
-- Existing source, config, cache, persistent state, and working tree containing read/execute sentinels.
-- An unowned destination unique to the existing manager.
-- An unowned destination that collides with the ZERB candidate.
+The common candidate host is **Fedora Linux 44 / kernel `7.1.5-201.fc44.x86_64` / `x86_64` / btrfs**. Executable and CA-bundle candidates come from the exact nixpkgs revision [`b7c2ada94fe99c15b0dbcf4d11fd7850b957a436`](https://github.com/NixOS/nixpkgs/tree/b7c2ada94fe99c15b0dbcf4d11fd7850b957a436): `git` 2.55.0, `bash` 5.3.9, `mise` 2026.7.17, `chezmoi` 2.70.5, and `cacert`. Before the first proof, the harness resolves each named derivation output to one canonical absolute path and verifies its public artifact provenance and complete executable/bundle identity; no `PATH`, system package, or ambient CA discovery participates.
 
-Prove:
+| Candidate | Exact included surface | Phase 1 disposition |
+|---|---|---|
+| `P1-PLATFORM` | The common Fedora/kernel/CPU/btrfs tuple above; no other distribution, kernel, CPU, filesystem, container, or VM tuple | `not run`; unsupported |
+| `P1-PUBLIC-EMBEDDED` | PC-020 canonical public HTTPS, direct route, fixed `cacert` bundle, redirects/proxy/authentication disabled; embedded base plus embedded selected component | `not run`; unsupported |
+| `P1-PUBLIC-UNSELECTED` | Same public transport with one embedded selection and valid unselected canonical HTTPS and SSH gitlinks; bounded static validation only, no recursive fetch, and zero helper/agent/relay/private-endpoint/authentication/network attempt | `not run`; unsupported |
+| `P1-SELECTED-GITLINK-EXCLUSION` | Selecting any canonical or invalid HTTPS/SSH gitlink, or attempting any private source/helper/agent/relay/credential/input recipe, deterministically rejects before authentication, network, candidate creation, manager execution, or mutation; unselected gitlinks remain zero-access declarations | `not run`; negative exclusion only |
+| `P1-SOURCE-REJECTION` | PC-020/PC-021 invalid and ambiguous URI forms, redirects, endpoint rewrites, unsafe protocols, nested gitlinks, selected gitlinks, private sources, and selected/unselected access inversions | `not run`; negative exclusion only |
+| `P1-GIT-MATERIALIZE` | Git 2.55.0 no-checkout plumbing for the public superproject and embedded ordinary non-executable file, ordinary executable file, and directory objects only; every gitlink selection and all other modes/types, nested gitlinks, aliases, and limit violations reject | `not run`; unsupported |
+| `P1-MISE-CORE-NODE` | mise 2026.7.17; native scalar `[tools]` declaration for built-in core package `node` at exact authored version `24.4.1` plus the complete authored exact lock entry present before trust; isolated inspect/install/exec only | `not run`; unsupported |
+| `P1-MISE-REJECTION` | Aliases, ranges, channels, `latest`, missing or generated locks, tables/options, idiomatic files, tasks, hooks, plugins, custom backends, sourced environments, auto-install, and ambient discovery | `not run`; negative exclusion only |
+| `P1-CHEZMOI-STATIC` | chezmoi 2.70.5; one effective source; machine-readable target mapping plus ordinary, executable, private, and private-executable file attributes; one static template limited to literal text and built-in `if`/`else` over a literal boolean, with no dot/data lookup, function call, variable, range, named template, or other action | `not run`; unsupported |
+| `P1-CHEZMOI-REJECTION` | Scripts, externals, removals, source-root/target overrides, sequential sources, dot/data/dynamic/host-fact/provider lookup, variables, ranges, named templates, command/output/run/filesystem functions, collisions, ambient discovery, and every unlisted template action/function | `not run`; negative exclusion only |
+| `P1-EXEC` | Bare-name resolution against the frozen stable-profile `PATH` and canonical-absolute execution; statuses `0`–`255`, signal/cancellation mappings, descriptor/lifecycle races, and no deliberate-detachment containment claim beyond PC-015 | `not run`; unsupported |
+| `P1-SHELL-BASH` | Shell ID `bash` only; Bash 5.3.9 canonical executable invoked with fixed argv `--noprofile --norc -i`; `$SHELL`, normal startup files, and all other shell IDs excluded | `not run`; unsupported |
+| `P1-PROVIDER-REJECTION` | Direct disposable embedded static-validator fixture rejects before candidate/provider/host-fact/render/manager/mutation access; selected-gitlink input rejects earlier under `P1-SELECTED-GITLINK-EXCLUSION` | `not run`; negative exclusion only |
 
-- The existing chezmoi binary was never executed.
-- Access traces show that existing source, config, cache, persistent state, and working tree were never opened, read, executed, or modified.
-- The existing unique destination remains untouched.
-- The colliding target is a non-overridable error and apply stops before mutation.
-- ZERB passes every isolated path explicitly to its canonical managed binary and descendants.
-- Concurrent ZERB mutation is blocked by the ZERB writer lock.
-- A non-cooperating host writer is not claimed to be locked out: a detected change invalidates destination revalidation and fails safely; an undetectable concurrent race is documented as outside ZERB's consistency guarantee.
+There is no positive private transport row. Helpers, agents, sockets, relays, private HTTPS/SSH, proxies, key/identity files, known-hosts inputs, askpass, credential stores, synthetic SSH configuration, typed agent/process identities, and transport approval are excluded inputs. Phase 1 proves rejection and non-access only.
 
-ZERB cannot prove safe simultaneous ownership with another manager on the same destination. The acceptance behavior is refusal and immediate revalidation, not a claim that the ZERB lock controls unrelated writers.
+## Source, exclusion, and identity
 
-## Source and Git scenarios
+| ID | Requirements proved | Scenario and required evidence |
+|---|---|---|
+| VAL-006 | PC-020, PC-022; ARCH-002, ARCH-006 | Accept only already-canonical credential-free absolute public HTTPS sources. Exercise lowercase scheme/ASCII host, non-empty path, and exact serialization; reject userinfo, query, fragment, controls, backslashes, dot segments, encoded separators, non-canonical percent encoding, trailing host dot, default port, local/file/scp-like inputs, and ambient/current-directory remotes before Git or network. Repeated input yields the same versioned `source_id`; commit/object identity remains separate. |
+| VAL-007 | PC-020, PC-030; ARCH-006, ARCH-008, ARCH-020 | Public fetch uses the verified absolute Git executable with redirects, proxy use, and all authentication channels disabled. An authentication challenge, redirect, endpoint rewrite, credential-helper opportunity, or unsafe protocol fails. Capture zero helper/agent invocation, zero checkout/hook/filter execution, and no global/system/repository configuration effect. Freeze and observe the transfer-byte, on-disk-byte, process-output, wall-time, CPU, memory, and process-count ceilings enforced around Git before the tuple can pass; test each at `limit-1`, `limit`, and `limit+1`, plus a slow/stalled stream, output flood, interruption, and enforcement failure. |
+| VAL-008 | PC-021, PC-040, PC-043; ARCH-003, ARCH-006, ARCH-008, ARCH-020 | Statically validate `zerb.toml`, `.gitmodules`, unselected gitlink paths/canonical HTTPS-or-SSH locators, object types, tree entries, and embedded `base + selected`; materialize only pinned embedded ordinary-file/directory content through bounded no-checkout plumbing. Exercise embedded selection, inaccessible unselected declarations, gitlink/tree mismatch, nested gitlinks, duplicate/aliased/unsafe paths, symlink/device/unsupported modes, dirty worktrees, and every object/resource bound. Prove zero gitlink authentication/network/fetch/materialization. |
+| VAL-009 | PC-021, PC-032; ARCH-007, ARCH-008, ARCH-032 | Exercise the single `P1-SELECTED-GITLINK-EXCLUSION` row across canonical and invalid HTTPS/SSH locators and every selected-gitlink/private-source shape. Each rejects before DNS/endpoint resolution, authentication, network, candidate creation, manager execution, or mutation. Unselected canonical gitlinks receive bounded static validation and zero executable/helper/agent/relay/private-endpoint access. No typed identity producer, mechanism tuple, transport digest, prompt, or authorization input exists. |
+| VAL-010 | PC-010, PC-032, PC-070; ARCH-007, ARCH-029, ARCH-032 | Exercise every former mechanism input shape: transport-authorization flag/digest, helper, askpass, SSH agent/socket, typed process identity, identity/key file, known-hosts input, credential store selector, synthetic SSH config, proxy, relay, private endpoint, mechanism tuple, and ambient `GIT_*`/`SSH_*` variants. CLI-only forms are invalid usage; source/mechanism forms fail policy. All return before authentication, network, candidate creation, manager execution, or mutation and create no transport output or durable field. |
+| VAL-011 | PC-020, PC-021, PC-032; ARCH-006, ARCH-007, ARCH-008, ARCH-011, ARCH-020 | Poison inherited Git/SSH/config/helper/proxy/askpass/PATH/pager/editor/hook/filter/init-template/URL-rewrite/protocol/FD controls. Public fetch uses only the frozen credential-free policy; selected gitlinks and private sources reject before Git/network for that selection; unselected gitlinks cause zero access. Re-run all ARCH-006 ceilings for the public fetch. A failed/partial/oversized public fetch is never promoted, only its verified owned staging subtree is removed, and the outside sentinel is untouched. |
+| VAL-012 | PC-022, PC-050; ARCH-002, ARCH-004, ARCH-028 | In the live proof process keep public parent commit, embedded component path/tree, canonical source/tree/candidate digests, and current availability as separate facts. Gitlink locator/commit facts remain public-manifest static-inspection facts and never enter the candidate. Retained evidence uses reviewed public values or fresh typed references and equality/change/availability relations. An unreachable pinned public object reports availability failure without changing identity or beginning mutation; a changed embedded source object fails candidate revalidation. |
 
-| Scenario | Required observation |
-|---|---|
-| Public embedded profile | Resolves from the parent commit and component tree without any submodule authentication or checkout. |
-| Public repo with inaccessible private profiles | Public selection succeeds; endpoint capture shows no authentication attempt for unselected gitlinks. |
-| Selected private profile | Exactly one authorized gitlink object is fetched and materialized without worktree checkout semantics. |
-| Effective endpoint authorization | Post-policy credential-free endpoint is displayed and accepted before any helper/agent credential request. |
-| Missing private authorization | Fails before credential invocation, tool mutation, or destination mutation; candidate records no credentials. |
-| Credential-bearing URL | Rejected before Git invocation. |
-| Relative submodule URL | Effective credential-free locator is resolved after policy, displayed, and authorized before credentials. |
-| Nested submodule | Rejected in the MVP. |
-| Dirty working tree | Never used as profile input; pinned object content wins or resolution fails. |
-| Unreachable pinned commit | Availability failure is distinct from identity; no host mutation begins. |
-| Changed gitlink after plan | Revalidation fails; stale candidate is not applied. |
-| Unsafe profile path/object | Traversal, absolute, aliasing, duplicate, unsupported-type, and extraction-escape inputs fail closed. |
-| Execution-capable Git config | Hostile `core.hooksPath`, init templates, attributes filters, custom/ext remote helpers, pagers/editors, and protocol settings neither execute nor change resolution. |
-| Endpoint rewrite | `insteadOf` or equivalent cannot silently change the displayed/authorized endpoint. |
-| Public metadata audit | Documentation matches observed `.gitmodules`, gitlink, and history exposure. |
-| Native Git identity/config | The canonical pinned executable is recorded; global/system Git config remains unchanged and disallowed entries are not honored. |
+The marker sink matrix is exact; a channel not listed in “raw bytes allowed” is forbidden:
 
-Git fixtures exercise every approved HTTPS credential-helper and SSH-agent mechanism. Separate authentication markers MAY remain only in the approved helper/agent's protected storage; none enters argv, URLs, repository config, ZERB state/output, or an unselected-source request.
+| Marker class | Raw bytes allowed | Required absence |
+|---|---|---|
+| Authentication | Nowhere; no marker is generated and the MVP has no helper/agent store, live credential protocol, relay, or private endpoint | Every surface |
+| Rendered content | Generated disposable source input outside every repository, live render channel, intended owner-validated `0600` disposable destination, and in-memory comparison only | Authentication storage, ZERB durable/cache/log/evidence surfaces, unintended destination, output, capture, transcript, review, evidence ledger, and ZERB repository |
+| Provider | Nowhere; no marker is generated and any occurrence fails because the MVP has no provider channel | Every surface |
+| Ambient | Live poisoned-parent injection and in-memory comparison only | Every child channel and every filesystem, network, output, capture, transcript, review, evidence, and repository surface |
 
-## Profile and composition scenarios
+Authentication bytes, storage, helper/agent/relay processes, credential protocols, and private endpoint side effects are absent from every proof. Any occurrence or access fails the exclusion proof.
 
-| Scenario | Required observation |
-|---|---|
-| `base + selected` | Exactly two ordered components form the candidate. |
-| Missing base | Validation fails. |
-| Multiple selected profiles | Validation fails in the MVP. |
-| Duplicate tool identity | Fails; no implicit override. |
-| Duplicate raw home-source path | Fails. |
-| Different source names mapping to one target | Fails using chezmoi-derived mapping. |
-| Unsupported global chezmoi control | Fails with exact path and reason. |
-| Unsupported Git object or filesystem symlink | Fails before candidate acceptance. |
-| Stable input | Canonical materialized digest is stable across repeated construction. |
-| Mode change | Candidate digest changes and plan reports it. |
-| Unknown schema version or required field | Fails closed without mutation. |
+## Parser, schemas, composition, and digesting
 
-Fuzz and property tests should defend path canonicalization, source-tree digesting, manifest decoding, and duplicate detection. They do not replace real target-mapping tests against pinned chezmoi.
+| ID | Requirements proved | Scenario and required evidence |
+|---|---|---|
+| VAL-013 | PC-040, PC-041, PC-042; ARCH-024, ARCH-029 | Source-verify `github.com/pelletier/go-toml/v2@v2.4.3`, pin its exact module checksum, and run the exact schema structs through size-bounded input followed by `toml.NewDecoder(...).DisallowUnknownFields().Decode(&target)`. Record deterministic decode error row/column/key behavior. A parser/version change reruns the full corpus before any support pin changes. |
+| VAL-014 | PC-040, PC-041, PC-042; ARCH-003, ARCH-024 | For both manifests, reject schema mismatch, missing required values, unknown fields or nested tables, duplicate keys/tables/IDs, dotted-key aliases, malformed TOML, prohibited invalid UTF-8, kind/path/gitlink mismatch, empty/dot/dot-dot/absolute/backslash/duplicate-normalized paths, and any representation with two semantic decodings. No candidate/network/auth/manager/destination action occurs beyond the permitted static phase. |
+| VAL-015 | PC-042, PC-070; ARCH-020, ARCH-024 | Exercise the 1 MiB per-document bound, 256 selectable-profile bound, and every Phase 1-frozen byte/entry/string/path/depth/count/allocation limit at `limit-1`, `limit`, and `limit+1`. Retain deterministic fuzz/property corpora for parser ambiguity, path normalization, duplicate detection, and resource exhaustion. Any bypass rejects the parser/version or narrows the grammar before freeze. |
+| VAL-016 | PC-031, PC-043, PC-050; ARCH-003, ARCH-004, ARCH-028 | Compose exactly one base and one selected component. Reject missing base, duplicate component, duplicate tool identity, raw/normalized home path, and duplicate normalized structural target. Require exact authored versions and complete authored lock values before trust; reject aliases, ranges, channels, `latest`, missing/generated locks, and post-trust digest mutation before other manager execution. Invoke only PC-031's verified read-only, non-rendering machine-readable chezmoi mapping over the protected effective source; prove exact executable/argv/environment/descriptors/working/config/cache/state/synthetic-destination roots, deterministic normalized target output, zero template/helper/provider/host-fact/script/external/candidate-content execution, and zero real-destination access/write. Bind only that structural target inventory into the candidate. An unprovable upstream/version fails and removes the surface; no fallback mapper runs. Repeated construction is byte/digest stable in live memory; each source path, mode, content, declaration, version/lock, static-template surface, policy, adapter, or structural target change produces a changed typed candidate relation. Timestamps, availability, approvals, and live destination observations do not. Provider/host-fact inputs fail before candidate creation. |
 
-## Mise scenarios
+## Process environment, lifecycle, and adapters
 
-| Scenario | Required observation |
-|---|---|
-| Exact supported tool | Resolves, locks where supported, installs below ZERB data, and verifies. |
-| Floating alias | Rejected or resolved and frozen before apply according to the approved contract. |
-| Unsupported backend | Fails during structural planning. |
-| Base/profile duplicate | Fails before mise install. |
-| Lock reuse | Second run consumes the same effective lock and observes the same supported resolution. |
-| Artifact unavailable | Reports availability failure without claiming source drift. |
-| Integrity unavailable | Reports a lower integrity dimension rather than “verified.” |
-| Install failure | Transition becomes dirty at the exact tool phase. |
-| Partial additive install | Stable/current remains A; pending B is not completed and the dirty journal records observed residue. |
-| Exact-candidate reapply | Reuses the same effective config/lock, performs no surprise reinstall, and observes the declared versions. |
-| User project config nearby | Not discovered by the managed invocation. |
-| System/global mise config | Not read, executed, or modified. |
-| Parent active mise | Parent environment and hooks remain unchanged. |
+| ID | Requirements proved | Scenario and required evidence |
+|---|---|---|
+| VAL-017 | PC-015, PC-070; ARCH-009, ARCH-011 | For native public Git, acquisition/extraction, mise/backend descendants, chezmoi/static-template descendants, `exec`, and `shell`, inject poisoned `GIT_*`, `SSH_*`, `MISE_*`, `RTX_*`, `ASDF_*`, `CHEZMOI_*`, `HOME`, XDG, ambient `PATH`/shims, proxy/CA, prompt, locale, terminal, and ambient-marker values. Assert the complete leader and descendant environment equals the Phase 1-frozen matrix; authentication/helper/agent/relay/private-endpoint and provider/host-fact channels are absent. |
+| VAL-018 | PC-010, PC-015, PC-070; ARCH-009, ARCH-011 | Throughout every spawn, adversarial parent threads continuously open, duplicate, renumber, and close marker-bearing files, pipes, sockets, and streams while trying to reuse allowed descriptor numbers. Prove every ZERB-created descriptor is close-on-exec from creation and the same-binary supervisor's close-range/allowlist protocol admits only declared standard/control descriptors despite churn. Capture absolute executable identity, argv without shell interpolation, cwd, and every descendant. For `exec`, poison ambient `PATH`/cwd with same-name binaries; reject empty, relative, dot, duplicate, aliased, and writable-unowned stable-PATH entries; accept only a bare name or a canonical absolute input and reject slash-containing relative or non-canonical absolute inputs. Resolve a bare name only through canonical owner-validated stable-profile directories, then race symlink, path, inode, digest, owner, type, and mode substitution and prove through an fd-based or equivalently race-resistant boundary that the identity opened and verified is the identity executed. |
+| VAL-019 | PC-015, PC-070; ARCH-009, ARCH-010 | For every process class in the closed Phase 1 proof-candidate matrix, prove the frozen supervisor/process-group/session/subreaper topology, parent-identity checks, direct-child parent-death action, ready handshake, catchable-signal forwarding, cancellation grace/escalation, complete leader/descendant reaping, and orphan detection. Hard-kill the wrapper immediately before and after clone, descriptor sanitization, parent-death setup, group/session setup, second parent-identity check, readiness acknowledgement, child exec, and first descendant creation while FD churn continues. An unreleased supervisor exits and no managed descendant survives any boundary. A race removes the candidate or requires a separately proven cgroup boundary; leader-only cancellation and `exec.CommandContext` fail. |
+| VAL-020 | PC-014, PC-015, PC-016; ARCH-010, ARCH-027 | Generate normally exited `exec`/`shell` child statuses across `0`–`255`, explicitly retaining boundaries `0`, `1`, `2`, `125`, `126`, `127`, `128`, `129`, `130`, `143`, and `255`; each passes through unchanged. For every child signal and every catchable wrapper signal in the Phase 1-frozen set—explicitly including SIGINT and SIGTERM—verify `128+signal`, forwarding, frozen grace, escalation when required, complete reaping, and no survivor. SIGINT/SIGTERM wrapper returns are `130`/`143`; context cancellation without a POSIX signal returns `1` after the same termination/reaping policy; launch failure returns `1`; uncatchable wrapper death has no return and restart diagnoses durable state. |
+| VAL-021 | PC-031, PC-043, PC-050, PC-070; ARCH-004, ARCH-012, ARCH-013 | Verify the `P1-MISE-CORE-NODE` mise acquisition candidate, public artifact digest/provenance, and absolute invocation. Plant hostile user/system/global/project config, hooks/tasks, version files, plugins, shims, installs, downloads, trust, and active parent mise; prove no read/execute/write. Statically validate exact authored `node` version `24.4.1` and the complete authored exact lock into the candidate before trust. Exercise inspect/install/exec, integrity and installed-version verification, and second-run behavior. Aliases, ranges, channels, `latest`, missing/generated locks, tables/options, and every `P1-MISE-REJECTION` surface fail before manager execution; no post-trust result changes the candidate. |
+| VAL-022 | PC-031, PC-043, PC-050, PC-070, PC-071; ARCH-004, ARCH-005, ARCH-012, ARCH-014, ARCH-015, ARCH-022 | Verify the `P1-CHEZMOI-STATIC` chezmoi acquisition candidate and absolute invocation. Before trust, exercise only its read-only, non-rendering, machine-readable target mapper over the protected effective source with the exact executable, argv, complete environment, descriptors, source/config/cache/persistent-state/working roots, and synthetic non-real destination root. Plant hostile manager state and real-destination markers; prove zero access/write and zero template/helper/provider/host-fact/script/external/candidate-content execution. Require deterministic normalized structural targets, collision rejection, and candidate binding; if any restriction is unprovable, fail/remove the surface with no custom fallback mapper. After trust, exercise the limited static-template surfaces; only after mutation authorization under `A-X+W-X`, supply the real destination, record its live topology/type/content/link/mode/owner observations as journal/receipt preconditions, revalidate at mutation boundaries, and apply/verify one effective provider-free, host-fact-independent source. Existing unowned or modified targets fail without override. |
+| VAL-023 | PC-015, PC-070; ARCH-010, ARCH-012, ARCH-029 | For acquisition, Git, every implementation-qualified mise backend/package candidate, and every implementation-qualified chezmoi entry/static-template candidate, prove descendants remain within the same frozen lifecycle and write/access policy. Version-only evidence is not upgraded to transitive, artifact-integrity, or support evidence. Any upstream that daemonizes, escapes, uses unapproved state, or cannot be reaped is removed or requires the Phase 1-proven stronger boundary. |
 
-The suite must exercise every configured control against the exact pinned mise version. Upgrading mise requires rerunning the isolation and lock contracts before changing the pin.
+For arbitrary user payloads, deliberately detached descendants are outside the orchestration guarantee only if PC-015 documents the limit. VAL-017 and VAL-018 must still prove ZERB manager credentials, internal state paths, unapproved descriptors, ambient executable lookup, and provider/host-fact channels are not supplied to them.
 
-For each supported backend, evidence distinguishes the exact requested tool version, transitive dependency closure, artifact integrity, and later availability. A native mise lock/checksum is recorded where the pinned version/backend actually provides it. Version-only backends such as npm/Cargo/pipx are never described as complete transitive or artifact locks unless the proof establishes that stronger fact.
+## Protected roots, filesystem, archives, and destinations
 
-## Chezmoi scenarios
+| ID | Requirements proved | Scenario and required evidence |
+|---|---|---|
+| VAL-024 | PC-043, PC-060, PC-061; ARCH-016, ARCH-017, ARCH-018 | Retain byte/topology fixtures for state/data `absent/absent`, `absent/empty`, `empty/absent`, and `empty/empty`; “empty” means a safely validated directory with no entry, and no fixture contains recognizable evidence. Each is `CLEAN` and, only for an admitting PC-016 command, initializes the exact layout/identity with `0700` directories and `0600` files under permissive and restrictive umasks. Separately populate arbitrary non-empty names/content while keeping both roots free of recognizable evidence; every such fixture is `FOREIGN`, receives only generic move-aside/manual-clean-start guidance, and causes no write. Resolve hostile XDG inputs where product data/cache/state roots are exact aliases, ancestors/descendants, bind/mount aliases, device/inode aliases, duplicated, or conflicting; reject before any product path creation, including when only future leaves exist. |
+| VAL-025 | PC-016, PC-060, PC-061; ARCH-017, ARCH-018, ARCH-031 | Race creation/opening of the stable no-follow `0600` `state/zerb/init.lock`; all contenders validate the same synced inode and serialize through the Phase 1-proven Linux open-file-description exclusive lock, the inode is never replaced/deleted/inherited, and kernel release on process death is proven for the filesystem tuple. Exactly one initial holder atomically writes and file/parent-syncs its fresh token/process identity, creates and syncs stable `admission.lock` and `writer.lock`, atomically publishes and syncs released writer-owner generation zero, creates the data/cache markers, and publishes initialized state; losers write nothing. Enumerate the only `INIT` namespaces as every exact prefix before and after each directory create/sync, synchronization-inode publication, owner publication, marker publication, and final initialized publication; each contains only safe supported same-instance/token/process records in strict order without a gap. Crash at every boundary, stale claimant, PID reuse, wrong token/process/inode/predecessor, malformed/unsupported publication, any extra entry, and every deletion/substitution from a completed initialized root. Only an exact prefix admits compare-transfer repair under `I-X`; every malformed/unsupported/gapped/initialized-remnant case is `BAD` and no permanent synchronization inode is unlinked or replaced. |
+| VAL-026 | PC-016, PC-060, PC-061; ARCH-016, ARCH-018, ARCH-019, ARCH-024 | Retain exact byte/topology fixtures for every disjoint classifier row below and assert its sole PC-016 admission, lease, write set, and guidance. Exhaustively vary each reserved state/data path as absent, valid, unsupported-domain/schema, malformed, wrong-type/mode/owner/link/inode, duplicated/aliased, instance-mismatched, and cross-relation-mismatched. Add unrecognized extra entries to otherwise current pairs; add independently valid unreferenced candidate/source/tree/toolchain objects, orphan receipts, unrelated journals, second current records, malformed/replaced synchronization and writer-owner publications, exact transition graphs, and exact cleanup residue. A persistent `init.lock` beside any broken initialized evidence remains `BAD`; only the closed VAL-025 prefix set is `INIT`. Every recognizable record not in one complete supported relation receives evidence-preserving guidance; cache absence/poisoning alone never changes durable classification. |
+| VAL-027 | PC-043, PC-060, PC-061; ARCH-016, ARCH-020, ARCH-022 | Under failure and races, prove no-follow owner/type/mode/link/ancestor checks, immediate restrictive creation, descriptor-relative or equivalent topology safety, same-filesystem staging, complete file and parent sync, atomic replacement, and confined cleanup. For protected product/manager roots, enforce the complete role-overlap matrix before creation/use and reject exact/ancestor/descendant, lexical/canonical, bind/mount, and device/inode aliases. For destinations, first prove a no-I/O textual comparison of normalized structural identities against normalized reserved roles/future leaves with zero real-home access; then, only after trust and mutation authorization under `A-X+W-X`, enforce full canonical/descriptor/owner/type/link/device/inode/mount/bind checks before manager access that can mutate or filesystem creation and at every affected boundary. Reject symlinked, hardlinked, wrong-owner, wrong-type, group/world-writable, substituted, renamed, or aliased components before stable completion; outside sentinel remains untouched. |
+| VAL-028 | PC-070; ARCH-012, ARCH-019, ARCH-021 | Prove full SHA256 and frozen authenticity/provenance verification complete before an archive parser receives bytes. Reject absolute, traversal, empty/ambiguous, alias/duplicate, symlink/hardlink, device/socket/unsupported type/mode, oversized entry/total, excessive count/depth, partial/corrupt, and modified-after-hash input. Interrupt extraction and promotion at every write/sync/rename; no partial install appears and cleanup cannot touch the outside sentinel. |
+| VAL-029 | PC-016, PC-043, PC-050, PC-071; ARCH-004, ARCH-016, ARCH-020, ARCH-022, ARCH-024, ARCH-025 | Prove candidate digest and structural target inventory remain identical while unrelated targets, an unowned candidate target, a receipted unchanged target, a user-modified receipted target, ancestor symlinks, hardlinks, type/content substitutions, and a non-cooperating writer vary. Before trust, compare normalized target text only against normalized protected/control/manager roles and absent future leaves; an absent future `current.json` fails with zero real-destination access. Bind target identities and revalidation policy, not live facts, into the candidate. After trust and mutation authorization under `A-X+W-X`, reject canonical/descriptor/owner/type/link/device/inode/mount/bind aliases before any manager or filesystem mutation; capture other live observations as journal/receipt preconditions and revalidate each affected ancestor/final target at every mutation boundary. Only the unchanged exact-receipt target is eligible; all observed races prevent stable completion and leave the exact dirty phase. Never overwrite an unowned or user-modified target, delete an old target automatically, mutate protected metadata through a destination, or let external interference become false stable truth. |
+Every retained root fixture records the complete directory-entry set and file bytes or typed digests, schema/domain tags, inode/link/type/owner/mode/ancestor facts, record graph, acquired lease, and exact precedence:
 
-| Scenario | Required observation |
-|---|---|
-| Ordinary file | Applied and verified from the effective source. |
-| Private/executable mode | Exact supported destination mode is applied and verified. |
-| Allowed template | Renders under the approved data contract. |
-| Secret-bearing template structural plan | Provider value is not fetched or printed. |
-| Existing unrelated target | Remains untouched. |
-| Existing unowned candidate target | Is a non-overridable conflict; no apply begins. |
-| User-modified stable managed target | Is detected and not silently overwritten. |
-| Source or target collision | Fails before apply. |
-| Forbidden script/external/remove/root control | Fails during validation. |
-| Apply/provider/render failure | Transition becomes dirty at the exact home-apply phase. |
-| Post-apply mismatch | Stable/current remains A and receipt B is not completed. |
-| Exact-candidate reapply | `verify` succeeds and apply makes no surprise change. |
-| Existing chezmoi state | Access trace proves it remains unread, unexecuted, and unchanged across every scenario. |
-| Versioned provider profile | Provider generation token is bound in candidate; exact-candidate reapply is permitted and idempotent. |
-| Dynamic-unversioned provider profile | Profile is enforced as bootstrap-only; exact-candidate reapply is refused with explicit message. |
-| Host-fact-dependent template | Template reads runtime host facts (OS, env, hostname); profile is enforced as bootstrap-only; exact-candidate reapply is refused. |
-| Approved provider lookup function | Function is in frozen MVP allowlist; versioned variant binds generation token; dynamic variant forces bootstrap-only. |
-| Excluded template function (`output`/`run`/`command`/filesystem) | Rejected during plan validation before trust; fails closed. |
-| Ancestor symlink to destination | no-follow ancestor validation rejects the target; apply fails before mutation. |
-| Ancestor component substitution | Replaced directory component detected by ancestor chain validation; apply fails before mutation. |
+| Fixture class | Disjoint predicate | Sole expected outcome |
+|---|---|---|
+| `CLEAN` | Both state/data roots are independently safe; each is absent or empty; neither contains recognizable evidence | Initialization only for the admitting PC-016 rows through VAL-025; clean `doctor` remains read-only |
+| `FOREIGN` | Clean is false, at least one root is non-empty, and neither root contains a recognizable synchronization name, reserved path, marker, claim, schema/domain tag, or record | Exit `1`, generic move-aside/manual-clean-start guidance, no writes |
+| `BAD` unsupported | Any recognizable record/object uses an unsupported ZERB schema/domain, whether or not `init.lock` or an initializing-looking record is also present | Diagnose; never rewrite/promote/migrate; preserve evidence; no delete/move-aside guidance |
+| `INIT` | Namespace is exactly one enumerated VAL-025 crash-valid ARCH-017 prefix: safe permanent init lock, then supported same-instance/token/process publications in strict order with no gap or extra entry | `doctor` and exact initialization `recover repair` only; preserve evidence; no delete/move-aside guidance |
+| `BAD` corrupt | Recognizable evidence exists and the namespace is neither one exact `INIT` prefix nor one complete supported relation: any required path/record is absent, malformed, unsafe, duplicated, aliased, mismatched, partial, improperly unreferenced, cross-related incorrectly, or accompanied by an extra state/data entry | `doctor` and only an exact named recovery relation; preserve evidence; no delete/move-aside guidance |
+| Supported current relation | Complete matching owner pair, stable synchronization inodes, exact writer-owner publication, and every entry forms exactly `READY(∅)`, `STABLE(A)`, `TRANSITION(A,B)`, or `CLEANUP(B)` | Exact PC-016 state/lease row |
+| Supported relation plus cache miss | Durable predicate above holds; owned cache/marker is absent or poisoned | Same durable truth/admission; recreate only the validated per-instance cache when that command permits |
 
-The target destination is an intentional shared surface. Tests must never claim that isolated state makes overlapping destination ownership safe.
 
-## State, locking, and recovery scenarios
+## Durable state, receipts, and recovery
 
-Inject process errors, cancellation, and uncatchable termination at least:
+| ID | Requirements proved | Scenario and required evidence |
+|---|---|---|
+| VAL-030 | PC-016, PC-060, PC-061; ARCH-017, ARCH-023, ARCH-024, ARCH-031 | Prove the stable close-on-exec `admission.lock` shared/exclusive and `writer.lock` exclusive open-file-description primitives on each candidate filesystem; neither inode is replaced, unlinked, or inherited. Exercise shared compatibility, exclusive exclusion, fixed lock order, simultaneous writers, two stale reclaimers, live/stale/reused PID identities, malformed/missing/substituted synchronization and owner paths, and non-cooperating pathname changes. For each writer acquire, stale compare-transfer, and release, inject failure before/after temporary create/write/file-sync, prior owner inode/schema/generation/token comparison, stable lock-inode revalidation, atomic rename, parent sync, reopen/new-inode/full-byte verification, authority revalidation, released publication, writer unlock, and admission unlock. Race record `A→B→A`, inode replacement, token reuse/substitution, generation substitution/overflow, predecessor mismatch, and process death at every boundary. Exactly one kernel-lock holder may publish; tokens are fresh, generations strictly advance, journals bind the active generation/token, release is durably published before unlock, no synchronization or owner path is unlinked, age alone proves nothing, and a loser or unverified owner advances no candidate/journal/receipt/current/external mutation. |
+| VAL-031 | PC-016, PC-061; ARCH-023, ARCH-024, ARCH-025, ARCH-031 | Under `A-X+W-X`, inject errors, catchable cancellation, and hard termination before candidate creation; during candidate no-replace create/write/file-sync/publication/parent-sync/reopen; during writer-owner acquire/revalidation; during journal create/write/sync/rename/parent-sync; before/after prepared; before/during/after every mutating-phase persistence and possible external mutation; during tool/home/shell verification; during pending-receipt and current temporary create/write/file-sync/rename/parent-sync/reopen; immediately after stable commit; during journal cleanup; and during released-owner publication/unlock. Before and after every durable or external boundary, substitute the admission/writer path, owner-record inode/generation/token, current, candidate, or journal. Ownership revalidation either proves the same lease/owner tuple and advances once or stops in the exact evidence-preserving state. Retain one result for every boundary. |
+| VAL-032 | PC-016, PC-061; ARCH-018, ARCH-023, ARCH-024, ARCH-025, ARCH-026, ARCH-031 | Restart after every VAL-030/VAL-031 point. Before possible mutation, current remains `A` with only a complete supported relation or `BAD` evidence. After possible mutation, expose only `{current=A, dirty(A,B,phase,journal)}` or `{current=B, stable(B)}` plus exact cleanup residue. Never report crossed current/state truth, an unreferenced pending receipt as complete, a stale writer token as authority, or the previous receipt as proof the dirty host equals `A`. A stale held owner is transferred only after kernel exclusion, dead full process identity, predecessor compare, durable new publication, and reopen verification; two restart reclaimers cannot both advance. Stable `B` plus exact cleanup remains `CLEANUP(B)`; any unrelated residue is `BAD`. |
+| VAL-033 | PC-010, PC-011, PC-016, PC-061, PC-071; ARCH-018, ARCH-025, ARCH-027, ARCH-031 | Exercise every PC-016 cell for `CLEAN`, `FOREIGN`, `INIT`, `BAD`, `READY(∅)`, `STABLE(A)`, each prepared/mutating/dirty `TRANSITION(A,B)`, and `CLEANUP(B)`: both version forms; profile list; plan yielding exact `A` or a changed candidate; doctor; resume; repair; bootstrap; apply; exec; and shell. Invalid argv wins before all root access; version never opens a root; a well-formed form acquires/revalidates the required lease before semantic validation; state denial precedes missing-approval handling. Prove every plan and profile list use `A-X`; doctor/exec/shell share `A-S`; mutation/recovery use `A-X+W-X`. An exact stable plan retains `A-X` and may reuse only exact immutable objects; a changed stable result fails before publication; transition/cleanup plan fails before source access. Exact related residue with valid stable locks/owner predecessor uses the named recovery row; malformed/substituted synchronization or unprovable owner evidence permits only safe-`I-X` no-write diagnosis or topology-only diagnosis. Race every compatible and incompatible pair; no semantic work occurs outside the lease, no lease upgrade/drop/reacquire occurs, and non-blocking losers return busy `1`. |
+| VAL-034 | PC-050, PC-071; ARCH-004, ARCH-024, ARCH-026 | Verify candidate, pending receipt, current, and completed receipt schemas/modes/digests and cross-references. The candidate contains deterministic structural target inventory but no mutable/live destination observation; changing live topology/type/content/link/mode/owner/existence leaves its digest unchanged. Journals and receipts persist post-trust, post-mutation-authorization live observations as preconditions/results and prove their revalidation at affected mutation boundaries. Only the atomic synced current reference completes a receipt. Receipts contain source/component identities, exact toolchain/policy/platform observations, requested and observed tools/integrity, structural target inventory, live destination preconditions/results, phases, and verification—never secrets or stronger availability/integrity/repeatability claims than observed. |
 
-1. Before candidate persistence.
-2. After candidate-object persistence but before prepared-state persistence.
-3. After prepared-state persistence.
-4. Immediately before and after persisting each `mutating` phase.
-5. During tool installation.
-6. After tool installation but before verification.
-7. During home render/apply, including provider retrieval.
-8. After home apply but before destination verification.
-9. During shell-metadata generation.
-10. After all verification but before pending receipt persistence.
-11. During pending receipt write/sync.
-12. After pending receipt sync but before stable/current commit.
-13. During temporary stable/current write, rename, file sync, and directory sync.
-14. Immediately after stable/current commit but before journal cleanup.
-15. During stale-journal cleanup.
+For a recoverable transient failure, `doctor` reports the exact dirty phase and direct recovery reaches verified stable. When a source, destination, or tool precondition remains unavailable, recovery leaves truthful dirty state and reports the external action required; inability to converge is never converted into success.
 
-For each point, restart a new process and assert:
+## Trust, planning, CLI, and command admission
 
-- Before possible mutation, current remains A and an incomplete candidate can be safely rejected or reconstructed.
-- After possible mutation, startup exposes only `{current=A, dirty(A,B,phase,journal)}` or `{current=B, stable(B)}`—never current A with stable B, current B with dirty A/B, or an unreferenced receipt reported complete.
-- A stale journal after the stable/current commit is cleanup residue; the atomic current record remains authoritative.
-- Lock, candidate, journal, receipt, and current files are durable, owner-only, and never broader during staging.
-- Apply/bootstrap/exec/shell and candidate replacement cannot proceed while mutating or dirty; doctor and recovery remain available.
-- Direct `recover resume` and `recover repair` revalidate source objects, candidate/policy digest, destination observations, provider/tool readiness, and completed phase outputs before supported forward convergence.
-- Recovery never requires manual journal edits, claims rollback, deletes unrelated data, or marks an unverified host stable.
+| ID | Requirements proved | Scenario and required evidence |
+|---|---|---|
+| VAL-035 | PC-030, PC-031, PC-032, PC-033; ARCH-004, ARCH-005, ARCH-007 | In non-terminal mode, omit candidate trust and mutation authorization one at a time; each returns `2` before its candidate-selected or mutation boundary. Exact candidate trust permits only verification/execution of already bound public embedded fields. Selected gitlinks/private sources always fail policy before authentication/network/candidate/manager/mutation, and any transport-authorization flag is invalid usage; there is no third approval. A mismatched candidate digest returns `1`; `--yes` substitutes for neither trust nor source eligibility. |
+| VAL-036 | PC-012, PC-016, PC-031, PC-050, PC-061; ARCH-004, ARCH-005, ARCH-024, ARCH-027, ARCH-031 | Every `plan` receives explicit source/profile, acquires/revalidates `A-X` before state/source/candidate validation, and holds it through cache staging, candidate trust, all permitted immutable source/tree/toolchain/candidate publication, synchronization, reopen/exact-byte/digest/schema verification, and cleanup or truthful residue. Race same-digest and different-digest publishers plus every reader/mutation/recovery boundary; an existing immutable object is reused only when exact, never overwritten, and no reader observes an in-progress stage. In `STABLE(A)`, exact `A` may finish but a differing result fails as an unsupported update before publication; `TRANSITION` and `CLEANUP` deny before source access. Missing noninteractive trust leaves only authenticated-as-cache untrusted per-instance bytes and no durable state/data staging or object; there is no shared-plan path, lease upgrade, or drop/reacquire. |
+| VAL-037 | PC-010, PC-011, PC-012, PC-013, PC-014, PC-016, PC-061; ARCH-018, ARCH-027, ARCH-028, ARCH-030, ARCH-031 | Exercise every argv/flag permutation and every VAL-033 state row through `internal/app.Run` and the installed binary using `app.Options` with immutable copied `paths.Input` and instrumented side-effect-free service constructors. Invalid operand/flag/`--`/digest/token grammar returns the exact result before `paths.Resolve`, constructor activation, or root access even over foreign/corrupt fixtures. Both version forms return the frozen version without `paths.Resolve`, constructors, or root access. Each well-formed non-version command calls `paths.Resolve` exactly once with the captured home/raw environment, passes only that one `paths.Roots` to constructors, then activates root services; prove root classification/state denial precedes missing-approval handling and semantic validation follows the required lease/revalidation. Check exact output, stderr-only `Error: ` prefix, redaction, success `0`, operational/policy/trust/conflict/health/launch failure `1`, invalid usage or admitted missing noninteractive approval `2`, sorted profile IDs, doctor health prefix, and PC-012 plan/apply/bootstrap/recovery lines. |
 
-Concurrency tests include simultaneous ZERB apply attempts, stale-lock recovery, process-ID reuse assumptions, cancellation propagation to every descendant, and a non-cooperating writer. The writer lock is accepted only as ZERB-process coordination; destination revalidation detects observable external changes and no guarantee is made for an undetectable race.
+## Static-template, excluded-provider, and marker boundaries
 
-## Protected-root and managed-archive scenarios
+| ID | Requirements proved | Scenario and required evidence |
+|---|---|---|
+| VAL-038 | PC-043, PC-070, PC-071; ARCH-005, ARCH-014, ARCH-015, ARCH-029 | **Phase 1:** invoke the disposable static validator directly with embedded fixtures and reject every provider reference/function, dynamic lookup, host-fact function, and unapproved template function before candidate creation. Separately prove selected-gitlink input rejects under VAL-009 before authentication/network/materialization or validator entry. **Phase 3/5/6:** repeat these boundaries through `internal/app.Run` and the installed binary: embedded forbidden syntax rejects at static validation; selected gitlinks reject at source selection. No private fixture is materialized. |
+| VAL-039 | PC-043, PC-070, PC-071; ARCH-014, ARCH-015 | For every surface in `P1-CHEZMOI-STATIC`, prove the one template output depends only on literal template tokens and the listed literal-boolean `if`/`else` action. Every unlisted dynamic/provider/host-fact/action surface fails during embedded static validation. Exact-candidate reapply is provider-free and host-fact-independent; there is no private-source or bootstrap-only exception. |
+| VAL-040 | PC-013, PC-070; ARCH-015, ARCH-028 | Apply VAL-005's exact sink matrix while scanning argv, environments, descriptors, network, output, errors, logs, candidate/materialized/generated trees, generated non-secret config, cache, state, journal, receipt, diagnostics, temps, destinations, complete repository scope, evidence ledger, retained transcripts, and reviews. Authentication/provider marker/value bytes occur nowhere; helper/agent/relay/private-endpoint access is zero; ambient bytes reach no child or persisted surface. |
 
-### Protected-root creation
+Trusted static templates/backends and arbitrary user commands execute with normal user authority; they are not described as sandboxed. Validation proves ZERB does not supply pre-existing manager discovery paths, manager credentials/state, provider/host-fact channels, or unapproved descriptors, and does not claim to control arbitrary intentional user-command effects.
 
-| Scenario | Required observation |
-|---|---|
-| Permissive umask | Created roots and files receive declared restrictive modes regardless of caller umask. |
-| Symlinked root component | Rejected before any write; root not created. |
-| Hardlinked root component | Rejected before any write; root not created. |
-| Wrong-owner root component | Rejected before any write; root not created. |
-| Group/world-writable root component | Rejected before any write; root not created. |
-| Interrupted creation | Partial staging cleaned up; no broader-permission temporary file remains. |
+## Installed-binary verticals and release evidence
 
-### Managed-binary archive extraction
-
-| Scenario | Required observation |
-|---|---|
-| Archive not authenticated/hashed | Rejection before parser sees bytes. |
-| Absolute path entry | Rejected during extraction. |
-| Traversal (`../`) entry | Rejected during extraction. |
-| Alias/duplicate entry | Rejected during extraction. |
-| Symlink or hardlink entry | Rejected during extraction. |
-| Device or unsupported type entry | Rejected during extraction. |
-| Oversized entry | Rejected during extraction. |
-| Partial/corrupt archive | Treated as invalid; staging cleaned up. |
-| Poisoned cache (modified after hash) | Detected on re-read; treated as invalid. |
-| Interrupted extraction | Staging cleaned up; promoted content not visible; outside sentinel untouched. |
-
-For every extraction scenario, prove full hash/authentication completes before the extractor sees bytes and the outside sentinel file remains untouched.
-
-## Secret and sensitive-metadata scenarios
-
-Use distinct high-entropy markers for (a) Git authentication, (b) provider storage/output, and (c) rendered destination content. Define an owner/allowed-location table before each scenario. Instrument the complete subprocess tree and scan every controlled filesystem root and captured stream after success, failure, cancellation, and hard termination.
-
-Evidence covers argv, constructed and inherited environment, cwd, open/inherited descriptors, descendant processes, network request metadata, terminal output, exported diagnostics, and every ZERB/provider temporary, cache, state, log, journal, receipt, candidate, and materialized-source location.
-
-- Authentication marker: MAY exist only in the approved credential helper/SSH agent's protected storage or protocol exchange; ZERB never accepts, copies, logs, or persists it.
-- Provider marker: MAY exist in the provider fixture's approved protected storage and documented provider-owned ephemeral storage; it MUST NOT enter ZERB-owned artifacts/output.
-- Rendered marker: MAY exist only in the declared destination file with exact ownership/mode, plus approved provider-owned ephemeral storage when the pinned provider contract requires it.
-
-No marker may appear in a Git URL/repository config, process argument, profile/lock file, candidate/materialized source, generated non-secret runtime config, ZERB cache/state/temp/journal/receipt/log/error/diagnostic, or unrelated destination. Cleanup assertions do not excuse a transient spill: access tracing and observation at injected failures must prove restrictive creation and allowed placement throughout the operation.
-
-Target paths, credential-free locators, commit IDs, provider IDs, and employer/profile names are sensitive metadata even when not secret values. Local protected receipts may retain only the fields required by their schema; public output and exported diagnostics prove their redaction policy separately.
-
-## Structural-plan scenarios
-
-A plan is accepted only if it:
-
-- Binds an explicit source/profile and reports an immutable planned candidate artifact with explicit digest. The artifact records no resolved secret values or provider outputs.
-- Writes no destination file and installs no declared profile tool.
-- Makes protected managed-adapter acquisition and source/candidate/cache writes explicit.
-- Does not modify parent-shell state or retrieve secret values.
-- Does not invoke credential channels before endpoint authorization.
-- Performs no candidate-controlled Git filter/hook, mise, chezmoi, template, provider, script, or command execution before digest-bound trust.
-- Lists every unsupported input, unowned target, collision, and runtime-only provider check.
-- Reports exact source pins, available tool resolutions/integrity facts, target inventory, and mutation phases.
-- Includes trust/policy identity and expiry/revalidation conditions.
-- Does not retrieve provider values or render sensitive content.
-
-## Vertical smoke scenarios
-
-### Public bootstrap and standalone flow
-
-1. Begin with the three-layer fixture: hostile manager state plus a clean shared destination.
-2. Install the release artifact as the user would receive it.
-3. Run `zerb profile list <source>` and prove only public static discovery.
-4. Run `zerb plan <source> --profile <name>`, accept digest-bound trust, and capture the candidate digest.
-5. In a separate process run `zerb apply --candidate <digest>` and confirm mutation.
-6. Repeat from a clean root using the one-command bootstrap path and compare the resolved candidate/receipt facts.
-7. Run a declared tool through `zerb exec`, then open and close `zerb shell`.
-8. Verify declared home targets and inspect the completed receipt/current record.
-9. Reapply the identical candidate and observe no surprise change.
-10. Attempt a changed candidate and an unowned target; each fails before mutation.
-11. Prove pre-existing manager binaries and state were not accessed and destination allowlists were respected.
-
-### Selected-private bootstrap
-
-Repeat both standalone and bootstrap flows with exactly one private gitlink, endpoint authorization before native authentication, and a provider-rendered destination marker. Denied source authorization must leave the host unchanged. Exercise provider declaration/readiness failures before mutation where supported and provider retrieval/render failures during apply; the latter must leave truthful dirty home-apply state and recover through the documented CLI.
-
-Also exercise:
-- A versioned-provider profile: apply succeeds; reapply of the identical candidate is idempotent.
-- A dynamic-unversioned provider profile: apply succeeds; reapply of the identical candidate is refused as bootstrap-only.
-- A host-fact-dependent template profile: apply succeeds; reapply is refused as bootstrap-only.
-- An excluded template function (`output`/`run`/`command`): plan validation rejects it before trust.
-- A destination with a symlinked ancestor component: ancestor validation rejects it before mutation.
-
-### Dirty recovery
-
-For a real pinned tool and home target, terminate apply at every externally observable mutation/persistence phase. Restart ZERB, run doctor, then invoke `zerb recover resume` or `zerb recover repair` directly. For every supported failure cause that can be restored (process killed, transient I/O, interrupted network), recovery must reach verified stable through the supported CLI. For failure causes that cannot be resolved without external action (provider permanently unavailable, source unreachable), recovery must truthfully diagnose the remaining dirty state with explicit user guidance. No test may pass by editing state files.
+| ID | Requirements proved | Scenario and required evidence |
+|---|---|---|
+| VAL-041 | PC-010, PC-012, PC-016, PC-020, PC-030, PC-031, PC-033, PC-060, PC-061, PC-070, PC-071; ARCH-003, ARCH-004, ARCH-013, ARCH-014, ARCH-015, ARCH-018, ARCH-025, ARCH-031 | Install a retained Phase 1 implementation candidate into its clean candidate host with hostile pre-existing manager state and clean destination. Run version, public profile list, noninteractive plan with exact trust, standalone exact-digest apply, and one-command bootstrap; compare candidate/current/receipt facts. Run exec and `P1-SHELL-BASH`; race plan/exec/shell with apply and recovery through every ARCH-031 linearization boundary; verify state-table outcomes, candidate publication, executable binding, child release, tools/targets, exact reapply, changed-candidate and unowned-target rejection, and allowlist/non-access. Repeat the installed VAL-038 embedded exclusion boundary. Passing is input to VAL-001, not a prior support prerequisite. |
+| VAL-042 | PC-021, PC-032, PC-070, PC-071; ARCH-006, ARCH-007, ARCH-008, ARCH-015, ARCH-025, ARCH-032 | Through standalone plan/bootstrap source-selection paths, select each canonical/invalid HTTPS/SSH gitlink and attempt every excluded helper/agent/relay/private-endpoint/input shape. Each rejects before authentication, network, candidate creation, manager execution, or mutation. Prove no transport flag/output/prompt/digest, typed identity producer, private process, or durable transport field exists; unselected gitlinks remain statically validated zero-access declarations. This is exclusion evidence, never transport support. |
+| VAL-043 | PC-043, PC-070, PC-071; ARCH-014, ARCH-015, ARCH-028, ARCH-029 | Complete the installed-binary clause of VAL-038 for every recognized excluded syntax in embedded fixtures plus forged-candidate revalidation, and confirm selected-gitlink fixtures are rejected before materialization. Each returns `1` at its owned boundary, creates no authentication/provider/private network channel, and records no provider or credential value. Passing proves rejection only. |
+| VAL-044 | PC-001, PC-010, PC-014, PC-015, PC-016, PC-060, PC-061, PC-070; ARCH-010, ARCH-015, ARCH-018, ARCH-027, ARCH-029, ARCH-030, ARCH-031 | For every retained public implementation-candidate combination, run configured gates, build/install the trimmed release, and exercise both version forms, every PC-016 command/state cell, root/lock/recovery/lifecycle/source-ceiling boundaries, `P1-SELECTED-GITLINK-EXCLUSION`, `P1-MISE-CORE-NODE`, `P1-CHEZMOI-STATIC`, `P1-EXEC`, and `P1-SHELL-BASH`. No private transport candidate or credential mechanism is implementation-qualified or supported. |
+| VAL-045 | PC-013, PC-070; ARCH-026, ARCH-028, ARCH-029 | Retain only redacted proof records: reviewed public executable identities; typed fixture/revision/tree/candidate and static-locator references; selected-gitlink/private-transport exclusion results and zero-access traces; provider/host-fact rejection results; process/write/network/resource matrices; roots/state/recovery results; high-entropy non-authentication marker fingerprints; dependency inventory; and review dispositions. Record no transport tuple, approval digest, credential recipe, or identity producer. |
+| VAL-046 | PC-001, PC-010, PC-070; ARCH-001, ARCH-029, ARCH-030 | Final working-tree, production-and-`_test.go` import-graph, exported-symbol, and installed-help sweep finds no reachable old package/type/API, command, parser/config model, activation behavior, compatibility alias, bridge/re-export, stale export, hidden fallback, obsolete dependency behavior, or removed documentation/workflow authority. The forbidden seam includes the full old `internal/config`, `service`, `git`, `drift`, `chezmoi`, `transaction`, `shell`, `platform`, `binary`, and `testutil` trees. The exact ARCH-030 package set, one-way imports, immutable `paths.Input`, parse/version/root-resolution order, internal signatures, and `_test.go`-only `internal/testenv` seam remain; production cannot import `testenv`, and neither production nor tests may import an old tree. The repository describes only the installed target plus generic historical disposition. Roadmap status changes to implemented only after VAL-044 and review dispositions pass. |
 
 ## Validation order
 
-For implementation changes:
+1. Phase 0 defines provisional rows and records the old baseline without weakening gates.
+2. Phase 1 runs VAL-002 through VAL-036, the direct-harness clause of VAL-038, and VAL-039 through VAL-040 in the four proof slices; it dispositions every closed-matrix positive row as failed, inconclusive, or implementation-qualified and every negative row as failed, inconclusive, or exclusion-proven, incorporates rejected assumptions, freezes contracts, and records owner, independent plan, and focused security approval. Every negative row required by a retained positive candidate must be `exclusion-proven`; failed or inconclusive exclusion evidence blocks that positive candidate unless the normative owners narrow or remove the dependent surface, update the closed matrix, and rerun every affected proof. It does not run VAL-001 or create support.
+3. Phase 2 runs focused permanent conformance/failure tests and resolves the foundation security review before mutation.
+4. Phase 3 runs the `internal/app.Run` clause of VAL-038 and runner-level public verticals; Phase 4 adds every public persistence, status, signal, lifecycle, resolution, and recovery row.
+5. Phase 5 implements no transport. It repeats VAL-009/010/011/012 and the runner clauses of VAL-038/042 to confirm selected-gitlink rejection, unselected-gitlink zero access, and absence of every credential/helper/agent/relay/private-endpoint/authorization surface.
+6. Phase 6 runs the installed-binary clauses of VAL-038 and VAL-041 through VAL-046, then VAL-001 promotes only exact complete passing rows after accepted review fixes are rerun.
 
-1. Reproduce the relevant failure or contract in the narrowest fixture.
-2. Run focused package tests.
-3. Run the real adapter scenario with pinned upstream binaries.
-4. Run the affected vertical smoke scenario.
-5. Run broader repository checks once after integration.
-6. Perform DeepReview and security review for the hard-cutover release.
-7. Resolve or explicitly reject every review finding with evidence.
-8. Rerun targeted and vertical checks after fixes.
-
-Coverage is diagnostic. It is not an acceptance criterion by itself.
-
-## Release evidence
-
-A release candidate must retain:
-
-- Pinned ZERB, native Git, mise, and chezmoi versions plus canonical executable digests.
-- Immutable asset manifest with source URLs, sizes, SHA256 digests, and signature/provenance material for every upstream fixture and release dependency.
-- Backend-specific lock/integrity/repeatability results without upgrading version-only evidence to a stronger claim.
-- Supported platform matrix results.
-- Public and selected-private standalone/bootstrap transcripts with secret values removed.
-- No-interference access traces, process trees, write-allowlist results, and before/after manifests.
-- Candidate, pending receipt, stable/current, and completed receipt examples with sensitive metadata removed.
-- Failure-injection and recovery matrix results.
-- Separate authentication/provider/rendered marker results.
-- OpenSpec initial, post-proof, and post-provider-proof (Phase 5 Sub-phase B) strict validation/approval records.
-- Build, focused test, broader test, race, vet, and configured lint results.
-- DeepReview and security-review dispositions.
-
-No release claim may exceed the scenarios actually exercised.
+Coverage is diagnostic, not acceptance. No release claim may exceed the exact vertical evidence retained for it.
