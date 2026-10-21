@@ -1,0 +1,3 @@
+[submodule "third_party/chezmoi"]
+	path = third_party/chezmoi
+	url = https://github.com/ZebulonRouseFrantzich/chezmoi.git

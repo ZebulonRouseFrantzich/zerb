@@ -1,5 +1,22 @@
 {
   "nodes": {
+    "chezmoi-zerb": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1787510541,
+        "narHash": "sha256-xM3lgbhXEWEXX5RkviTujfNfqLrjl3RRr1evBXhII9o=",
+        "owner": "ZebulonRouseFrantzich",
+        "repo": "chezmoi",
+        "rev": "ef897f7418ba0bd5423a5bf1563d45f05d9c6ea5",
+        "type": "github"
+      },
+      "original": {
+        "owner": "ZebulonRouseFrantzich",
+        "repo": "chezmoi",
+        "rev": "ef897f7418ba0bd5423a5bf1563d45f05d9c6ea5",
+        "type": "github"
+      }
+    },
     "flake-utils": {
       "inputs": {
         "systems": "systems"
@@ -36,6 +53,7 @@
     },
     "root": {
       "inputs": {
+        "chezmoi-zerb": "chezmoi-zerb",
         "flake-utils": "flake-utils",
         "nixpkgs": "nixpkgs"
       }

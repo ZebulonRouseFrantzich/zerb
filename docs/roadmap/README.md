@@ -1,7 +1,7 @@
 # ZERB Roadmap
 
-**Status:** Phase 0 provisional proof baseline; target product not implemented
-**Last updated:** 2026-08-13
+**Status:** Ten Phase 1 review rounds failed; eleventh corrective proof/API work in progress; product not implemented
+**Last updated:** 2026-08-31
 
 ZERB is a declarative, profile-based developer-environment restoration tool for mutable workstations. It converges declared user-space tools and dotfiles through pinned, isolated native adapters. It is not an operating-system image, backup system, package manager, transactional rollback engine, hermetic build system, or machine snapshot.
 
@@ -64,7 +64,7 @@ This is target scope, not a claim about the currently reachable binary. Exact be
 |---|---|---|
 | 0. Authority migration | Roadmap owns provisional contracts; exhaustive hard-cutover disposition recorded | Documentation only |
 | 1. Proof and freeze | Real native Git, manager, lifecycle, filesystem/state, and parser proofs; contract narrowing and reviewed freeze | Disposable fixtures only |
-| 2. Replacement foundations | Protected paths/filesystem, source/profile, execution, toolchain, state/recovery/receipt foundations | Test roots only |
+| 2. Replacement foundations | Protected paths/filesystem, source/profile, execution, toolchain, state/receipt foundations | Test roots only |
 | 3. Non-public target runner | Exact dispatcher, profile listing, structural plan, doctor, and version exercised through injected services | Protected toolchain/cache/candidate roots only |
 | 4. Public bootstrap/apply | Fresh public bootstrap, eligible exact-candidate reapply, recovery, exec, and shell | Approved user mutation |
 | 5. Selected-gitlink exclusion | Confirm selected gitlinks/private sources remain rejected, unselected gitlinks remain zero-access, and no transport/credential mechanism exists | No new transport mutation |
@@ -75,4 +75,4 @@ Each phase is gated. A later phase cannot compensate for an unproven earlier con
 
 ## Current branch warning
 
-The branch remains pre-alpha. Its reachable binary is the obsolete pre-cutover product while replacement foundations are developed behind a non-public runner. Do not install or run this branch against a real workstation, home directory, credentials, manager state, or destination before Phase 6 installed-binary acceptance. See the [root branch-status README](../../README.md) and the baseline in [proof results](proof-results.md).
+The branch remains pre-alpha. Its reachable binary is the obsolete pre-cutover product while the eleventh Phase 1 correction is performed; no replacement product foundation has started. Do not install or run this branch against a real workstation, home directory, credentials, manager state, or destination before Phase 6 installed-binary acceptance. See the [root branch-status README](../../README.md) and the baseline in [proof results](proof-results.md).

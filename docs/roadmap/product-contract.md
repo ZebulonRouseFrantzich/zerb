@@ -1,8 +1,8 @@
-# Provisional Product Contract
+# Phase 1 Product Contract
 
-**Status:** Phase 0 provisional proof baseline; not implemented and not a support claim  
+**Status:** Ten Phase 1 plan/security review rounds failed; eleventh corrective proof/API work in progress; implementation remains barred; not a support claim
 **Normative owner:** This document alone owns public CLI, local source-schema, approval, output, and user-visible state behavior.  
-**Freeze gate:** Phase 1 may narrow these requirements when real evidence disproves an assumption. The approved Phase 1 exit freezes implementation contracts and implementation-qualified proof candidates only; it does not create a support claim.
+**Change gate:** Any change to this contract requires an owning requirement edit, affected proof-matrix update, fresh evidence, and the applicable review. Phase 1 candidate qualification does not create a support claim.
 
 See the [roadmap index](README.md), [architecture invariants](architecture.md), [delivery sequence](delivery-plan.md), [validation requirements](validation.md), [redacted proof ledger](proof-results.md), [hard-cutover disposition](hard-cutover.md), and [post-MVP intent](post-mvp.md).
 
@@ -10,22 +10,22 @@ The key words **MUST**, **MUST NOT**, **SHOULD**, and **MAY** are normative. Eve
 
 ## Scope and contract state
 
-### PC-001 — Product boundary and provisional status
+### PC-001 — Product boundary and implementation status
 
-**Invariant.** ZERB restores one declared embedded `base + selected profile` developer environment on a mutable workstation. It is not an operating-system image, backup system, package manager, transactional rollback engine, hermetic build system, or machine snapshot. The target product is pre-alpha, has no supported users, and is not implemented on the current branch. No platform, CPU, public native Git identity, mise backend, chezmoi feature, shell, provider, or parser behavior becomes supported merely because it appears in this provisional contract; selected-gitlink/private transport is excluded rather than provisional.
+**Invariant.** ZERB restores one declared embedded `base + selected profile` developer environment on a mutable workstation. It is not an operating-system image, backup system, package manager, transactional rollback engine, hermetic build system, or machine snapshot. The target product is pre-alpha, has no supported users, and is not implemented on the current branch. No platform, CPU, public native Git identity, mise backend, chezmoi feature, shell, provider, or parser behavior becomes supported merely because it is frozen for implementation; selected-gitlink/private transport is excluded.
 
 **Scenarios.**
 
-- Before the Phase 1 freeze, a proof that contradicts an assumption narrows the normative owner; it does not add a fallback parser, transport path, second execution path, or unsupported claim.
-- Before final installed-binary acceptance, documentation describes target behavior as provisional rather than reachable.
+- A later proof that contradicts a frozen assumption requires a normative edit, affected-matrix rerun, and review; it does not add a fallback parser, transport path, second execution path, or unsupported claim.
+- Before final installed-binary acceptance, documentation describes target behavior as frozen but not yet reachable.
 - A Phase 1 result may qualify a finite candidate for implementation, but support still requires VAL-001 and the applicable Phase 6 installed-binary vertical.
 - A user seeking system packages, root-level configuration, rollback, or bit-for-bit host reproduction is told that the request is outside the product boundary.
 
 ## Command line
 
-### PC-010 — Exact provisional CLI grammar
+### PC-010 — Exact CLI grammar
 
-**Invariant.** The provisional MVP accepts only the following public command forms. There are no compatibility aliases, implicit commands, alternate public binaries, source defaults, JSON variants, or global source/profile state.
+**Invariant.** The MVP accepts only the following public command forms. There are no compatibility aliases, implicit commands, alternate public binaries, source defaults, JSON variants, or global source/profile state.
 
 ```text
 zerb profile list <source>
@@ -74,7 +74,8 @@ Missing non-interactive approval is evaluated at its bound operation boundary af
 | `apply` success | `Applied: sha256:<digest>` |
 | `bootstrap` success | `Applied: sha256:<digest>` |
 | `doctor` | First line begins exactly `Healthy` or `Unhealthy` |
-| Either successful recovery | `Recovered: sha256:<digest>` |
+| `recover resume` or candidate/cleanup `recover repair` success | `Recovered: sha256:<digest>` |
+| Initialization-only `recover repair` success | `Repaired: initialization` |
 | Either version form | `zerb <version>` |
 
 `exec` and `shell` pass the child streams through and add no success wrapper that could corrupt machine-consumed output.
@@ -84,6 +85,7 @@ Missing non-interactive approval is evaluated at its bound operation boundary af
 - `profile list` over IDs `work`, `personal` prints `personal` then `work`, each followed by a newline.
 - A successful plan may print stable, redacted inspection information, but its last line is the candidate line.
 - Machine-readable JSON, sensitive content diffs, and unstable progress events are not MVP output.
+- Initialization repair never invents a candidate or receipt digest; transition/cleanup recovery prints the converged candidate digest.
 
 ### PC-013 — Errors, abstraction, and redaction
 
@@ -138,10 +140,11 @@ An uncatchable wrapper death has no return status. Its consequences are diagnose
 - `apply` consumes exactly the candidate named by `--candidate`; absent, ambiguous, stale, changed, or untrusted artifacts fail before mutation.
 - `doctor` diagnoses root, schema, state, tool, and source readiness without adopting, deleting, repairing, or relabeling state.
 - `recover resume` and `recover repair` perform only supported forward convergence. Neither claims rollback nor requires manual journal editing.
-- `exec` resolves a bare payload only against the stable-profile executable set, or accepts a canonical absolute payload, then runs the identity-checked executable without mutating the parent process.
-- `shell` runs an explicitly selected clean child shell without normal interactive startup files and without mutating the parent process.
+- `exec` resolves a bare payload only against the stable-profile executable set, or accepts a canonical absolute payload, then runs an identity-checked regular Linux x86_64 ELF image from an immutable sealed byte snapshot without mutating the parent process. Scripts, shebangs, and other executable formats are rejected before child release.
+- `shell` accepts only the implementation-qualified ID `bash` and runs the exact Bash 5.3.15 ELF identity as `--noprofile --norc -i` on a clean PTY without normal startup files or parent mutation. Job-control process groups remain inside the frozen cumulative cgroup/lifecycle boundary.
 - Version forms perform no source, state, network, manager, destination, or executable-resolution access.
 
+- A canonical script with a valid shebang is still ineligible for `exec`; ZERB returns policy failure before releasing an interpreter or leaking a snapshot descriptor.
 The state symbols in the admission table are disjoint results of PC-061 and ARCH-018:
 
 - `CLEAN` is the exact uninitialized first-use predicate.
@@ -153,7 +156,7 @@ The state symbols in the admission table are disjoint results of PC-061 and ARCH
 - `TRANSITION(A,B)` is one exact supported `prepared`, `mutating`, or `dirty` relation.
 - `CLEANUP(B)` is stable `B` plus only its exact supported post-commit cleanup residue.
 
-Lease symbols are `I-X` for the exclusive stable initialization lock, `A-S` for a shared admission lease, `A-X` for an exclusive admission lease with no writer ownership, and `A-X+W-X` for exclusive admission followed by exclusive writer ownership. `D-S` is a read-only diagnostic snapshot: it uses `A-S` when the admission inode is valid or the stable initialization inode for an `INIT` or lock-corruption snapshot when safely available; with neither inode safe it reports only that non-mutating topology failure and does not parse or validate semantic durable records. “Deny” returns `1` without the denied command's source, candidate, manager, destination, or child action. Current-state admission acquisition is non-blocking: an incompatible live lease returns operational exit `1` with a redacted busy error and performs no semantic validation or command action. ZERB never waits against an unlocked snapshot or chooses an implementation-defined timeout.
+Lease symbols are `I-X` for the exclusive stable initialization lock, `A-S` for a shared admission lease, `A-X` for an exclusive admission lease with no writer ownership, and `A-X+W-X` for exclusive admission followed by exclusive writer ownership. `D-S` is a read-only diagnostic snapshot: it uses `A-S` when the admission inode is valid or the stable initialization inode for an `INIT` or lock-corruption snapshot when safely available; with neither inode safe it reports only that non-mutating topology failure and does not parse or validate semantic durable records. `AcquireFor` chooses one intent-owned admission mode before semantic classification: `A-S` for doctor/exec/shell and `A-X` for profile/plan/bootstrap/apply/recovery, adding `W-X` only after the under-A-X row admits a mutation or recovery. A denied row returns under the already-held intent admission lease; it never drops, downgrades, upgrades, or reacquires merely to report D-S. “Deny” returns `1` without the denied command's source, candidate, manager, destination, or child action. Current-state admission acquisition is non-blocking: an incompatible live lease returns operational busy `1` before semantic classification.
 
 | PC-010 form | `CLEAN` | `FOREIGN` | `INIT` | `BAD` | `READY(∅)` | `STABLE(A)` | `TRANSITION(A,B)` | `CLEANUP(B)` |
 |---|---|---|---|---|---|---|---|---|
@@ -192,13 +195,14 @@ Mutation and recovery keep `A-X+W-X` for the whole operation, including every re
 - no trailing host dot and no explicit default port; and
 - a non-empty path.
 
-Redirects are disabled. Public fetch has every credential channel disabled and fails an authentication challenge rather than invoking a helper. Local paths, `file:` URIs, scp-like syntax, ambient/current-directory remotes, and any value requiring canonical rewriting are rejected. Phase 1 freezes the exact accepted character grammar after native-Git proofs; implementation cannot begin while more than one byte representation could denote the same accepted source.
+Redirects are disabled. Before native Git receives the URI, ZERB resolves the canonical host through the frozen resolver boundary, rejects the complete answer set if any address is not globally routable unicast or is loopback, private, link-local, multicast, unspecified, documentation-only, or otherwise nonpublic, and binds Git/libcurl to that exact validated address set with the pinned Git 2.55 `http.curloptResolve` interface while preserving the original TLS hostname. Every observed connect must match the bound set; DNS answer change or rebinding cannot alter the fetch endpoint. Public fetch has every credential channel disabled and fails an authentication challenge rather than invoking a helper. Local paths, `file:` URIs, scp-like syntax, ambient/current-directory remotes, and any value requiring canonical rewriting are rejected. More than one URI byte representation, an unbound connect, or a nonpublic answer fails before candidate creation or promotion.
 
 **Scenarios.**
 
 - `https://example.com/environment.git` is structurally eligible for Phase 1 validation.
 - `HTTPS://example.com/environment.git`, `https://EXAMPLE.com/environment.git`, `https://example.com:443/environment.git`, and `https://example.com/environment.git#main` are rejected rather than rewritten.
 - A redirect response fails without following its target.
+- A public-looking hostname resolving to any private/link-local/loopback/mixed answer fails before Git connection; changing DNS after validation does not change the pinned connection target.
 - `./environment`, `file:///tmp/environment`, and `git@example.com:environment.git` are rejected public sources.
 
 ### PC-021 — Gitlink declaration and selected-source exclusion
@@ -216,10 +220,11 @@ Private HTTPS and SSH sources are excluded. Relative URLs, scp-like syntax, cred
 
 ### PC-022 — Source and object identity separation
 
-**Invariant.** `source_id` is `sha256` over a versioned encoding of the canonical public URI from PC-020. It is not a Git commit or availability observation. Fetched public commit IDs, tree/object IDs, embedded component paths, and materialized tree digests remain separate identity fields. Unselected gitlink locator/commit declarations are static manifest facts only and never candidate/materialized-tree identity. ZERB never infers source identity from a current directory or ambient remote.
+**Invariant.** `source_id` is `sha256:<64-lowercase-hex>` over `encoding/json` bytes of the exact map-free field order `{"schema":1,"domain":"zerb.source.v1","uri":"<canonical-public-uri>"}`, where `uri` is the byte-exact PC-020 canonical public URI. This one encoder is shared by acquisition, candidate, state, receipt, and approval proofs; no slice-specific prefix or alternate serialization exists. The source ID is not a Git commit or availability observation. Fetched public commit IDs, tree/object IDs, embedded component paths, and materialized tree digests remain separate identity fields. Unselected gitlink locator/commit declarations are static manifest facts only and never candidate/materialized-tree identity. ZERB never infers source identity from a current directory or ambient remote.
 
 **Scenarios.**
 
+- `https://github.com/ZebulonRouseFrantzich/zerb.git` has the fixed shared known-vector `source_id` `sha256:ca92a55154224f40a4e208e1412d8c2530c2afb345b2dfd1a55b9627a7b1b62b`.
 - The same canonical source URI at two commits has one `source_id` and two distinct commit identities.
 - A redirect target cannot silently replace the caller's source identity because redirects are disabled.
 - An embedded profile identity binds the public source, superproject commit, component path, and component tree digest; selecting a gitlink fails before candidate identity exists.
@@ -239,7 +244,7 @@ Private HTTPS and SSH sources are excluded. Relative URLs, scp-like syntax, cred
 
 ### PC-031 — Candidate trust
 
-**Invariant.** `--trust-candidate` MUST exactly equal the complete candidate digest ZERB computed under PC-050. Every authored tool version and required lock value, selected source/tree identity, adapter identity, policy field, and deterministic structural target inventory is candidate-bound before this approval and before rendering or any candidate-selected manager execution. The sole pre-trust structural-adapter exception is one invocation of the verified chezmoi executable's Phase 1-proven read-only, non-rendering, machine-readable target-mapping mode over the protected effective source. That invocation may derive only the deterministic structural target inventory and MUST use the exact candidate adapter identity, argv, complete environment, descriptor set, working/config/cache/state roots, and synthetic non-real destination root; it executes no template, helper, provider, host-fact lookup, script, external, or candidate content, and accesses or writes no real destination. Its normalized output is bound into the candidate before trust. If the exact upstream/version cannot prove every restriction, that candidate fails and the surface is removed; ZERB does not implement a fallback mapper.
+**Invariant.** `--trust-candidate` MUST exactly equal the complete candidate digest ZERB computed under PC-050. Every authored tool version and required lock value, selected source/tree identity, adapter identity, policy field, and deterministic structural target inventory is candidate-bound before this approval and before rendering or any candidate-selected manager execution. The sole pre-trust structural-adapter exception is one invocation of the exact `P1-CHEZMOI-STATIC` fork executable's `managed --skip-template-data-environment` read-only, non-rendering, machine-readable target-mapping mode over the protected effective source. That invocation may derive only the deterministic structural target inventory and MUST use the exact fork source/patch/build/executable identity, argv, complete environment, descriptor set, working/config/cache/state roots, and synthetic non-real destination root. It executes no semantic host-fact source (`uname`, `sysinfo`, UID/GID/group lookup, passwd/group database, hostname, OS-release, kernel template data), template, helper, provider, script, external, or candidate content and accesses or writes no real destination. The statically built pinned Go runtime may read only the separately traced bootstrap allowlist—`/proc/self/{cgroup,mountinfo,exe}`, transparent-hugepage size, and `cpu.max` at each directory in the current cgroup hierarchy—and may make only the separately counted `sched_getaffinity` and `prlimit64` runtime-bootstrap syscalls, solely for runtime scheduling, memory, executable, and resource setup; those observations are unavailable to mapping/template data, excluded from output/digests, and any additional `/proc`/`/sys` read or host-fact syscall fails. The x86_64 manager seccomp policy rejects `io_uring_setup`, `io_uring_register`, and `io_uring_enter` before release so the closed trace cannot be bypassed. Normal and flagged structural output MUST be byte-identical for the retained corpus. If the exact fork/build cannot prove every restriction, or the patch changes mapping/render/apply semantics, the candidate fails and the surface is removed; ZERB never implements a fallback mapper.
 
 After exact trust, static rendering may begin. Real-destination access and every live topology, type, content, link, mode, and owner observation begin only after mutation authorization under the required `A-X+W-X` ownership relation. Post-trust work may verify or execute the immutable candidate; it MUST NOT resolve an alias, generate or change a lock, add an identity field, or otherwise mutate the trusted digest. Any candidate or bound-policy change requires a newly constructed candidate and new trust. A mismatch is a trust failure, not an implicit prompt fallback.
 
@@ -277,7 +282,7 @@ ZERB MUST NOT accept or construct a credential helper, askpass program, SSH agen
 
 ### PC-040 — `zerb.toml` schema 1
 
-**Invariant.** The superproject root contains exactly one `zerb.toml` decoded as schema version 1. This example is the complete provisional field shape:
+**Invariant.** The superproject root contains exactly one `zerb.toml` decoded as schema version 1. This example is the complete frozen field shape:
 
 ```toml
 schema = 1
@@ -316,22 +321,46 @@ Rules:
 
 **Scenarios.**
 
-- `schema = 1` plus `label = "Personal"` is structurally valid subject to Phase 1 string bounds.
+- `schema = 1` plus `label = "Personal"` is structurally valid subject to PC-042's frozen string bounds.
 - Unknown `tools`, `provider`, or nested metadata fields fail; declarations belong to the native managed files, not a second ZERB DSL.
 - A component containing only `profile.toml` and `mise.lock` fails.
 - Secret values in profile metadata are unsupported and must not be copied into a candidate or receipt.
 
 ### PC-042 — Bounded strict parsing
 
-**Invariant.** Every TOML document is bounded to at most 1 MiB before decode. `zerb.toml` declares at most 256 selectable profiles. Decoding uses strict Go structs with `github.com/pelletier/go-toml/v2` provisionally pinned to `v2.4.3`, `toml.NewDecoder(...)`, and `DisallowUnknownFields()`. The parser version remains provisional until Phase 1 source verification records its module checksum and conformance results.
+**Invariant.** Every TOML document is bounded to at most 1 MiB before decode. `zerb.toml` declares at most 256 selectable profiles. Decoding uses strict Go structs with `github.com/pelletier/go-toml/v2` pinned to `v2.4.3`, origin commit `071a36c2a57244f2e70369bfc69889fda2a1f60f`, module sum `h1:GTRvJQutkOSftxIFD5xw9aepkYNuPWmVJpffdDPYVpY=`, go.mod sum `h1:2gIqNv+qfxSVS7cM2xJQKtLSTLUE9V8t9Stt+h56mCY=`, `toml.NewDecoder(...)`, and `DisallowUnknownFields()`.
 
-Duplicate keys or tables, dotted-key aliases, unknown nested fields or tables, malformed input, prohibited invalid UTF-8, trailing semantic content, and any representation with multiple semantic decodings fail. Bounds are checked before allocation or semantic decode where applicable. Phase 1 MUST freeze byte, entry, string, and path limits for every schema field and native declaration surface before product implementation begins; until that complete table exists, there is no implementation contract to widen by default.
+Duplicate keys or tables, dotted-key aliases, unknown nested fields or tables, malformed input, prohibited invalid UTF-8, trailing semantic content, and any representation with multiple semantic decodings fail. Bounds are checked before allocation or semantic decode where applicable. The complete frozen limit table is:
+
+| Field/surface | Maximum | Unit |
+|---|---:|---|
+| TOML document | 1,048,576 | bytes |
+| Selectable profiles | 256 | entries |
+| Profile ID | 64 | UTF-8 bytes |
+| Profile label | 256 | UTF-8 bytes |
+| Canonical public source | 2,048 | ASCII bytes |
+| Normalized logical path | 1,024 | UTF-8 bytes |
+| Path depth | 64 | components |
+| Path component | 255 | UTF-8 bytes |
+| Component files | 4,096 | entries |
+| Tool declarations | 1 | entry |
+| Tool ID | 4 | ASCII bytes |
+| Exact version | 6 | ASCII bytes |
+| Locks per tool | 1 | entry |
+| Exact lock value | 71 | ASCII bytes |
+| Effective home sources | 4,096 | entries |
+| Structural targets | 4,096 | entries |
+| Static template | 1,048,576 | bytes |
+| Template nesting | 32 | AST levels |
+| Template actions | 4,096 | actions |
+| Candidate strings | 16,384 | entries |
+| Aggregate parser/model allocation | 8,000,000 | bytes |
 
 **Scenarios.**
 
 - A 1 MiB + 1 byte TOML document fails before normal decode and creates no candidate.
 - An unknown nested table, duplicate key, duplicate table, or dotted-key alias fails even if the decoded Go value would otherwise look valid.
-- A parser result that accepts two semantic interpretations or bypasses a bound rejects the parser/version or narrows the grammar before freeze.
+- A parser result that accepts two semantic interpretations or bypasses a bound rejects the parser/version and requires a normative narrowing plus full affected proof/review rerun.
 - A future parser upgrade cannot silently widen accepted syntax; it requires the same conformance and fuzz corpus.
 
 ### PC-043 — Exact profile composition and capability limits
@@ -418,8 +447,8 @@ Selected gitlinks, private HTTPS/SSH, credential/helper/agent/relay mechanisms, 
 
 - A passing version-detection test or Phase 1 proof does not establish a Linux support tuple.
 - A provider reference never invokes its executable or API, and selecting a gitlink never reaches materialization or transport.
-- A failed backend or shell proof candidate is removed or narrowed before implementation freeze rather than labeled best-effort or supported.
-- Current target commands and schemas are documented as provisional, not as behavior of the reachable old binary.
+- A failed backend or shell proof candidate loses implementation qualification; it is never labeled best-effort or supported.
+- Current target commands and schemas are documented as frozen implementation contracts, not as behavior of the reachable old binary.
 
 ### PC-071 — Fresh bootstrap and exact-candidate reapply only
 
