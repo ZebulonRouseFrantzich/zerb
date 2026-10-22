@@ -1,0 +1,5 @@
+internal/source/violations_test.go:7:8: import "github.com/ZebulonRouseFrantzich/zerb/internal/config/sub": forbidden full old tree (ARCH-030; hard-cutover replacement seam)
+internal/source/violations_test.go:8:4: import "github.com/ZebulonRouseFrantzich/zerb/internal/testutil": forbidden full old tree (ARCH-030; hard-cutover replacement seam)
+internal/source/violations_test.go:9:4: import "github.com/ZebulonRouseFrantzich/zerb/internal/proof/process": edge is absent from the exact ARCH-030 DAG
+internal/source/violations_test.go:10:4: import "github.com/ZebulonRouseFrantzich/zerb/internal/app": edge is absent from the exact ARCH-030 DAG
+importcheck: 4 error(s), 1 target Go file(s); foundation import edges only (cmd/zerb excluded; not Phase 6 acceptance)

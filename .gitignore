@@ -32,6 +32,10 @@ go.work.sum
 # Dependency directories
 vendor/
 
+# Reconstructed offline from the authenticated temporary TOML source bundle
+/third_party/go-toml/
+/third_party/.go-toml-*/
+
 # IDE specific files
 .vscode/
 .idea/

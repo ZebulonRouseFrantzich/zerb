@@ -29,6 +29,8 @@ CA_SIZE = 472033
 CA_SHA256 = "3ba2000fe3d55cb6c41323fabbb105743e2c9422151eea213311538b07b23f5a"
 REQUIRED_CHECKS = (
     "proof-race", "vet", "lint", "modules", "release-build", "python-boundaries",
+    "foundation-imports", "foundation-race",
+    "parser-pin", "parser-upstream-race",
 )
 REQUIRED_TOOLS = ("git", "go", "golangci-lint", "python3", "cc")
 TOOL_ARGS = {
@@ -361,7 +363,11 @@ def commands(tools, repo, temp):
         ("modules", [go, "mod", "verify"]),
         ("release-build", [go, "build", "-trimpath", "-o", str(temp / "zerb"), "./cmd/zerb"]),
         ("python-boundaries", [tools["python3"]["identity"]["path"], "-m", "unittest", "discover",
-                               "-s", "scripts", "-p", "test_cloud_conformance.py"]),
+                               "-s", "scripts", "-p", "test_*.py"]),
+        ("foundation-imports", [go, "run", "./tools/importcheck"]),
+        ("foundation-race", [go, "test", "-race", "-count=1", "./internal/profile", "./internal/receipt", "./tools/importcheck"]),
+        ("parser-pin", [tools["python3"]["identity"]["path"], "scripts/check_parser_pin.py", "--go", go]),
+        ("parser-upstream-race", [go, "-C", "third_party/go-toml", "test", "-race", "-count=1", "./..."]),
     )
 
 

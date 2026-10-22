@@ -12,7 +12,7 @@ Phase 0 proof-only contracts are closed. Ten Phase 1 plan/security review rounds
 
 Cloud conformance is necessary for admission to reviewed, non-release Phase 2–4 implementation; it does not qualify a Phase 1 candidate or freeze an unproved contract. Admission requires both a passing current source-bound cloud report and resolved independent plan and focused security reviews of the affected plan/contracts. The owner's split-gate approval authorizes that sequencing without another discretionary approval for each report or work unit. Normal owning-contract edits and applicable repeat reviews still apply.
 
-Run `python3 scripts/cloud_conformance.py --output <outside-repository-report.json>`. Its fixed current scope is disposable `./internal/proof/...` race tests, all-package vet, the configured lint gate, read-only module verification, a release-shaped compile of the unchanged old entrypoint, and the cloud script's boundary tests. It binds results to source HEAD and tree state and records actual kernel/distribution/filesystem, process prerequisites, tools and CA inventory. Required checks and source-identity checks must pass; failed or not-exercised required checks block cloud admission. Inventory-only mode is diagnostic and cannot pass this gate. A report applies only to its recorded source; changed source needs the applicable checks and reviews again.
+In a fresh Linux checkout, first run `python3 scripts/check_parser_pin.py --prepare --go /absolute/path/to/pinned/go` to reconstruct the temporary dependency offline. Then run `python3 scripts/cloud_conformance.py --output <outside-repository-report.json>`. Preparation is explicit; the cloud collector and inventory-only mode never prepare or repair source. Expanded ignored dependency bytes remain source-bound. Its fixed current scope is disposable `./internal/proof/...` race tests, all-package vet, the configured lint gate, read-only module verification, a release-shaped compile of the unchanged old entrypoint, the cloud script's boundary tests, the replacement import gate, the local parser source/effective-selection pin and upstream parser race suite, and race tests for the introduced `internal/profile` and `internal/receipt` foundations and `tools/importcheck`. It binds results to source HEAD and tree state and records actual kernel/distribution/filesystem, process prerequisites, tools and CA inventory. Required checks and source-identity checks must pass; failed or not-exercised required checks block cloud admission. Inventory-only mode is diagnostic and cannot pass this gate. A report applies only to its recorded source; changed source needs the applicable checks and reviews again.
 
 Inventory records observations and frozen-host mismatches; it never executes host-qualification probes. Every cloud report retains `host_qualified=false` and `release_supported=false`. A mismatching host/tool inventory alone does not fail cloud conformance, and a matching inventory alone cannot establish qualification. A successful old-entrypoint compile claims neither installation nor target-runtime behavior. Reports with exact source/tree/tool identities remain private operational diagnostics outside the repository; exported evidence follows VAL-004/005 redaction and claim rules.
 
@@ -110,9 +110,9 @@ The disposable spike is evidence for the frozen contract, not production state-m
 
 ### Slice 4 — Schema and parser
 
-Source-verify and pin `github.com/pelletier/go-toml/v2@v2.4.3` and its module checksum. Exercise the exact PC-040 and PC-041 structs only through an input-size bound followed by `toml.NewDecoder(...).DisallowUnknownFields().Decode(&target)`.
+Source-verify and pin the approved local `github.com/pelletier/go-toml/v2@v2.4.3-zerb.1` variant under PC-042, including its upstream base, patched-module checksum and effective version-specific replacement. Exercise the exact PC-040 and PC-041 structs only through an input-size bound followed by `toml.NewDecoder(...).DisallowUnknownFields().Decode(&target)`.
 
-Prove rejection and deterministic diagnostics for schema mismatch, unknown fields and nested tables, duplicate keys/tables/IDs, dotted-key aliases, malformed input, invalid UTF-8 where prohibited, multiple semantic interpretations, invalid or aliased paths, gitlink mismatches, and every byte/count/string/path/depth bound. Exercise the provisional 1 MiB document and 256-profile limits, freeze every remaining field limit, and retain fuzz/property fixtures. If v2.4.3 admits ambiguity or bypasses a bound, reject the version or narrow the grammar before freeze.
+Prove rejection and deterministic diagnostics for schema mismatch, unknown fields and nested tables, duplicate keys/tables/IDs, dotted-key aliases, malformed input, invalid UTF-8 where prohibited, multiple semantic interpretations, invalid or aliased paths, gitlink mismatches, and every byte/count/string/path/depth bound. Exercise the provisional 1 MiB document and 256-profile limits, freeze every remaining field limit, and retain fuzz/property fixtures. If the pinned local variant admits ambiguity or bypasses a bound, reject the version or narrow the grammar before freeze.
 
 ### Phase 1 exit gate and freeze
 
@@ -138,6 +138,8 @@ A required positive candidate that is failed, inconclusive, unfrozen, awaiting r
 ### Purpose
 
 Build protected source, execution, storage, and state foundations without importing old product contracts or mutating real destinations.
+
+The provisional increments implement `profile` declaration values/static selection, manifest/component TOML parsing and independent static template validation, the ARCH-030 import gate, and `receipt.Digest` with its strict PC-010/050 token parser. The owner-approved local TOML fork zeros the decoder before pooling; deterministic release/history tests and the explicit source pin address the former historical-retention blocker without excluding pooled storage from PC-042. Template validation remains independent and never renders or executes input. These are not complete Phase 2 acceptance: candidate/receipt canonicalization, authenticated source observations and the other foundations remain outstanding. Every affected local check/review must pass before provisional admission. PC-042's 8,000,000-byte reservation remains conservative backing-storage accounting, not literal cumulative Go allocation enforcement or a hard runtime-memory cap. Real frozen-host qualification and release/support gates remain separate.
 
 ### Work
 
@@ -248,7 +250,7 @@ The working tree, help, installed binary, dependencies, examples, and documentat
 
 The primary owner retains product-contract edits, source/profile/candidate/digest/trust interfaces, process environment and lifecycle policy, root/state/recovery/receipt semantics, `app.Run`, integration, and release decisions.
 
-After either the reviewed cloud development gate (provisional non-release work) or Phase 1 qualification/freeze, at most two worker units plus the lead may run concurrently behind the exact reviewed ARCH-030 interfaces. Select from these independent units:
+After either the reviewed cloud development gate (provisional non-release work) or Phase 1 qualification/freeze, use useful task-appropriate parallelism within actual platform/runtime limits behind the exact reviewed ARCH-030 interfaces. The owner removed custom concurrent-subagent limits. Coordinate file and contract ownership and select from these independent units:
 
 1. native Git resolver and safe materializer;
 2. mise isolation/resolution adapter; and
