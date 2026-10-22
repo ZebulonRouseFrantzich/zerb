@@ -348,7 +348,9 @@ class FilesystemTests(unittest.TestCase):
         self.assertEqual(commands["proof-race"], ["/measured/go", "test", "-race", "-count=1", "./internal/proof/..."])
         self.assertIn("-trimpath", commands["release-build"])
         self.assertEqual(commands["release-build"][-1], "./cmd/zerb")
-        self.assertIn("test_cloud_conformance.py", commands["python-boundaries"])
+        self.assertIn("test_*.py", commands["python-boundaries"])
+        self.assertEqual(commands["parser-pin"], ["/measured/python3", "scripts/check_parser_pin.py", "--go", "/measured/go"])
+        self.assertEqual(commands["parser-upstream-race"], ["/measured/go", "-C", "third_party/go-toml", "test", "-race", "-count=1", "./..."])
 
 
 class SourceTests(unittest.TestCase):

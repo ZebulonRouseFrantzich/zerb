@@ -198,7 +198,7 @@ All protected path traversal uses descriptor-relative or equivalently race-resis
 
 Before any protected product/manager path creation or use, the filesystem layer enforces the full closed role-overlap matrix among ZERB state/data/cache/control paths, source/tree/toolchain/staging roots, and manager state/install roots. These protected roles must not equal, alias, replace, contain, descend from, or mutate metadata on one another; checks cover lexical/canonical paths, existing ancestor descriptors, device/inode and mount identities, bind aliases, and reserved future leaves. During candidate construction, home destinations receive only a no-I/O textual comparison of normalized structural target identities against that normalized reserved-role namespace; no real-home path is opened or observed. The candidate binds the target identities and full live revalidation policy. Only after candidate trust plus mutation authorization under `A-X+W-X`, and before any manager access that can mutate, filesystem creation, or external mutation, the filesystem layer opens the real destination and enforces every canonical/descriptor/owner/type/link/device/inode/mount/bind overlap check, repeating it at every affected boundary. Any ambiguity fails closed at its defined stage.
 
-Schema, path, archive, composition, hashing, and emitted-output limits are checked before their corresponding allocation or decode. Native Git necessarily parses protocol and pack input internally, so ARCH-006's external quota/resource/watchdog boundary limits that untrusted parser before ZERB performs bounded object inspection. Unsupported aliases and object types fail rather than being normalized into a second semantic representation.
+Schema, path, archive, composition, hashing, and emitted-output limits are checked before their corresponding allocation or decode. Parser/model backing storage uses PC-042's checked conservative reservation for the complete API invocation, including parser passes, buffers, AST/tracker storage and retained models; it is not literal cumulative Go allocation enforcement or a hard runtime-memory cap. Native Git necessarily parses protocol and pack input internally, so ARCH-006's external quota/resource/watchdog boundary limits that untrusted parser before ZERB performs bounded object inspection. Unsupported aliases and object types fail rather than being normalized into a second semantic representation.
 
 ### ARCH-021 — Managed archive safety
 
@@ -588,7 +588,7 @@ type Parser struct {
     Version string `json:"version"`
     ModuleSum string `json:"module_sum"`
     GoModSum string `json:"go_mod_sum"`
-    OriginCommit string `json:"origin_commit"`
+    OriginCommit string `json:"origin_commit"` // upstream base; ModuleSum binds the local patched source
 }
 type Policy struct {
     Schema int `json:"schema"`

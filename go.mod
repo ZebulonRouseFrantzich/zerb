@@ -6,7 +6,7 @@ require (
 	github.com/ProtonMail/go-crypto v1.3.0
 	github.com/go-git/go-git/v5 v5.16.3
 	github.com/google/uuid v1.6.0
-	github.com/pelletier/go-toml/v2 v2.4.3
+	github.com/pelletier/go-toml/v2 v2.4.3-zerb.1
 	github.com/shirou/gopsutil/v4 v4.25.10
 	github.com/sigstore/sigstore v1.9.6-0.20250729224751-181c5d3339b3
 	github.com/yuin/gopher-lua v1.1.1
@@ -57,3 +57,5 @@ require (
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/pelletier/go-toml/v2 v2.4.3-zerb.1 => ./third_party/go-toml
