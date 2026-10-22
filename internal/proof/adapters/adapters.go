@@ -198,6 +198,9 @@ type lockPlatform struct {
 }
 
 func Run(ctx context.Context, cfg Config) (Result, error) {
+	if _, err := readFixedCA(cfg.CACert); err != nil {
+		return Result{}, err
+	}
 	beforeEnv := sortedEnvironment()
 	root, err := validateRoot(cfg.Root, cfg.ProtectedRoots)
 	if err != nil {

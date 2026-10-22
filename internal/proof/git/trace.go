@@ -140,6 +140,48 @@ func (r *runner) runInput(ctx context.Context, label string, stdin []byte, args 
 	if waitErr == nil && lifecycleObs.Status != 0 {
 		waitErr = fmt.Errorf("exit status %d", lifecycleObs.Status)
 	}
+	r.observeLifecycle(lifecycleObs)
+	obs, parseErr := parseTrace(prefix, r.owned, r.git, r.forbiddenMarker)
+	if parseErr != nil {
+		return nil, fmt.Errorf("%w: instrumentation unavailable for %s: %v", errTraceViolation, label, parseErr)
+	}
+	if err := r.validateTraceObservation(label, obs); err != nil {
+		return nil, err
+	}
+	r.observeTrace(label, obs)
+	exitCode := lifecycleObs.Status
+	if waitErr != nil && exitCode == 0 {
+		exitCode = 1
+	}
+	argv, redactErr := redactInvocationArgs(append([]string{r.git}, args...), r.owned)
+	if redactErr != nil {
+		return nil, redactErr
+	}
+	envNames := make([]string, 0, len(r.env))
+	for _, e := range r.env {
+		if i := strings.IndexByte(e, '='); i > 0 {
+			envNames = append(envNames, e[:i])
+		}
+	}
+	sort.Strings(envNames)
+	cwdRef, refErr := randomTypedRef("proof-owned-cwd")
+	if refErr != nil {
+		return nil, refErr
+	}
+	*r.invocations = append(*r.invocations, Invocation{Executable: r.git, Argv: argv, EnvironmentNames: envNames, WorkingDirectoryRef: cwdRef, ExitCode: exitCode, OutputBytes: out.n + errOut.n, DurationMillis: duration.Milliseconds(), ObservedExecs: obs.execs, TraceComplete: obs.complete})
+	if out.exceeded || errOut.exceeded {
+		return nil, errors.New("git process output ceiling exceeded")
+	}
+	if deadlineCtx.Err() != nil {
+		return nil, fmt.Errorf("git wall-time ceiling exceeded: %w", deadlineCtx.Err())
+	}
+	if waitErr != nil {
+		return nil, fmt.Errorf("git failed: %w: %s", waitErr, safeDiagnostic(errOut.Bytes()))
+	}
+	return out.Bytes(), nil
+}
+
+func (r *runner) observeLifecycle(lifecycleObs lifecycle.Observation) {
 	r.access.SupervisorInvocations++
 	r.access.DescendantsReaped += lifecycleObs.Reaped
 	r.access.Orphans += lifecycleObs.Orphans
@@ -153,30 +195,29 @@ func (r *runner) runInput(ctx context.Context, label string, stdin []byte, args 
 		lifecycleObs.GuardArmed && lifecycleObs.CgroupKillGuard && lifecycleObs.LeaderObserved && lifecycleObs.IOUringDenied &&
 		lifecycleObs.Orphans == 0 && lifecycleObs.SurvivorsDetected == 0 &&
 		lifecycleObs.MemoryOOM == 0 && lifecycleObs.OOMKill == 0
-	obs, parseErr := parseTrace(prefix, r.owned, r.git, r.forbiddenMarker)
-	if parseErr != nil {
-		return nil, fmt.Errorf("%w: instrumentation unavailable for %s: %v", errTraceViolation, label, parseErr)
-	}
+}
+
+func (r *runner) validateTraceObservation(label string, obs traceObservation) error {
 	for _, endpoint := range obs.network {
 		switch {
 		case endpoint.ip.IsValid() && endpoint.ip.IsLoopback() && r.allowLoopback && endpoint.port == r.allowedLoopbackPort:
 		case sourceurl.IsPublicAddr(endpoint.ip) && (len(r.allowedPublic) == 0 || r.allowedPublic[endpoint.ip.Unmap()] && endpoint.port == r.allowedPublicPort):
 		default:
-			return nil, fmt.Errorf("%w: unadmitted or non-public endpoint for %s", errTraceViolation, label)
+			return fmt.Errorf("%w: unadmitted or non-public endpoint for %s", errTraceViolation, label)
 		}
 	}
 	if !obs.complete || obs.unknownEvents != 0 {
-		return nil, fmt.Errorf("%w: unclassified event for %s (%s)", errTraceViolation, label, countClassSummary(obs.unknownEventClasses))
+		return fmt.Errorf("%w: unclassified event for %s (%s)", errTraceViolation, label, countClassSummary(obs.unknownEventClasses))
 	}
 	if obs.forbiddenAccesses != 0 {
-		return nil, fmt.Errorf("%w: forbidden escape or ambient access for %s (%s)", errTraceViolation, label, countClassSummary(obs.forbiddenAccessClasses))
+		return fmt.Errorf("%w: forbidden escape or ambient access for %s (%s)", errTraceViolation, label, countClassSummary(obs.forbiddenAccessClasses))
 	}
 	if obs.unexpectedReads != 0 {
-		return nil, fmt.Errorf("%w: unadmitted read for %s (%s)", errTraceViolation, label, countClassSummary(obs.unexpectedReadClasses))
+		return fmt.Errorf("%w: unadmitted read for %s (%s)", errTraceViolation, label, countClassSummary(obs.unexpectedReadClasses))
 	}
 	for _, write := range obs.writes {
 		if write == "outside-path" || write == "unresolved-relative-write" {
-			return nil, fmt.Errorf("%w: unadmitted write for %s", errTraceViolation, label)
+			return fmt.Errorf("%w: unadmitted write for %s", errTraceViolation, label)
 		}
 	}
 	gitObserved := false
@@ -186,8 +227,12 @@ func (r *runner) runInput(ctx context.Context, label string, stdin []byte, args 
 		}
 	}
 	if !gitObserved {
-		return nil, fmt.Errorf("%w: exact Git exec unobserved for %s", errTraceViolation, label)
+		return fmt.Errorf("%w: exact Git exec unobserved for %s", errTraceViolation, label)
 	}
+	return nil
+}
+
+func (r *runner) observeTrace(label string, obs traceObservation) {
 	if !obs.complete {
 		r.access.TraceComplete = false
 	}
@@ -217,36 +262,6 @@ func (r *runner) runInput(ctx context.Context, label string, stdin []byte, args 
 			r.writes.OutsideWrites = append(r.writes.OutsideWrites, p)
 		}
 	}
-	exitCode := lifecycleObs.Status
-	if waitErr != nil && exitCode == 0 {
-		exitCode = 1
-	}
-	argv, redactErr := redactInvocationArgs(append([]string{r.git}, args...), r.owned)
-	if redactErr != nil {
-		return nil, redactErr
-	}
-	envNames := make([]string, 0, len(r.env))
-	for _, e := range r.env {
-		if i := strings.IndexByte(e, '='); i > 0 {
-			envNames = append(envNames, e[:i])
-		}
-	}
-	sort.Strings(envNames)
-	cwdRef, refErr := randomTypedRef("proof-owned-cwd")
-	if refErr != nil {
-		return nil, refErr
-	}
-	*r.invocations = append(*r.invocations, Invocation{Executable: r.git, Argv: argv, EnvironmentNames: envNames, WorkingDirectoryRef: cwdRef, ExitCode: exitCode, OutputBytes: out.n + errOut.n, DurationMillis: duration.Milliseconds(), ObservedExecs: obs.execs, TraceComplete: obs.complete})
-	if out.exceeded || errOut.exceeded {
-		return nil, errors.New("Git process output ceiling exceeded")
-	}
-	if deadlineCtx.Err() != nil {
-		return nil, fmt.Errorf("Git wall-time ceiling exceeded: %w", deadlineCtx.Err())
-	}
-	if waitErr != nil {
-		return nil, fmt.Errorf("Git failed: %w: %s", waitErr, safeDiagnostic(errOut.Bytes()))
-	}
-	return out.Bytes(), nil
 }
 
 func parseTrace(prefix, owned, manager string, forbiddenMarker []byte) (traceObservation, error) {
@@ -352,124 +367,16 @@ func parseTrace(prefix, owned, manager string, forbiddenMarker []byte) (traceObs
 					paths = paths[:1]
 				}
 			}
-			if call == "clone" || call == "clone3" || call == "fork" || call == "vfork" {
-				child, childErr := strconv.Atoi(strings.Fields(resultText)[0])
-				if childErr != nil {
-					markUnknown("malformed-clone-result")
-				} else if child > 0 {
-					childPIDs[child] = true
-					cwdByPID[child] = cwdByPID[pid]
-					executableByPID[child] = executableByPID[pid]
-				}
+			if !o.observeProcess(call, line, resultText, pid, paths, childPIDs, cwdByPID, executableByPID, seenExec, markUnknown) {
+				continue
 			}
-			if call == "execve" || call == "execveat" {
-				executable := ""
-				if call == "execveat" && strings.Contains(line, "AT_EMPTY_PATH") {
-					openFD, closeFD := strings.IndexByte(line, '<'), strings.IndexByte(line, '>')
-					if openFD >= 0 && closeFD > openFD {
-						executable = strings.TrimSuffix(line[openFD+1:closeFD], " (deleted)")
-					}
-				} else if len(paths) != 0 {
-					executable = paths[0].value
-				}
-				if !filepath.IsAbs(executable) {
-					markUnknown("missing-exec-path")
-					continue
-				}
-				executableByPID[pid] = executable
-				if !seenExec[executable] {
-					seenExec[executable] = true
-					o.execs = append(o.execs, executable)
-				}
+			if !o.observeEndpoint(call, line, seenEndpoint, markUnknown) {
+				continue
 			}
-			if call == "connect" || (call == "sendto" || call == "sendmsg" || call == "sendmmsg") && strings.Contains(line, "sa_family=") {
-				endpoint, endpointErr := parseConnectFact(line)
-				if endpointErr != nil {
-					markUnknown("unclassified-endpoint")
-					continue
-				}
-				o.network = append(o.network, endpoint)
-				if !seenEndpoint[endpoint.display] {
-					seenEndpoint[endpoint.display] = true
-					o.endpoints = append(o.endpoints, endpoint.display)
-				}
-				if endpoint.resolver {
-					o.resolverAccesses++
-				}
-			}
-			fileEvent := isFileTrace(call)
-			if fileEvent {
-				for _, traced := range paths {
-					resolved, ok := resolveTracedPath(line, traced, cwdByPID[pid])
-					if !ok {
-						markUnknown("unresolved-read-path")
-						continue
-					}
-					clean := filepath.Clean(resolved)
-					base := filepath.Base(clean)
-					ambientGit := filepath.Join(owned, ".git")
-					ambientHomeConfig := filepath.Join(owned, "home", ".gitconfig")
-					if clean == ambientHomeConfig || clean == filepath.Join(owned, ".gitattributes") || within(ambientGit, clean) {
-						o.forbiddenAccesses++
-						o.forbiddenAccessClasses["ambient-git-state"]++
-					}
-					switch {
-					case hasPathComponent(clean, ".ssh") || base == ".git-credentials" || base == "known_hosts" || base == "SSH_AUTH_SOCK":
-						o.forbiddenAccesses++
-						o.forbiddenAccessClasses["authentication-path"]++
-					case base == "resolv.conf" || base == "hosts" || base == "nsswitch.conf" || strings.HasPrefix(base, "libnss_"):
-						o.resolverAccesses++
-					case base == ".gitconfig" || clean == "/etc/gitconfig" || base == "config" && hasPathComponent(clean, ".git"):
-						o.configurationAccesses++
-					case hasPathComponent(clean, "hooks") || base == ".gitattributes" || base == "attributes" && hasPathComponent(clean, "info"):
-						o.hookFilterCheckouts++
-					}
-					if filepath.IsAbs(clean) && !within(owned, clean) && !within(clean, owned) && !expectedSystemRead(clean) {
-						o.unexpectedReads++
-						o.unexpectedReadClasses[unexpectedReadClass(clean)]++
-					}
-				}
-			}
-			if call == "chdir" && traceSuccessful(resultText) {
-				if len(paths) != 1 {
-					markUnknown("chdir-path")
-				} else if resolved, ok := resolveTracedPath(line, paths[0], cwdByPID[pid]); ok {
-					cwdByPID[pid] = filepath.Clean(resolved)
-				} else {
-					markUnknown("chdir-resolution")
-				}
-			}
-			if call == "fchdir" && traceSuccessful(resultText) {
-				openFD, closeFD := strings.IndexByte(line, '<'), strings.IndexByte(line, '>')
-				if openFD < 0 || closeFD <= openFD || !filepath.IsAbs(line[openFD+1:closeFD]) {
-					markUnknown("fchdir-resolution")
-				} else {
-					cwdByPID[pid] = filepath.Clean(line[openFD+1 : closeFD])
-				}
-			}
-			if isWriteTrace(call, line) {
-				if len(paths) == 0 {
-					markUnknown("missing-write-path")
-					continue
-				}
-				for _, traced := range paths {
-					p, resolved := resolveTracedPath(line, traced, cwdByPID[pid])
-					display := "unresolved-relative-write"
-					if resolved {
-						p = filepath.Clean(p)
-						display = "outside-path"
-						if p == "/dev/null" {
-							display = "control:/dev/null"
-						} else if within(owned, p) {
-							display = "owned-path"
-						}
-					}
-					if !seenWrite[display] {
-						seenWrite[display] = true
-						o.writes = append(o.writes, display)
-					}
-				}
-			}
+			o.observeReads(call, line, owned, cwdByPID[pid], paths, markUnknown)
+			cwdByPID[pid] = o.observeWorkingDirectory(call, line, resultText, cwdByPID[pid], paths, markUnknown)
+			o.observeWrites(call, line, owned, cwdByPID[pid], paths, seenWrite, markUnknown)
+
 		}
 		if pending != "" {
 			markUnknown("unfinished-record-at-eof")
@@ -486,6 +393,142 @@ func parseTrace(prefix, owned, manager string, forbiddenMarker []byte) (traceObs
 	}
 	return o, nil
 }
+func (o *traceObservation) observeProcess(call, line, resultText string, pid int, paths []tracedPath, childPIDs map[int]bool, cwdByPID, executableByPID map[int]string, seenExec map[string]bool, markUnknown func(string)) bool {
+	if call == "clone" || call == "clone3" || call == "fork" || call == "vfork" {
+		child, childErr := strconv.Atoi(strings.Fields(resultText)[0])
+		if childErr != nil {
+			markUnknown("malformed-clone-result")
+		} else if child > 0 {
+			childPIDs[child] = true
+			cwdByPID[child] = cwdByPID[pid]
+			executableByPID[child] = executableByPID[pid]
+		}
+	}
+	if call == "execve" || call == "execveat" {
+		executable := ""
+		if call == "execveat" && strings.Contains(line, "AT_EMPTY_PATH") {
+			openFD, closeFD := strings.IndexByte(line, '<'), strings.IndexByte(line, '>')
+			if openFD >= 0 && closeFD > openFD {
+				executable = strings.TrimSuffix(line[openFD+1:closeFD], " (deleted)")
+			}
+		} else if len(paths) != 0 {
+			executable = paths[0].value
+		}
+		if !filepath.IsAbs(executable) {
+			markUnknown("missing-exec-path")
+			return false
+		}
+		executableByPID[pid] = executable
+		if !seenExec[executable] {
+			seenExec[executable] = true
+			o.execs = append(o.execs, executable)
+		}
+	}
+	return true
+}
+
+func (o *traceObservation) observeEndpoint(call, line string, seenEndpoint map[string]bool, markUnknown func(string)) bool {
+	if call == "connect" || (call == "sendto" || call == "sendmsg" || call == "sendmmsg") && strings.Contains(line, "sa_family=") {
+		endpoint, endpointErr := parseConnectFact(line)
+		if endpointErr != nil {
+			markUnknown("unclassified-endpoint")
+			return false
+		}
+		o.network = append(o.network, endpoint)
+		if !seenEndpoint[endpoint.display] {
+			seenEndpoint[endpoint.display] = true
+			o.endpoints = append(o.endpoints, endpoint.display)
+		}
+		if endpoint.resolver {
+			o.resolverAccesses++
+		}
+	}
+	return true
+}
+
+func (o *traceObservation) observeReads(call, line, owned, cwd string, paths []tracedPath, markUnknown func(string)) {
+	fileEvent := isFileTrace(call)
+	if fileEvent {
+		for _, traced := range paths {
+			resolved, ok := resolveTracedPath(line, traced, cwd)
+			if !ok {
+				markUnknown("unresolved-read-path")
+				continue
+			}
+			clean := filepath.Clean(resolved)
+			base := filepath.Base(clean)
+			ambientGit := filepath.Join(owned, ".git")
+			ambientHomeConfig := filepath.Join(owned, "home", ".gitconfig")
+			if clean == ambientHomeConfig || clean == filepath.Join(owned, ".gitattributes") || within(ambientGit, clean) {
+				o.forbiddenAccesses++
+				o.forbiddenAccessClasses["ambient-git-state"]++
+			}
+			switch {
+			case hasPathComponent(clean, ".ssh") || base == ".git-credentials" || base == "known_hosts" || base == "SSH_AUTH_SOCK":
+				o.forbiddenAccesses++
+				o.forbiddenAccessClasses["authentication-path"]++
+			case base == "resolv.conf" || base == "hosts" || base == "nsswitch.conf" || strings.HasPrefix(base, "libnss_"):
+				o.resolverAccesses++
+			case base == ".gitconfig" || clean == "/etc/gitconfig" || base == "config" && hasPathComponent(clean, ".git"):
+				o.configurationAccesses++
+			case hasPathComponent(clean, "hooks") || base == ".gitattributes" || base == "attributes" && hasPathComponent(clean, "info"):
+				o.hookFilterCheckouts++
+			}
+			if filepath.IsAbs(clean) && !within(owned, clean) && !within(clean, owned) && !expectedSystemRead(clean) {
+				o.unexpectedReads++
+				o.unexpectedReadClasses[unexpectedReadClass(clean)]++
+			}
+		}
+	}
+}
+
+func (o *traceObservation) observeWorkingDirectory(call, line, resultText, cwd string, paths []tracedPath, markUnknown func(string)) string {
+	if call == "chdir" && traceSuccessful(resultText) {
+		if len(paths) != 1 {
+			markUnknown("chdir-path")
+		} else if resolved, ok := resolveTracedPath(line, paths[0], cwd); ok {
+			cwd = filepath.Clean(resolved)
+		} else {
+			markUnknown("chdir-resolution")
+		}
+	}
+	if call == "fchdir" && traceSuccessful(resultText) {
+		openFD, closeFD := strings.IndexByte(line, '<'), strings.IndexByte(line, '>')
+		if openFD < 0 || closeFD <= openFD || !filepath.IsAbs(line[openFD+1:closeFD]) {
+			markUnknown("fchdir-resolution")
+		} else {
+			cwd = filepath.Clean(line[openFD+1 : closeFD])
+		}
+	}
+	return cwd
+}
+
+func (o *traceObservation) observeWrites(call, line, owned, cwd string, paths []tracedPath, seenWrite map[string]bool, markUnknown func(string)) {
+	if isWriteTrace(call, line) {
+		if len(paths) == 0 {
+			markUnknown("missing-write-path")
+			return
+		}
+		for _, traced := range paths {
+			p, resolved := resolveTracedPath(line, traced, cwd)
+			display := "unresolved-relative-write"
+			if resolved {
+				p = filepath.Clean(p)
+				display = "outside-path"
+				if p == "/dev/null" {
+					display = "control:/dev/null"
+				} else if within(owned, p) {
+					display = "owned-path"
+				}
+			}
+			if !seenWrite[display] {
+				seenWrite[display] = true
+				o.writes = append(o.writes, display)
+			}
+		}
+	}
+}
+
 func syscallResult(line string) (string, bool) {
 	equal := strings.LastIndexByte(line, '=')
 	if equal < 0 || strings.LastIndexByte(line[:equal], ')') < 0 {

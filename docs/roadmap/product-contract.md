@@ -1,6 +1,6 @@
 # Phase 1 Product Contract
 
-**Status:** Ten Phase 1 plan/security review rounds failed; eleventh corrective proof/API work in progress; implementation remains barred; not a support claim
+**Status:** Ten Phase 1 plan/security review rounds failed; eleventh corrective proof/API work in progress; reviewed non-release implementation subject to delivery's cloud gate; Phase 1 unqualified; not a support claim
 **Normative owner:** This document alone owns public CLI, local source-schema, approval, output, and user-visible state behavior.  
 **Change gate:** Any change to this contract requires an owning requirement edit, affected proof-matrix update, fresh evidence, and the applicable review. Phase 1 candidate qualification does not create a support claim.
 
@@ -17,7 +17,7 @@ The key words **MUST**, **MUST NOT**, **SHOULD**, and **MAY** are normative. Eve
 **Scenarios.**
 
 - A later proof that contradicts a frozen assumption requires a normative edit, affected-matrix rerun, and review; it does not add a fallback parser, transport path, second execution path, or unsupported claim.
-- Before final installed-binary acceptance, documentation describes target behavior as frozen but not yet reachable.
+- Before final installed-binary acceptance, documentation describes target behavior as provisional or qualified/frozen according to actual Phase 1 evidence, and not yet publicly reachable. Reviewed non-release implementation under delivery's cloud gate neither qualifies a candidate nor establishes support.
 - A Phase 1 result may qualify a finite candidate for implementation, but support still requires VAL-001 and the applicable Phase 6 installed-binary vertical.
 - A user seeking system packages, root-level configuration, rollback, or bit-for-bit host reproduction is told that the request is outside the product boundary.
 
@@ -74,8 +74,9 @@ Missing non-interactive approval is evaluated at its bound operation boundary af
 | `apply` success | `Applied: sha256:<digest>` |
 | `bootstrap` success | `Applied: sha256:<digest>` |
 | `doctor` | First line begins exactly `Healthy` or `Unhealthy` |
-| `recover resume` or candidate/cleanup `recover repair` success | `Recovered: sha256:<digest>` |
+| `recover resume` or candidate/cleanup/prior-STABLE `recover repair` success | `Recovered: sha256:<digest>` |
 | Initialization-only `recover repair` success | `Repaired: initialization` |
+| Journal-less `recover repair` restoring `READY(∅)` | `Repaired: state` |
 | Either version form | `zerb <version>` |
 
 `exec` and `shell` pass the child streams through and add no success wrapper that could corrupt machine-consumed output.
@@ -85,7 +86,7 @@ Missing non-interactive approval is evaluated at its bound operation boundary af
 - `profile list` over IDs `work`, `personal` prints `personal` then `work`, each followed by a newline.
 - A successful plan may print stable, redacted inspection information, but its last line is the candidate line.
 - Machine-readable JSON, sensitive content diffs, and unstable progress events are not MVP output.
-- Initialization repair never invents a candidate or receipt digest; transition/cleanup recovery prints the converged candidate digest.
+- Initialization repair and journal-less repair restoring empty `READY(∅)` never invent a candidate or receipt digest. Empty state repair prints exactly `Repaired: state`; repair restoring prior `STABLE(A)` and transition/cleanup recovery print the validated current candidate digest.
 
 ### PC-013 — Errors, abstraction, and redaction
 
@@ -140,6 +141,7 @@ An uncatchable wrapper death has no return status. Its consequences are diagnose
 - `apply` consumes exactly the candidate named by `--candidate`; absent, ambiguous, stale, changed, or untrusted artifacts fail before mutation.
 - `doctor` diagnoses root, schema, state, tool, and source readiness without adopting, deleting, repairing, or relabeling state.
 - `recover resume` and `recover repair` perform only supported forward convergence. Neither claims rollback nor requires manual journal editing.
+- Only `recover repair` admits the exact journal-less dead-writer prefix defined by ARCH-027. A pre-journal prefix restores prior `READY(∅)` or `STABLE(A)` authority; a committed-and-cleaned prefix finishes release while preserving its exact committed current. Neither executes an intended candidate. Ordinary released READY/STABLE state still has no recovery operation.
 - `exec` resolves a bare payload only against the stable-profile executable set, or accepts a canonical absolute payload, then runs an identity-checked regular Linux x86_64 ELF image from an immutable sealed byte snapshot without mutating the parent process. Scripts, shebangs, and other executable formats are rejected before child release.
 - `shell` accepts only the implementation-qualified ID `bash` and runs the exact Bash 5.3.15 ELF identity as `--noprofile --norc -i` on a clean PTY without normal startup files or parent mutation. Job-control process groups remain inside the frozen cumulative cgroup/lifecycle boundary.
 - Version forms perform no source, state, network, manager, destination, or executable-resolution access.
@@ -164,7 +166,7 @@ Lease symbols are `I-X` for the exclusive stable initialization lock, `A-S` for 
 | `profile list <source>` | `I-X` initialization, then `A-X`; admit | Deny | Deny | Deny | `A-X`; admit | `A-X`; admit | Deny | `A-X`; admit |
 | `plan <source> --profile <id> …` | `I-X` initialization, then `A-X`; admit | Deny | Deny | Deny | `A-X`; admit | `A-X`; admit, but PC-071 rejects a result other than exact `A` before publication | Deny before source access, cache staging, or candidate validation | Deny before source access, cache staging, candidate validation, or cleanup |
 | `doctor` | `D-S`; diagnose clean without initializing | `D-S`; diagnose only | `D-S`; diagnose only | `D-S`; diagnose only | `A-S`; diagnose | `A-S`; diagnose | If no live exclusive holder, `A-S` and diagnose exact state; otherwise busy `1` | `A-S`; diagnose exact residue |
-| `recover resume` | Deny: no operation | Deny | Deny: initialization requires repair | Deny: `BAD` is not a supported resumable relation | Deny: no operation | Deny: no operation | `A-X+W-X`; exact forward resume | `A-X+W-X`; finish exact committed cleanup |
+| `recover resume` | Deny: no operation | Deny | Deny: initialization requires repair | Deny: `BAD` is not a supported resumable relation | Deny: no operation | Deny: no operation | `A-X+W-X`; exact forward resume | `A-X+W-X`; finish exact journalled committed cleanup; deny journal-less residue requiring repair |
 | `recover repair` | Deny: no operation | Deny | `I-X`; only exact initialization repair/takeover | If stable admission/writer inodes and the prior owner publication validate, `A-X+W-X` admits only a Phase 1-frozen repair of exact related residue/records; a missing, malformed, substituted, or unprovable synchronization inode/owner predecessor uses `I-X` only when `init.lock` is safe and returns `1` without replacing it; with no safe exclusion it returns `1` after topology-only diagnosis | Deny: no operation | Deny: no operation | `A-X+W-X`; exact forward repair | `A-X+W-X`; finish exact committed cleanup |
 | `bootstrap` | `I-X` initialization, then `A-X+W-X`; admit | Deny | Deny | Deny | `A-X+W-X`; admit | `A-X+W-X`; admit | Deny | Deny until cleanup |
 | `apply --candidate` | Deny: no candidate can exist | Deny | Deny | Deny | `A-X+W-X`; admit only for an exact published candidate | `A-X+W-X`; admit only for an exact published candidate | Deny | Deny until cleanup |

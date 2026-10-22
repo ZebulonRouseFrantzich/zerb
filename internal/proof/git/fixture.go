@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"compress/zlib"
 	"context"
-	"crypto/sha1"
+	"crypto/sha1" // #nosec G505 -- Git fixture object IDs require the SHA-1 wire format; integrity admission uses SHA-256.
 	"encoding/hex"
 	"fmt"
 	"net"
@@ -131,7 +131,7 @@ func (f *fixture) tree(items []treeItem) (string, error) {
 
 func (f *fixture) object(kind string, body []byte) (string, error) {
 	raw := append([]byte(fmt.Sprintf("%s %d%c", kind, len(body), byte(0))), body...)
-	sum := sha1.Sum(raw)
+	sum := sha1.Sum(raw) // #nosec G401 -- Exact Git object ID protocol encoding, not a security integrity check (ARCH-006, VAL-008).
 	oid := hex.EncodeToString(sum[:])
 	dir := filepath.Join(f.repoDir, "objects", oid[:2])
 	if err := os.MkdirAll(dir, 0o700); err != nil {

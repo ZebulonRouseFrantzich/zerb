@@ -185,7 +185,7 @@ func validateDNSHost(host string) error {
 		}
 		for i := 0; i < len(label); i++ {
 			c := label[i]
-			if !(c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '-') {
+			if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' {
 				return errors.New("locator host is not canonical DNS ASCII")
 			}
 		}

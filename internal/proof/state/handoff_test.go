@@ -324,7 +324,7 @@ func TestRecoveryContinuesOnlyAfterRecognizedDurableStage(t *testing.T) {
 			}
 			var regressed string
 			recovered, err := transitionCommandRouterInjected(
-				s, d, external, refs, "recover-resume", nil,
+				s, d, external, refs, recoveryCommandForStage(stop), nil,
 				func(name string) error {
 					if strings.HasPrefix(name, "recovery-") {
 						return nil
@@ -337,6 +337,12 @@ func TestRecoveryContinuesOnlyAfterRecognizedDurableStage(t *testing.T) {
 					return nil
 				},
 			)
+			if stop == "writer-owner-released-publication" {
+				if err == nil || recovered != "" || regressed != "" || classify(s, d) != "STABLE(A)" {
+					t.Fatalf("completed recovery=%q err=%v regressed=%q", recovered, err, regressed)
+				}
+				return
+			}
 			if err != nil || recovered != "STABLE(A)" || regressed != "" {
 				t.Fatalf("recovery=%q err=%v regressed=%q", recovered, err, regressed)
 			}
@@ -395,7 +401,7 @@ func TestJournalLessRecoveryRestoresPriorAuthorityWithoutExecutingCandidate(t *t
 				!exactRecordBytes(s+"/writer-owner.json", baselineReleasedWriter(refs)) ||
 				exists(s+"/journals/"+refs.journal+".json") ||
 				exists(external+"/effect.json") ||
-				!exactRecordBytes(s+"/current.json", stableCurrent(refs.instance, refs.a, refs.receiptA, refs.journal)) {
+				!exactRecordBytes(s+"/current.json", baselineCurrent(refs)) {
 				t.Fatal("journal-less repair executed or changed candidate authority")
 			}
 		})
@@ -512,7 +518,7 @@ func TestRecoveryFailurePreservesMultiGenerationPreparedStage(t *testing.T) {
 	}
 	if !exactRecordBytes(
 		s+"/current.json",
-		stableCurrent(refs.instance, refs.a, refs.receiptA, refs.journal),
+		baselineCurrent(refs),
 	) {
 		t.Fatal("current authority changed")
 	}

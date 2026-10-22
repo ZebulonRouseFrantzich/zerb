@@ -1,7 +1,7 @@
 # ZERB
 
 **Branch status:** pre-alpha architecture refocus and security hard cutover
-**Active branch:** `project_refocus_and_security_fixes`
+**Refocus branch:** `project_refocus_and_security_fixes` and isolated continuation branches
 
 ZERB's target is a declarative, profile-based developer-environment restoration tool for mutable workstations. It will coordinate pinned native Git, mise, and chezmoi behavior while owning source selection, trust, collision policy, orchestration, durable state, and recovery.
 
@@ -25,7 +25,7 @@ Start with the [roadmap index](docs/roadmap/README.md). Its ownership order prev
 - [Post-MVP intent](docs/roadmap/post-mvp.md) — non-committed deferred direction.
 - [Redacted proof results](docs/roadmap/proof-results.md) — evidence only, never normative authority.
 
-Phase 0 is a provisional proof baseline. Only the approved Phase 1 exit can freeze contracts for implementation. The baseline ledger records the old binary's version and command table; this README intentionally does not present either old or target commands as usable product instructions.
+Phase 0 is a provisional proof baseline. The owner-approved [split gate](docs/roadmap/delivery-plan.md) permits reviewed non-release Phase 2–4 implementation after source-bound cloud conformance and independent plan/security review. Exact runtime protections still fail closed when unavailable; there is no development fallback runner. Complete real frozen-host Phase 1 evidence and freeze approval remain required before release/public cutover, and support requires final installed-binary acceptance. The baseline ledger records the old binary's version and command table; this README intentionally does not present either old or target commands as usable product instructions.
 
 ## Development
 
@@ -39,7 +39,7 @@ golangci-lint run
 go build -o bin/zerb ./cmd/zerb
 ```
 
-These are development gates, not installation steps. The recorded Phase 0 baseline passed tests, race tests, vet, and build; lint reported 54 issues in old code. See [proof results](docs/roadmap/proof-results.md) for the exact scope and limitations of that observation.
+These are individual development checks, not installation steps or the complete cloud admission gate. Run `python3 scripts/cloud_conformance.py --output <outside-repository-report.json>` for the source-bound cloud report and see the [handoff](docs/roadmap/phase1-proof-handoff.md) for its limits. Focused replacement tests/race checks and phase-specific reviews are additionally required as product implementation proceeds. The recorded Phase 0 baseline passed tests, race tests, vet, and build; lint reported 54 issues in old code. See [proof results](docs/roadmap/proof-results.md) for the exact scope and limitations of that observation.
 
 ## Project scope
 

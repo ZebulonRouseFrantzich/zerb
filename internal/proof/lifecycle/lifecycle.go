@@ -23,7 +23,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
@@ -241,70 +240,14 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 	}()
 	markerDigest := sha256.Sum256(marker)
 	result := Result{Version: ResultVersion, MarkerReference: "AMBIENT_MARKER{fp=sha256:" + hex.EncodeToString(markerDigest[:]) + "}", SupervisorReference: "typed:proof-supervisor:" + hex.EncodeToString(supervisorSeed[:]), ProofOwnedExecutableReference: "typed:proof-owned-executable:" + hex.EncodeToString(proofOwnedExecutableSeed[:])}
-	reusableName := "reusable-process-graph-primitive"
-	reusableDir := filepath.Join(root, reusableName)
-	if err := os.MkdirAll(reusableDir, 0o700); err != nil {
+	reusable, err := reusableProcessScenario(ctx, cfg, root)
+	if err != nil {
 		return Result{}, err
-	}
-	reusableReport := filepath.Join(reusableDir, "observation.json")
-	reusableEnv := isolatedEnv(root, cfg.CACert)
-	reusable := baseScenario(reusableName, "observed", []string{"VAL-017", "VAL-018", "VAL-019", "VAL-020", "VAL-023", "PC-015", "PC-070", "ARCH-009", "ARCH-010", "ARCH-011"}, "The reusable process-graph primitive can leak environment or descriptors before target exec.", cfg.Executable, reusableDir, reusableEnv, []string{"__proof-child", "inspect", "OBSERVATION_FILE{random}"})
-	reusable.Invocation.AllowedDescriptors = []int{0, 1, 2}
-	reusableObs, reusableErr := Supervise(ctx, cfg.Executable, Spec{Name: reusableName, Executable: cfg.Executable, Args: []string{"__proof-child", "inspect", reusableReport}, Dir: reusableDir, Env: reusableEnv, Stdout: io.Discard, Stderr: io.Discard})
-	reusable.Resources = resourceObservation(reusableObs, true, false)
-	reusable.Lifecycle = lifecycleObservation(reusableObs)
-	reusable.Access = AccessObservation{TraceAvailable: false}
-	reusable.Writes = WriteObservation{TraceAvailable: false}
-	observed, reportErr := readProcessObservation(reusableReport)
-	reusable.Environment.Exact = reportErr == nil && equalStringSets(observed.Environment, reusableEnv)
-	reusable.Invocation.DescriptorsExact = reportErr == nil && descriptorObservationExact(observed)
-	if reusableErr != nil || reportErr != nil || reusableObs.Status != 0 || !completeLifecycle(reusableObs) || !reusableObs.LeaderObserved || !reusable.Environment.Exact || !reusable.Invocation.DescriptorsExact {
-		reusable.Status = "failed"
-		reusable.Detail = fmt.Sprintf("status=%d ready=%t leader=%t environment_exact=%t descriptors_exact=%t descriptor_count=%d post_exec_runtime_count=%d unexpected_descriptor_count=%d unexpected_descriptor_classes=%s supervise_error=%v observation_error=%v", reusableObs.Status, reusableObs.Ready, reusableObs.LeaderObserved, reusable.Environment.Exact, reusable.Invocation.DescriptorsExact, len(observed.Descriptors), len(observed.PostExecRuntimeDescriptors), len(observed.UnexpectedDescriptors), strings.Join(observed.UnexpectedDescriptorClasses, ","), reusableErr, reportErr)
-	} else {
-		reusable.Detail = "same-binary primitive observed exact environment and target descriptor allowlist after the authenticated launcher validated sanitation, parent death, group/session, and second-parent identity before exec release"
 	}
 	result.Scenarios = append(result.Scenarios, reusable)
 	result.Scenarios = append(result.Scenarios, reservedFDReuseScenario(cfg, root))
 
-	upstreams := []struct {
-		class string
-		exe   string
-		args  []string
-	}{
-		{class: "git", exe: cfg.Git, args: []string{"--version"}},
-		{class: "acquisition", exe: cfg.Git, args: []string{"--version"}},
-		{class: "mise", exe: cfg.Mise, args: []string{"--version"}},
-		{class: "chezmoi", exe: cfg.Chezmoi, args: []string{"--version"}},
-		{class: "exec", exe: cfg.SignalFixture, args: []string{"--coreutils-prog=true"}},
-		{class: "shell", exe: cfg.Bash, args: []string{"--noprofile", "--norc", "-c", "exit 0"}},
-	}
-	for _, upstream := range upstreams {
-		name := upstream.class + "-upstream-process-observation"
-		env := isolatedEnv(root, cfg.CACert)
-		s := baseScenario(name, "observed", []string{"VAL-017", "VAL-018", "VAL-019", "VAL-020", "VAL-023", "PC-015", "PC-070", "ARCH-009", "ARCH-010", "ARCH-011"}, "One successful retained upstream invocation is sufficient to establish a general no-daemonize or no-escape support claim.", upstream.exe, root, env, upstream.args)
-		s.Invocation.AllowedDescriptors = []int{0, 1, 2}
-		s.Access = AccessObservation{TraceAvailable: false}
-		s.Writes = WriteObservation{TraceAvailable: false}
-		if upstream.exe == "" || !filepath.IsAbs(upstream.exe) {
-			s.Status = "inconclusive"
-			s.Detail = "canonical pinned upstream executable was not supplied; no representative invocation was exercised"
-			result.Scenarios = append(result.Scenarios, s)
-			continue
-		}
-		obs, runErr := Supervise(ctx, cfg.Executable, Spec{Name: name, Executable: upstream.exe, Args: upstream.args, Dir: root, Env: env, Stdout: io.Discard, Stderr: io.Discard})
-		s.Lifecycle = lifecycleObservation(obs)
-		s.Resources = resourceObservation(obs, false, false)
-		s.Environment.Exact = obs.Ready
-		s.Invocation.DescriptorsExact = obs.Ready
-		if runErr != nil || obs.Status != 0 || !completeLifecycle(obs) || !obs.LeaderObserved || obs.Orphans != 0 || obs.SurvivorsDetected != 0 {
-			s.Status = "failed"
-			s.Detail = fmt.Sprintf("actual_executable=%s status=%d ready=%t leader=%t descendants=%d orphans=%d survivors=%d error=%v", upstream.exe, obs.Status, obs.Ready, obs.LeaderObserved, obs.DescendantsObserved, obs.Orphans, obs.SurvivorsDetected, runErr)
-		} else {
-			s.Detail = fmt.Sprintf("actual_executable=%s completed one retained representative invocation through the validated launcher with descriptors 0/1/2 at exec and no members left in its exact process group; this is an invocation observation, not a general no-daemonize, escape-prevention, compatibility, or support claim", upstream.exe)
-		}
-		result.Scenarios = append(result.Scenarios, s)
-	}
+	result.Scenarios = append(result.Scenarios, upstreamProcessScenarios(ctx, cfg, root)...)
 	guardFailure := baseScenario("death-guard-status-propagation", "observed", []string{"VAL-019", "PC-015", "PC-070", "ARCH-010"}, "A failed death guard can disappear while the wrapper discards its status and reports lifecycle success.", cfg.Executable, root, isolatedEnv(root, cfg.CACert), []string{"__proof-child", "exit", "0"})
 	guardFailureObs, guardFailureErr := Supervise(ctx, cfg.Executable, Spec{Name: guardFailure.Name, Executable: cfg.Executable, Args: []string{"__proof-child", "exit", "0"}, Dir: root, Env: isolatedEnv(root, cfg.CACert), GuardFailureStatus: 11, Stdout: io.Discard, Stderr: io.Discard})
 	guardFailure.Lifecycle = lifecycleObservation(guardFailureObs)
@@ -384,6 +327,76 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 
 	return result, nil
 }
+func reusableProcessScenario(ctx context.Context, cfg Config, root string) (Scenario, error) {
+	reusableName := "reusable-process-graph-primitive"
+	reusableDir := filepath.Join(root, reusableName)
+	if err := os.MkdirAll(reusableDir, 0o700); err != nil {
+		return Scenario{}, err
+	}
+	reusableReport := filepath.Join(reusableDir, "observation.json")
+	reusableEnv := isolatedEnv(root, cfg.CACert)
+	reusable := baseScenario(reusableName, "observed", []string{"VAL-017", "VAL-018", "VAL-019", "VAL-020", "VAL-023", "PC-015", "PC-070", "ARCH-009", "ARCH-010", "ARCH-011"}, "The reusable process-graph primitive can leak environment or descriptors before target exec.", cfg.Executable, reusableDir, reusableEnv, []string{"__proof-child", "inspect", "OBSERVATION_FILE{random}"})
+	reusable.Invocation.AllowedDescriptors = []int{0, 1, 2}
+	reusableObs, reusableErr := Supervise(ctx, cfg.Executable, Spec{Name: reusableName, Executable: cfg.Executable, Args: []string{"__proof-child", "inspect", reusableReport}, Dir: reusableDir, Env: reusableEnv, Stdout: io.Discard, Stderr: io.Discard})
+	reusable.Resources = resourceObservation(reusableObs, true, false)
+	reusable.Lifecycle = lifecycleObservation(reusableObs)
+	reusable.Access = AccessObservation{TraceAvailable: false}
+	reusable.Writes = WriteObservation{TraceAvailable: false}
+	observed, reportErr := readProcessObservation(reusableReport)
+	reusable.Environment.Exact = reportErr == nil && equalStringSets(observed.Environment, reusableEnv)
+	reusable.Invocation.DescriptorsExact = reportErr == nil && descriptorObservationExact(observed)
+	if reusableErr != nil || reportErr != nil || reusableObs.Status != 0 || !completeLifecycle(reusableObs) || !reusableObs.LeaderObserved || !reusable.Environment.Exact || !reusable.Invocation.DescriptorsExact {
+		reusable.Status = "failed"
+		reusable.Detail = fmt.Sprintf("status=%d ready=%t leader=%t environment_exact=%t descriptors_exact=%t descriptor_count=%d post_exec_runtime_count=%d unexpected_descriptor_count=%d unexpected_descriptor_classes=%s supervise_error=%v observation_error=%v", reusableObs.Status, reusableObs.Ready, reusableObs.LeaderObserved, reusable.Environment.Exact, reusable.Invocation.DescriptorsExact, len(observed.Descriptors), len(observed.PostExecRuntimeDescriptors), len(observed.UnexpectedDescriptors), strings.Join(observed.UnexpectedDescriptorClasses, ","), reusableErr, reportErr)
+	} else {
+		reusable.Detail = "same-binary primitive observed exact environment and target descriptor allowlist after the authenticated launcher validated sanitation, parent death, group/session, and second-parent identity before exec release"
+	}
+	return reusable, nil
+}
+
+func upstreamProcessScenarios(ctx context.Context, cfg Config, root string) []Scenario {
+	var out []Scenario
+	upstreams := []struct {
+		class string
+		exe   string
+		args  []string
+	}{
+		{class: "git", exe: cfg.Git, args: []string{"--version"}},
+		{class: "acquisition", exe: cfg.Git, args: []string{"--version"}},
+		{class: "mise", exe: cfg.Mise, args: []string{"--version"}},
+		{class: "chezmoi", exe: cfg.Chezmoi, args: []string{"--version"}},
+		{class: "exec", exe: cfg.SignalFixture, args: []string{"--coreutils-prog=true"}},
+		{class: "shell", exe: cfg.Bash, args: []string{"--noprofile", "--norc", "-c", "exit 0"}},
+	}
+	for _, upstream := range upstreams {
+		name := upstream.class + "-upstream-process-observation"
+		env := isolatedEnv(root, cfg.CACert)
+		s := baseScenario(name, "observed", []string{"VAL-017", "VAL-018", "VAL-019", "VAL-020", "VAL-023", "PC-015", "PC-070", "ARCH-009", "ARCH-010", "ARCH-011"}, "One successful retained upstream invocation is sufficient to establish a general no-daemonize or no-escape support claim.", upstream.exe, root, env, upstream.args)
+		s.Invocation.AllowedDescriptors = []int{0, 1, 2}
+		s.Access = AccessObservation{TraceAvailable: false}
+		s.Writes = WriteObservation{TraceAvailable: false}
+		if upstream.exe == "" || !filepath.IsAbs(upstream.exe) {
+			s.Status = "inconclusive"
+			s.Detail = "canonical pinned upstream executable was not supplied; no representative invocation was exercised"
+			out = append(out, s)
+			continue
+		}
+		obs, runErr := Supervise(ctx, cfg.Executable, Spec{Name: name, Executable: upstream.exe, Args: upstream.args, Dir: root, Env: env, Stdout: io.Discard, Stderr: io.Discard})
+		s.Lifecycle = lifecycleObservation(obs)
+		s.Resources = resourceObservation(obs, false, false)
+		s.Environment.Exact = obs.Ready
+		s.Invocation.DescriptorsExact = obs.Ready
+		if runErr != nil || obs.Status != 0 || !completeLifecycle(obs) || !obs.LeaderObserved || obs.Orphans != 0 || obs.SurvivorsDetected != 0 {
+			s.Status = "failed"
+			s.Detail = fmt.Sprintf("actual_executable=%s status=%d ready=%t leader=%t descendants=%d orphans=%d survivors=%d error=%v", upstream.exe, obs.Status, obs.Ready, obs.LeaderObserved, obs.DescendantsObserved, obs.Orphans, obs.SurvivorsDetected, runErr)
+		} else {
+			s.Detail = fmt.Sprintf("actual_executable=%s completed one retained representative invocation through the validated launcher with descriptors 0/1/2 at exec and no members left in its exact process group; this is an invocation observation, not a general no-daemonize, escape-prevention, compatibility, or support claim", upstream.exe)
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
 func executionIdentityScenarios(ctx context.Context, cfg Config, root string) []Scenario {
 	base := filepath.Join(root, "exec-identity")
 	stable, cwd, ambient := filepath.Join(base, "stable-bin"), filepath.Join(base, "cwd-poison"), filepath.Join(base, "ambient-poison")
@@ -543,6 +556,10 @@ func executionIdentityScenarios(ctx context.Context, cfg Config, root string) []
 	if races.Status == "observed" {
 		races.Detail = "symlink/inode/digest/owner/type/mode source substitutions could not alter the already-sealed executable snapshot"
 	}
+	synchronized := finalCheckpointIdentityScenario(ctx, cfg, root, base, env)
+	return []Scenario{bare, absolute, pathRejection, imageRejection, races, synchronized}
+}
+func finalCheckpointIdentityScenario(ctx context.Context, cfg Config, root, base string, env []string) Scenario {
 	synchronized := baseScenario("exec-sealed-snapshot-final-checkpoint-race", "observed", []string{"VAL-017", "VAL-018", "PC-070", "ARCH-009"}, "Same-size in-place mutation after final validation but before release may change executed bytes.", cfg.Executable, root, env, []string{"__proof-child", "exit", "0"})
 	syncTarget := filepath.Join(base, "checkpoint-race-target")
 	if err := copyExecutable(cfg.Executable, syncTarget); err != nil {
@@ -577,8 +594,9 @@ func executionIdentityScenarios(ctx context.Context, cfg Config, root string) []
 		}
 	}
 	_ = os.Remove(syncTarget)
-	return []Scenario{bare, absolute, pathRejection, imageRejection, races, synchronized}
+	return synchronized
 }
+
 func selfIdentityAttackScenarios(cfg Config, root string) []Scenario {
 	base := filepath.Join(root, "internal-self-identity")
 	if err := os.MkdirAll(base, 0700); err != nil {
@@ -868,13 +886,12 @@ func openProofPTY() (*os.File, *os.File, error) {
 		_ = syscall.Close(masterFD)
 		return nil, nil, err
 	}
-	var unlock int32
-	if _, _, errno := syscall.RawSyscall(syscall.SYS_IOCTL, uintptr(masterFD), unix.TIOCSPTLCK, uintptr(unsafe.Pointer(&unlock))); errno != 0 {
-		return closeMaster(errno)
+	if err := unix.IoctlSetPointerInt(masterFD, unix.TIOCSPTLCK, 0); err != nil {
+		return closeMaster(err)
 	}
-	var number uint32
-	if _, _, errno := syscall.RawSyscall(syscall.SYS_IOCTL, uintptr(masterFD), unix.TIOCGPTN, uintptr(unsafe.Pointer(&number))); errno != 0 {
-		return closeMaster(errno)
+	number, err := unix.IoctlGetInt(masterFD, unix.TIOCGPTN)
+	if err != nil {
+		return closeMaster(err)
 	}
 	slaveFD, err := unix.Open("/dev/pts/"+strconv.FormatUint(uint64(number), 10), unix.O_RDWR|unix.O_NOCTTY|unix.O_CLOEXEC, 0)
 	if err != nil {

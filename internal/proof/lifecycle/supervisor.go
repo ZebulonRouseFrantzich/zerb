@@ -358,39 +358,7 @@ func superviseInCgroup(ctx context.Context, proofExecutable string, spec Spec) (
 	wait := make(chan error, 1)
 	go func() { wait <- cmd.Wait() }()
 	if spec.HardKillAfterReady {
-		if spec.InjectionGate != "" && !obs.GateReached {
-			_ = cmd.Process.Kill()
-			<-wait
-			return obs, fmt.Errorf("requested injection gate %q was not reached", spec.InjectionGate)
-		}
-		if killErr := syscall.Kill(cmd.Process.Pid, syscall.SIGKILL); killErr != nil {
-			<-wait
-			return obs, fmt.Errorf("inject wrapper hard death: %w", killErr)
-		}
-		<-wait
-		obs.HardDeath = true
-		deadline := time.Now().Add(3 * time.Second)
-		guardStatus := -1
-		reap := func() {
-			obs.Reaped += reapAvailableWithGuard(ready.GuardPID, &guardStatus)
-		}
-		for ((ready.ChildGroup > 0 && processGroupExists(ready.ChildGroup)) || processExists(ready.GuardPID)) && time.Now().Before(deadline) {
-			reap()
-			time.Sleep(time.Millisecond)
-		}
-		reap()
-		obs.GuardStatus = guardStatus
-		obs.GuardStatusObserved = guardStatus >= 0
-		obs.GuardCleanup = ready.GuardArmed &&
-			(ready.ChildGroup <= 0 || !processGroupExists(ready.ChildGroup)) && !processExists(ready.GuardPID)
-		if !obs.GuardCleanup {
-			obs.SurvivorsDetected = 1
-			obs.Orphans = 1
-		}
-		if !obs.GuardStatusObserved || guardStatus != 0 {
-			return obs, fmt.Errorf("death guard exited with status %d", guardStatus)
-		}
-		return obs, nil
+		return observeWrapperHardDeath(cmd, wait, ready, spec, obs)
 	}
 	if spec.WrapperSignal != 0 {
 		if killErr := syscall.Kill(cmd.Process.Pid, spec.WrapperSignal); killErr != nil {
@@ -401,14 +369,14 @@ func superviseInCgroup(ctx context.Context, proofExecutable string, spec Spec) (
 	}
 	var requested syscall.Signal
 	select {
-	case err = <-wait:
+	case <-wait:
 	case sig := <-forward:
 		requested = sig.(syscall.Signal)
 		obs.Forwarded = syscall.Kill(cmd.Process.Pid, requested) == nil
-		err = <-wait
+		<-wait
 	case <-ctx.Done():
 		obs.Forwarded = syscall.Kill(cmd.Process.Pid, syscall.SIGTERM) == nil
-		err = <-wait
+		<-wait
 		requested = -1
 	}
 	var result wireResult
@@ -436,6 +404,42 @@ func superviseInCgroup(ctx context.Context, proofExecutable string, spec Spec) (
 	}
 	if !obs.GuardStatusObserved || obs.GuardStatus != 0 {
 		return obs, fmt.Errorf("death guard status unverified: observed=%t status=%d", obs.GuardStatusObserved, obs.GuardStatus)
+	}
+	return obs, nil
+}
+
+func observeWrapperHardDeath(cmd *exec.Cmd, wait <-chan error, ready wireReady, spec Spec, obs Observation) (Observation, error) {
+	if spec.InjectionGate != "" && !obs.GateReached {
+		_ = cmd.Process.Kill()
+		<-wait
+		return obs, fmt.Errorf("requested injection gate %q was not reached", spec.InjectionGate)
+	}
+	if killErr := syscall.Kill(cmd.Process.Pid, syscall.SIGKILL); killErr != nil {
+		<-wait
+		return obs, fmt.Errorf("inject wrapper hard death: %w", killErr)
+	}
+	<-wait
+	obs.HardDeath = true
+	deadline := time.Now().Add(3 * time.Second)
+	guardStatus := -1
+	reap := func() {
+		obs.Reaped += reapAvailableWithGuard(ready.GuardPID, &guardStatus)
+	}
+	for ((ready.ChildGroup > 0 && processGroupExists(ready.ChildGroup)) || processExists(ready.GuardPID)) && time.Now().Before(deadline) {
+		reap()
+		time.Sleep(time.Millisecond)
+	}
+	reap()
+	obs.GuardStatus = guardStatus
+	obs.GuardStatusObserved = guardStatus >= 0
+	obs.GuardCleanup = ready.GuardArmed &&
+		(ready.ChildGroup <= 0 || !processGroupExists(ready.ChildGroup)) && !processExists(ready.GuardPID)
+	if !obs.GuardCleanup {
+		obs.SurvivorsDetected = 1
+		obs.Orphans = 1
+	}
+	if !obs.GuardStatusObserved || guardStatus != 0 {
+		return obs, fmt.Errorf("death guard exited with status %d", guardStatus)
 	}
 	return obs, nil
 }
@@ -601,31 +605,14 @@ func supervisorMode(control, target, self *os.File, spec wireSpec, firstParent i
 	var substitutionFile *os.File
 	var substitutionID cgroupIdentity
 	if spec.CgroupPathSubstitution {
-		replacementPath := spec.CgroupPath + ".substitute"
-		if err := os.Mkdir(replacementPath, 0700); err != nil {
-			return sendReadyError(control, "create delegated cgroup path substitute failed")
+		substitutionFile, substitutionID, err = createCgroupPathSubstitute(spec.CgroupPath, cgroupID)
+		if err != nil {
+			return sendReadyError(control, err.Error())
 		}
-		replacementFD, openErr := unix.Open(replacementPath, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
-		if openErr != nil {
-			_ = os.Remove(replacementPath)
-			return sendReadyError(control, "open delegated cgroup path substitute failed")
-		}
-		substitutionFile = os.NewFile(uintptr(replacementFD), "delegated-cgroup-path-substitute")
-		if substitutionFile == nil {
-			_ = syscall.Close(replacementFD)
-			_ = os.Remove(replacementPath)
-			return sendReadyError(control, "open delegated cgroup path substitute failed")
-		}
-		substitutionID, err = cgroupDescriptorIdentity(substitutionFile)
-		if err != nil || substitutionID == cgroupID {
-			_ = substitutionFile.Close()
-			_ = os.Remove(replacementPath)
-			return sendReadyError(control, "validate delegated cgroup path substitute failed")
-		}
-		spec.CgroupPath = replacementPath
+		spec.CgroupPath += ".substitute"
 		defer func() {
 			_ = substitutionFile.Close()
-			_ = os.Remove(replacementPath)
+			_ = os.Remove(spec.CgroupPath)
 		}()
 	}
 	if _, _, errno := syscall.RawSyscall(syscall.SYS_PRCTL, prSetChildSubreaper, 1, 0); errno != 0 {
@@ -663,22 +650,7 @@ func supervisorMode(control, target, self *os.File, spec wireSpec, firstParent i
 		return sendReadyError(control, "death guard authentication failed")
 	}
 	closeGuard := func(kill ...bool) (int, error) {
-		shouldKill := len(kill) != 0 && kill[0]
-		writeErr := writeFrame(guardWrite, guardDisarm{Disarm: !shouldKill, Kill: shouldKill})
-		closeErr := guardWrite.Close()
-		waitErr := guard.Wait()
-		status := waitStatus(waitErr)
-		if writeErr != nil {
-			return status, writeErr
-		}
-		if closeErr != nil {
-			return status, closeErr
-		}
-		var exitErr *exec.ExitError
-		if waitErr != nil && !errors.As(waitErr, &exitErr) {
-			return status, waitErr
-		}
-		return status, nil
+		return closeDeathGuard(guardWrite, guard, kill...)
 	}
 	discardGuard := func(kill ...bool) {
 		_, _ = closeGuard(kill...)
@@ -692,158 +664,33 @@ func supervisorMode(control, target, self *os.File, spec wireSpec, firstParent i
 		select {}
 	}
 	if spec.InjectionGate == "before-clone" {
-		if err := writeFrame(guardWrite, 0); err != nil {
+		if err := armDeathGuard(guardWrite, 0, "pre-clone death guard"); err != nil {
 			discardGuard()
-			return sendReadyError(control, "pre-clone death guard arm failed")
-		}
-		armedBytes, armErr := readFrame(guardWrite, 256)
-		var armed guardArm
-		armDecodeErr := decodeStrict(armedBytes, &armed)
-		if armErr != nil || armDecodeErr != nil || !armed.Armed || armed.Error != "" {
-			discardGuard()
-			return sendReadyError(control, fmt.Sprintf("pre-clone death guard acknowledgement failed: read=%v decode=%v stage=%s", armErr, armDecodeErr, armed.Error))
+			return sendReadyError(control, err.Error())
 		}
 		gate("before-clone", 0, 0, true)
 	}
-	launcherControl, launcherChild, err := socketPair()
+	cmd, launcherControl, err := startManagedLauncher(target, self, cgroupFile, substitutionFile, spec)
 	if err != nil {
 		discardGuard()
-		return sendReadyError(control, "launcher control channel unavailable")
+		return sendReadyError(control, err.Error())
 	}
 	closeLauncherChannels := func() { launcherControl.Close() }
-	cmd := exec.Command("/proc/self/fd/5")
-	cmd.Env, cmd.Dir, cmd.Stdin, cmd.Stdout, cmd.Stderr = append([]string(nil), spec.Environment...), spec.Directory, os.Stdin, os.Stdout, os.Stderr
-	cmd.ExtraFiles = []*os.File{launcherChild, target, self}
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pdeathsig: syscall.SIGKILL}
-	var oldFileSize syscall.Rlimit
-	fileSizeChanged := false
-	if spec.FileSizeLimit != 0 {
-		if err := syscall.Getrlimit(syscall.RLIMIT_FSIZE, &oldFileSize); err != nil {
-			launcherControl.Close()
-			launcherChild.Close()
-			discardGuard()
-			return sendReadyError(control, "read file-size boundary failed")
-		}
-		limit := oldFileSize
-		if spec.FileSizeLimit < limit.Cur {
-			limit.Cur = spec.FileSizeLimit
-		}
-		if err := syscall.Setrlimit(syscall.RLIMIT_FSIZE, &limit); err != nil {
-			launcherControl.Close()
-			launcherChild.Close()
-			discardGuard()
-			return sendReadyError(control, "set file-size boundary failed")
-		}
-		fileSizeChanged = true
-	}
-	startErr = cmd.Start()
-	launcherChild.Close()
-	if fileSizeChanged {
-		if err := syscall.Setrlimit(syscall.RLIMIT_FSIZE, &oldFileSize); err != nil {
-			if startErr == nil {
-				_ = cmd.Process.Kill()
-				_ = cmd.Wait()
-			}
-			closeLauncherChannels()
-			discardGuard()
-			return sendReadyError(control, "restore supervisor file-size limit failed")
-		}
-	}
-	if startErr != nil {
-		closeLauncherChannels()
-		discardGuard()
-		return sendReadyError(control, "managed launcher clone failed")
-	}
-	if !spec.CgroupInherited {
-		if err := writeCgroupProcess(cgroupFile, cmd.Process.Pid); err != nil {
-			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-			_ = cmd.Wait()
-			closeLauncherChannels()
-			discardGuard()
-			return sendReadyError(control, "move gated launcher into delegated cgroup failed")
-		}
-		contained, containErr := cgroupDescriptorContainsPID(cgroupFile, cmd.Process.Pid)
-		if containErr != nil || !contained {
-			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-			_ = cmd.Wait()
-			closeLauncherChannels()
-			discardGuard()
-			return sendReadyError(control, "verify gated launcher cgroup membership failed")
-		}
-		if substitutionFile != nil {
-			replacementMembers, replacementErr := cgroupDescriptorHasMembers(substitutionFile)
-			if replacementErr != nil || replacementMembers {
-				_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-				_ = cmd.Wait()
-				closeLauncherChannels()
-				discardGuard()
-				return sendReadyError(control, "gated launcher entered substituted cgroup path")
-			}
-		}
-	}
-	if spec.InteractivePTY {
-		foreground := int32(cmd.Process.Pid)
-		if _, _, errno := syscall.RawSyscall(syscall.SYS_IOCTL, 0, unix.TIOCSPGRP, uintptr(unsafe.Pointer(&foreground))); errno != 0 {
-			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-			_ = cmd.Wait()
-			closeLauncherChannels()
-			discardGuard()
-			return sendReadyError(control, "set interactive foreground process group failed")
-		}
-	}
-	launchSpec := spec
-	launchSpec.ParentPID = os.Getpid()
-	if err := authenticateChildStage(launcherControl, internalStageSpec{Stage: "launcher", ParentPID: os.Getpid(), Process: &launchSpec, Self: spec.Self}); err != nil {
+	if err := armDeathGuard(guardWrite, cmd.Process.Pid, "death guard"); err != nil {
 		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 		_ = cmd.Wait()
 		closeLauncherChannels()
 		discardGuard()
-		return sendReadyError(control, "managed launcher authentication failed")
-	}
-	if err := writeFrame(guardWrite, cmd.Process.Pid); err != nil {
-		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-		_ = cmd.Wait()
-		closeLauncherChannels()
-		discardGuard()
-		return sendReadyError(control, "death guard arm failed")
-	}
-	guardBytes, guardErr := readFrame(guardWrite, 256)
-	var guardArmResult guardArm
-	guardDecodeErr := decodeStrict(guardBytes, &guardArmResult)
-	if guardErr != nil || guardDecodeErr != nil || !guardArmResult.Armed || guardArmResult.Error != "" {
-		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-		_ = cmd.Wait()
-		closeLauncherChannels()
-		discardGuard()
-		return sendReadyError(control, fmt.Sprintf("death guard acknowledgement failed: read=%v decode=%v stage=%s", guardErr, guardDecodeErr, guardArmResult.Error))
+		return sendReadyError(control, err.Error())
 	}
 	gate("after-launcher-start", cmd.Process.Pid, cmd.Process.Pid, true)
-	ioUringDenied := false
-	for _, checkpoint := range []string{"after-descriptor-sanitization", "after-parent-death-validation", "after-group-session-validation", "after-second-parent-check", "before-exec-release"} {
-		checkpointBytes, readErr := readFrame(launcherControl, 1024)
-		var reached launcherCheckpoint
-		decodeErr := readErr
-		if decodeErr == nil {
-			decodeErr = decodeStrict(checkpointBytes, &reached)
-		}
-		if decodeErr != nil || reached.Error != "" || reached.Name != checkpoint {
-			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-			_ = cmd.Wait()
-			closeLauncherChannels()
-			discardGuard()
-			return sendReadyError(control, fmt.Sprintf("managed launcher checkpoint failed: %s: decode=%v launcher=%s", checkpoint, decodeErr, reached.Error))
-		}
-		if checkpoint == "before-exec-release" {
-			ioUringDenied = reached.IOUringDenied
-			if ioUringDenied != spec.DenyIOUring {
-				_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-				_ = cmd.Wait()
-				closeLauncherChannels()
-				discardGuard()
-				return sendReadyError(control, "managed launcher io_uring policy mismatch")
-			}
-		}
-		gate(checkpoint, cmd.Process.Pid, cmd.Process.Pid, true)
+	ioUringDenied, err := awaitLauncherCheckpoints(launcherControl, spec, cmd.Process.Pid, gate)
+	if err != nil {
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		_ = cmd.Wait()
+		closeLauncherChannels()
+		discardGuard()
+		return sendReadyError(control, err.Error())
 	}
 	leaderBeforeExec, _ := observeGroup(cmd.Process.Pid, cmd.Process.Pid)
 	if !leaderBeforeExec {
@@ -926,6 +773,67 @@ func supervisorMode(control, target, self *os.File, spec wireSpec, firstParent i
 			return 1
 		}
 	}
+	return finishManagedProcess(control, cgroupFile, substitutionFile, substitutionID, cmd, sigs, spec.CgroupInherited, closeGuard)
+}
+
+func armDeathGuard(guardWrite *os.File, group int, context string) error {
+	if err := writeFrame(guardWrite, group); err != nil {
+		return fmt.Errorf("%s arm failed", context)
+	}
+	armedBytes, armErr := readFrame(guardWrite, 256)
+	var armed guardArm
+	decodeErr := decodeStrict(armedBytes, &armed)
+	if armErr != nil || decodeErr != nil || !armed.Armed || armed.Error != "" {
+		return fmt.Errorf("%s acknowledgement failed: read=%v decode=%v stage=%s", context, armErr, decodeErr, armed.Error)
+	}
+	return nil
+}
+
+func closeDeathGuard(guardWrite *os.File, guard *exec.Cmd, kill ...bool) (int, error) {
+	shouldKill := len(kill) != 0 && kill[0]
+	writeErr := writeFrame(guardWrite, guardDisarm{Disarm: !shouldKill, Kill: shouldKill})
+	closeErr := guardWrite.Close()
+	waitErr := guard.Wait()
+	status := waitStatus(waitErr)
+	if writeErr != nil {
+		return status, writeErr
+	}
+	if closeErr != nil {
+		return status, closeErr
+	}
+	var exitErr *exec.ExitError
+	if waitErr != nil && !errors.As(waitErr, &exitErr) {
+		return status, waitErr
+	}
+	return status, nil
+}
+
+func createCgroupPathSubstitute(cgroupPath string, cgroupID cgroupIdentity) (*os.File, cgroupIdentity, error) {
+	replacementPath := cgroupPath + ".substitute"
+	if err := os.Mkdir(replacementPath, 0700); err != nil {
+		return nil, cgroupIdentity{}, errors.New("create delegated cgroup path substitute failed")
+	}
+	replacementFD, openErr := unix.Open(replacementPath, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if openErr != nil {
+		_ = os.Remove(replacementPath)
+		return nil, cgroupIdentity{}, errors.New("open delegated cgroup path substitute failed")
+	}
+	substitutionFile := os.NewFile(uintptr(replacementFD), "delegated-cgroup-path-substitute")
+	if substitutionFile == nil {
+		_ = syscall.Close(replacementFD)
+		_ = os.Remove(replacementPath)
+		return nil, cgroupIdentity{}, errors.New("open delegated cgroup path substitute failed")
+	}
+	substitutionID, err := cgroupDescriptorIdentity(substitutionFile)
+	if err != nil || substitutionID == cgroupID {
+		_ = substitutionFile.Close()
+		_ = os.Remove(replacementPath)
+		return nil, cgroupIdentity{}, errors.New("validate delegated cgroup path substitute failed")
+	}
+	return substitutionFile, substitutionID, nil
+}
+
+func finishManagedProcess(control, cgroupFile, substitutionFile *os.File, substitutionID cgroupIdentity, cmd *exec.Cmd, sigs <-chan os.Signal, cgroupInherited bool, closeGuard func(...bool) (int, error)) int {
 	wait := make(chan error, 1)
 	go func() { wait <- cmd.Wait() }()
 	var childErr error
@@ -962,7 +870,7 @@ func supervisorMode(control, target, self *os.File, spec wireSpec, firstParent i
 		}
 	}
 	var cleanupGuardErr error
-	if !spec.CgroupInherited {
+	if !cgroupInherited {
 		hasMembers, membershipErr := cgroupDescriptorHasMembers(cgroupFile)
 		if membershipErr == nil && hasMembers {
 			killFD, killErr := unix.Openat(int(cgroupFile.Fd()), "cgroup.kill", unix.O_WRONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
@@ -1030,6 +938,118 @@ func supervisorMode(control, target, self *os.File, spec wireSpec, firstParent i
 	_ = json.NewEncoder(control).Encode(result)
 	return result.Status
 }
+
+func awaitLauncherCheckpoints(launcherControl *os.File, spec wireSpec, childPID int, gate func(string, int, int, bool)) (bool, error) {
+	ioUringDenied := false
+	for _, checkpoint := range []string{"after-descriptor-sanitization", "after-parent-death-validation", "after-group-session-validation", "after-second-parent-check", "before-exec-release"} {
+		checkpointBytes, readErr := readFrame(launcherControl, 1024)
+		var reached launcherCheckpoint
+		decodeErr := readErr
+		if decodeErr == nil {
+			decodeErr = decodeStrict(checkpointBytes, &reached)
+		}
+		if decodeErr != nil || reached.Error != "" || reached.Name != checkpoint {
+			return false, fmt.Errorf("managed launcher checkpoint failed: %s: decode=%v launcher=%s", checkpoint, decodeErr, reached.Error)
+		}
+		if checkpoint == "before-exec-release" {
+			ioUringDenied = reached.IOUringDenied
+			if ioUringDenied != spec.DenyIOUring {
+				return false, errors.New("managed launcher io_uring policy mismatch")
+			}
+		}
+		gate(checkpoint, childPID, childPID, true)
+	}
+	return ioUringDenied, nil
+}
+
+func startManagedLauncher(target, self, cgroupFile, substitutionFile *os.File, spec wireSpec) (*exec.Cmd, *os.File, error) {
+	launcherControl, launcherChild, err := socketPair()
+	if err != nil {
+		return nil, nil, errors.New("launcher control channel unavailable")
+	}
+	closeLauncherChannels := func() { launcherControl.Close() }
+	cmd := exec.Command("/proc/self/fd/5")
+	cmd.Env, cmd.Dir, cmd.Stdin, cmd.Stdout, cmd.Stderr = append([]string(nil), spec.Environment...), spec.Directory, os.Stdin, os.Stdout, os.Stderr
+	cmd.ExtraFiles = []*os.File{launcherChild, target, self}
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true, Pdeathsig: syscall.SIGKILL}
+	var oldFileSize syscall.Rlimit
+	fileSizeChanged := false
+	if spec.FileSizeLimit != 0 {
+		if err := syscall.Getrlimit(syscall.RLIMIT_FSIZE, &oldFileSize); err != nil {
+			launcherControl.Close()
+			launcherChild.Close()
+			return nil, nil, errors.New("read file-size boundary failed")
+		}
+		limit := oldFileSize
+		if spec.FileSizeLimit < limit.Cur {
+			limit.Cur = spec.FileSizeLimit
+		}
+		if err := syscall.Setrlimit(syscall.RLIMIT_FSIZE, &limit); err != nil {
+			launcherControl.Close()
+			launcherChild.Close()
+			return nil, nil, errors.New("set file-size boundary failed")
+		}
+		fileSizeChanged = true
+	}
+	startErr := cmd.Start()
+	launcherChild.Close()
+	if fileSizeChanged {
+		if err := syscall.Setrlimit(syscall.RLIMIT_FSIZE, &oldFileSize); err != nil {
+			if startErr == nil {
+				_ = cmd.Process.Kill()
+				_ = cmd.Wait()
+			}
+			closeLauncherChannels()
+			return nil, nil, errors.New("restore supervisor file-size limit failed")
+		}
+	}
+	if startErr != nil {
+		closeLauncherChannels()
+		return nil, nil, errors.New("managed launcher clone failed")
+	}
+	if !spec.CgroupInherited {
+		if err := writeCgroupProcess(cgroupFile, cmd.Process.Pid); err != nil {
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			_ = cmd.Wait()
+			closeLauncherChannels()
+			return nil, nil, errors.New("move gated launcher into delegated cgroup failed")
+		}
+		contained, containErr := cgroupDescriptorContainsPID(cgroupFile, cmd.Process.Pid)
+		if containErr != nil || !contained {
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			_ = cmd.Wait()
+			closeLauncherChannels()
+			return nil, nil, errors.New("verify gated launcher cgroup membership failed")
+		}
+		if substitutionFile != nil {
+			replacementMembers, replacementErr := cgroupDescriptorHasMembers(substitutionFile)
+			if replacementErr != nil || replacementMembers {
+				_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+				_ = cmd.Wait()
+				closeLauncherChannels()
+				return nil, nil, errors.New("gated launcher entered substituted cgroup path")
+			}
+		}
+	}
+	if spec.InteractivePTY {
+		if err := unix.IoctlSetPointerInt(0, unix.TIOCSPGRP, cmd.Process.Pid); err != nil {
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			_ = cmd.Wait()
+			closeLauncherChannels()
+			return nil, nil, errors.New("set interactive foreground process group failed")
+		}
+	}
+	launchSpec := spec
+	launchSpec.ParentPID = os.Getpid()
+	if err := authenticateChildStage(launcherControl, internalStageSpec{Stage: "launcher", ParentPID: os.Getpid(), Process: &launchSpec, Self: spec.Self}); err != nil {
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		_ = cmd.Wait()
+		closeLauncherChannels()
+		return nil, nil, errors.New("managed launcher authentication failed")
+	}
+	return cmd, launcherControl, nil
+}
+
 func waitForManagedImage(pid int, expected executableIdentity, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 	for time.Now().Before(deadline) {
@@ -1353,7 +1373,8 @@ func sameExecutable(a, b int) bool {
 
 func parentDeathSignal() syscall.Signal {
 	var sig int32
-	_, _, errno := syscall.RawSyscall(syscall.SYS_PRCTL, prGetParentDeathSig, uintptr(unsafe.Pointer(&sig)), 0)
+	// PR_GET_PDEATHSIG writes one C int; x/sys has no typed getter (ARCH-009).
+	_, _, errno := syscall.RawSyscall(syscall.SYS_PRCTL, prGetParentDeathSig, uintptr(unsafe.Pointer(&sig)), 0) // #nosec G103 -- kernel writes only the live int32 above.
 	if errno != 0 {
 		return 0
 	}
@@ -1662,17 +1683,6 @@ func executableIdentityForFD(file *os.File, expectedPath string) (executableIden
 	return executableIdentity{Path: actualPath, Device: uint64(st.Dev), Inode: st.Ino, Owner: st.Uid, Group: st.Gid, Mode: st.Mode, Size: st.Size, SHA256: hex.EncodeToString(hash.Sum(nil))}, nil
 }
 
-func validateExecutableFD(file *os.File, expected executableIdentity) error {
-	actual, err := executableIdentityForFD(file, expected.Path)
-	if err != nil {
-		return err
-	}
-	if actual != expected {
-		return errors.New("executable device/inode/owner/group/type/mode/size/digest identity changed")
-	}
-	return nil
-}
-
 func descriptorContentIdentity(file *os.File, requireLinked bool) (executableIdentity, error) {
 	var st syscall.Stat_t
 	if err := syscall.Fstat(int(file.Fd()), &st); err != nil {
@@ -1770,7 +1780,8 @@ func execveatFD(fd int, argv, environment []string) error {
 	if err != nil {
 		return err
 	}
-	_, _, errno := unix.RawSyscall6(unix.SYS_EXECVEAT, uintptr(fd), uintptr(unsafe.Pointer(path)), uintptr(unsafe.Pointer(&argvp[0])), uintptr(unsafe.Pointer(&envp[0])), uintptr(unix.AT_EMPTY_PATH), 0)
+	// x/sys has no execveat wrapper; AT_EMPTY_PATH executes the sealed FD (ARCH-009).
+	_, _, errno := unix.RawSyscall6(unix.SYS_EXECVEAT, uintptr(fd), uintptr(unsafe.Pointer(path)), uintptr(unsafe.Pointer(&argvp[0])), uintptr(unsafe.Pointer(&envp[0])), uintptr(unix.AT_EMPTY_PATH), 0) // #nosec G103 -- live NUL-terminated path and argv/env pointer arrays use the Linux execveat ABI.
 	if errno != 0 {
 		return errno
 	}
@@ -1922,6 +1933,8 @@ func installIOUringDenial() error {
 	if _, _, errno := unix.RawSyscall(unix.SYS_PRCTL, prSetNoNewPrivileges, 1, 0); errno != 0 {
 		return fmt.Errorf("set no-new-privileges: %w", errno)
 	}
+	// x/sys has no seccomp wrapper; SockFprog bounds the live filter array (ARCH-009).
+	// #nosec G103 -- Linux SECCOMP_SET_MODE_FILTER copies this typed SockFprog synchronously.
 	if _, _, errno := unix.RawSyscall(unix.SYS_SECCOMP, seccompSetModeFilter, 0, uintptr(unsafe.Pointer(&program))); errno != 0 {
 		return fmt.Errorf("install io_uring seccomp filter: %w", errno)
 	}
@@ -2204,7 +2217,8 @@ func ChildMode(args []string) int {
 		return 0
 	case "io-uring-denied":
 		var params [256]byte
-		_, _, errno := unix.RawSyscall(unix.SYS_IO_URING_SETUP, 1, uintptr(unsafe.Pointer(&params[0])), 0)
+		// x/sys has no io_uring_setup wrapper; this zeroed buffer exceeds the 120-byte Linux io_uring_params ABI (VAL-019).
+		_, _, errno := unix.RawSyscall(unix.SYS_IO_URING_SETUP, 1, uintptr(unsafe.Pointer(&params[0])), 0) // #nosec G103 -- live writable ABI buffer; this child requires EPERM before any ring is created.
 		if os.WriteFile(args[1], []byte(strconv.Itoa(int(errno))), 0600) != nil || errno != syscall.EPERM {
 			return 1
 		}
