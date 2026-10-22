@@ -42,7 +42,11 @@ only the recorded replacements and adds the exact regression. It verifies the
 complete fixed patched checksum before publishing a temporary sibling directory
 with Linux `renameat2(RENAME_NOREPLACE)`. Unsupported publication fails closed.
 A valid existing tree is verified and reused; altered source, extra files,
-links or an unrelated directory fail without repair or overwrite. Interrupted
+links or an unrelated directory fail without repair or overwrite.
+Existing-tree verification admits only authenticated file and parent paths before
+descending, and bounds each content read and the aggregate source bytes. Corrupt
+directory depth or oversized source cannot bypass those limits.
+Interrupted
 preparation publishes no partial tree; hard termination may leave an unreferenced
 private `.go-toml-*` staging directory. Packaged inputs are checked on every
 invocation, including reuse; default verification is read-only. This is build

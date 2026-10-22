@@ -133,6 +133,49 @@ class PinTests(unittest.TestCase):
         (self.fork / "extra-empty").mkdir()
         self.refuse()
 
+    def test_unknown_directory_is_rejected_before_descent(self):
+        unexpected = self.fork / "PrivateDirectoryMarker"
+        unexpected.mkdir()
+        original = pin.os.scandir
+        def scan(path):
+            self.assertNotEqual(Path(path), unexpected, "descended into unknown source directory")
+            return original(path)
+        error = io.StringIO()
+        with mock.patch.object(pin.os, "scandir", side_effect=scan), contextlib.redirect_stderr(error):
+            self.assertEqual(pin.main(["--root", str(self.root), "--go", str(self.go)]), 1)
+        self.assertEqual(error.getvalue(), "parser pin: verification failed\n")
+        self.assertTrue(unexpected.is_dir())
+
+    def test_oversized_source_is_rejected_before_read(self):
+        target = self.fork / "unmarshaler.go"
+        with target.open("wb") as stream:
+            stream.truncate(pin.MAX_ARCHIVE_FILE + 1)
+        original = pin.read_regular
+        def read(path, *args):
+            self.assertNotEqual(Path(path), target, "read oversized source content")
+            return original(path, *args)
+        with mock.patch.object(pin, "read_regular", side_effect=read):
+            self.refuse()
+        self.assertEqual(target.stat().st_size, pin.MAX_ARCHIVE_FILE + 1)
+
+    def test_regular_read_enforces_content_limit(self):
+        target = self.base / "bounded-input"
+        target.write_bytes(b"12345")
+        self.assertEqual(pin.read_regular(target, 5), b"12345")
+        with self.assertRaises(pin.PinError):
+            pin.read_regular(target, 4)
+
+    def test_tree_content_budget_accepts_limit_and_rejects_excess(self):
+        directory = self.base / "bounded-tree"
+        directory.mkdir()
+        (directory / "a").write_bytes(b"1234")
+        (directory / "b").write_bytes(b"1234")
+        with mock.patch.object(pin, "MAX_ARCHIVE_FILE", 4), mock.patch.object(pin, "MAX_ARCHIVE_TOTAL", 8):
+            self.assertEqual(len(pin.tree_files(directory, {"a", "b"})), 2)
+            (directory / "c").write_bytes(b"x")
+            with self.assertRaises(pin.PinError):
+                pin.tree_files(directory, {"a", "b", "c"})
+
     def test_altered_original_file(self):
         (self.fork / "unstable/parser.go").write_text("package unstable\n")
         self.refuse()

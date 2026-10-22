@@ -99,8 +99,11 @@ def no_links(path, directory=False):
     return path
 
 
-def read_regular(path):
-    return no_links(path).read_bytes()
+def read_regular(path, limit=MAX_ARCHIVE_FILE):
+    with no_links(path).open("rb") as source:
+        data = source.read(limit + 1)
+    require(len(data) <= limit, "parser pin file size limit")
+    return data
 
 
 def unique_object(pairs):
@@ -153,34 +156,38 @@ def manifest(root):
 
 
 def fork_files(root):
-    return tree_files(root / FORK_DIR)
+    return tree_files(root / FORK_DIR, set(manifest(root)["upstream"]["files"]).union(ADDED_TESTS))
 
 
-def tree_files(directory):
+def tree_files(directory, expected):
     directory = no_links(directory, directory=True)
-    files = {}
-    directories = set()
-
-    def visit(path):
-        with os.scandir(path) as entries:
-            for entry in entries:
-                require(not entry.is_symlink(), "symlink in parser fork")
-                if entry.is_dir(follow_symlinks=False):
-                    directories.add(Path(entry.path).relative_to(directory).as_posix())
-                    visit(Path(entry.path))
-                else:
-                    require(entry.is_file(follow_symlinks=False), "nonregular parser fork entry")
-                    name = Path(entry.path).relative_to(directory).as_posix()
-                    require(safe_name(name), "invalid parser fork path")
-                    files[name] = sha256(read_regular(entry.path))
-
-    visit(directory)
-    parents = set()
-    for name in files:
+    files, directories, parents = {}, set(), set()
+    for name in expected:
         parent = Path(name).parent
         while parent != Path("."):
             parents.add(parent.as_posix())
             parent = parent.parent
+    total = 0
+
+    def visit(path):
+        nonlocal total
+        with os.scandir(path) as entries:
+            for entry in entries:
+                require(not entry.is_symlink(), "symlink in parser fork")
+                name = Path(entry.path).relative_to(directory).as_posix()
+                if entry.is_dir(follow_symlinks=False):
+                    require(name in parents, "unexpected parser fork directory")
+                    directories.add(name)
+                    visit(Path(entry.path))
+                else:
+                    require(name in expected and entry.is_file(follow_symlinks=False), "invalid parser fork entry")
+                    limit = min(MAX_ARCHIVE_FILE, MAX_ARCHIVE_TOTAL - total)
+                    require(entry.stat(follow_symlinks=False).st_size <= limit, "parser fork size limit")
+                    data = read_regular(entry.path, limit)
+                    total += len(data)
+                    files[name] = sha256(data)
+
+    visit(directory)
     require(directories == parents, "extra empty parser fork directory")
     return files
 
@@ -217,7 +224,7 @@ def archive_files(data, upstream):
 def packaged_files(root, value):
     archive = no_links(root / ARCHIVE_FILE)
     require(archive.stat().st_size == ARCHIVE_BYTES, "parser archive size mismatch")
-    files = archive_files(archive.read_bytes(), value["upstream"]["files"])
+    files = archive_files(read_regular(archive, ARCHIVE_BYTES), value["upstream"]["files"])
     require(sha256(read_regular(root / LICENSE_FILE)) == value["upstream"]["files"]["LICENSE"], "parser license mismatch")
     regression = read_regular(root / REGRESSION_FILE)
     require(sha256(regression) == REGRESSION_SHA256, "parser regression mismatch")
@@ -268,7 +275,7 @@ def prepare(root):
     temporary = Path(tempfile.mkdtemp(prefix=".go-toml-", dir=root / "third_party"))
     try:
         write_staged(temporary, files)
-        require(hash1(tree_files(temporary), MODULE + "@" + VERSION + "/") == PATCHED_MODULE_SUM,
+        require(hash1(tree_files(temporary, files), MODULE + "@" + VERSION + "/") == PATCHED_MODULE_SUM,
                 "staged parser checksum mismatch")
         publish_noreplace(temporary, destination)
     finally:
