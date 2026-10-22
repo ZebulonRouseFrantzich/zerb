@@ -346,6 +346,7 @@ class FilesystemTests(unittest.TestCase):
         commands = dict(cloud.commands(tools, self.root, self.root))
         self.assertEqual(set(commands), set(cloud.REQUIRED_CHECKS))
         self.assertEqual(commands["proof-race"], ["/measured/go", "test", "-race", "-count=1", "./internal/proof/..."])
+        self.assertIn("./internal/paths", commands["foundation-race"])
         self.assertIn("-trimpath", commands["release-build"])
         self.assertEqual(commands["release-build"][-1], "./cmd/zerb")
         self.assertIn("test_*.py", commands["python-boundaries"])

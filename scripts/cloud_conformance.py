@@ -365,7 +365,7 @@ def commands(tools, repo, temp):
         ("python-boundaries", [tools["python3"]["identity"]["path"], "-m", "unittest", "discover",
                                "-s", "scripts", "-p", "test_*.py"]),
         ("foundation-imports", [go, "run", "./tools/importcheck"]),
-        ("foundation-race", [go, "test", "-race", "-count=1", "./internal/profile", "./internal/receipt", "./tools/importcheck"]),
+        ("foundation-race", [go, "test", "-race", "-count=1", "./internal/paths", "./internal/profile", "./internal/receipt", "./tools/importcheck"]),
         ("parser-pin", [tools["python3"]["identity"]["path"], "scripts/check_parser_pin.py", "--go", go]),
         ("parser-upstream-race", [go, "-C", "third_party/go-toml", "test", "-race", "-count=1", "./..."]),
     )
