@@ -31,6 +31,15 @@ jobs:
       - name: Run vet
         run: go vet ./...
 
+      - name: Verify patched parser identity
+        run: python3 scripts/check_parser_pin.py --go "$(command -v go)"
+
+      - name: Test parser pin and cloud boundaries
+        run: python3 -B -m unittest discover -s scripts -p 'test_*.py'
+
+      - name: Test patched parser upstream corpus
+        run: go -C third_party/go-toml test -race -count=1 ./...
+
       - name: Run tests
         run: go test -race -coverprofile=coverage.out ./...
 

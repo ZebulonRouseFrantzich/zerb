@@ -1090,7 +1090,7 @@ func candidateTemplate(profile string) candidateReferenceRecord {
 		HomeSources: []string{"profiles/base/home", "profiles/" + profile + "/home"},
 		Targets:     []string{"managed/file"},
 		Executables: []receiptExecutable{executable("bash", "5.3.15"), executable("chezmoi", "v2.70.5-zerb.1"), executable("git", "2.55.0"), executable("mise", "2026.7.17")},
-		Parser:      receiptParser{Schema: 1, Module: "github.com/pelletier/go-toml/v2", Version: "v2.4.3", ModuleSum: "h1:GTRvJQutkOSftxIFD5xw9aepkYNuPWmVJpffdDPYVpY=", GoModSum: "h1:2gIqNv+qfxSVS7cM2xJQKtLSTLUE9V8t9Stt+h56mCY=", OriginCommit: "071a36c2a57244f2e70369bfc69889fda2a1f60f"},
+		Parser:      receiptParser{Schema: 1, Module: "github.com/pelletier/go-toml/v2", Version: "v2.4.3-zerb.1", ModuleSum: "h1:5hB+HyHqViZpFF0bpFFUYMD0v4y+9w/rtDABm6PmSIc=", GoModSum: "h1:2gIqNv+qfxSVS7cM2xJQKtLSTLUE9V8t9Stt+h56mCY=", OriginCommit: "071a36c2a57244f2e70369bfc69889fda2a1f60f"},
 		Policy:      receiptPolicy{Schema: 1, Domain: "zerb.policy", ObjectModes: []string{"directory", "executable", "file"}, Declarations: []string{"home", "mise.lock", "mise.toml", "profile.toml"}, TemplateActions: []string{"if-false", "if-true", "literal-text"}, ProcessClasses: []string{"bash-shell", "chezmoi-static", "git-public", "mise-core-node"}, PolicyIDs: []string{"zerb.chezmoi-static.v2", "zerb.destination-recheck.v1", "zerb.execenv.v4", "zerb.git-public.v3", "zerb.lifecycle.v6", "zerb.mise-core-node.v3"}, TargetMapperExecutableID: "chezmoi", ProviderFree: true, HostFactIndependent: true, DestinationRecheck: true, ExactReapplyOnly: true},
 	}
 }

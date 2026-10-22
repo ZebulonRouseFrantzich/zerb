@@ -22,9 +22,15 @@ Every implementation and review claim must cite applicable requirement IDs. Reso
 - Race suite: `go test -race ./...`
 - Static analysis: `go vet ./...`
 - Lint: `golangci-lint run`
+- Replacement import gate: `go run ./tools/importcheck`
+- Current foundation race gate: `go test -race -count=1 ./internal/profile ./internal/receipt ./tools/importcheck`
+- Local parser pin: `python3 scripts/check_parser_pin.py --go /absolute/path/to/pinned/go`
+- Patched parser upstream race gate: `go -C third_party/go-toml test -race -count=1 ./...`
 - Release-shaped build: `go build -trimpath -o bin/zerb ./cmd/zerb`
 
 Run the narrowest check that proves the change while iterating, then the phase-required gate once after integration. Do not weaken a gate to match a baseline failure. Tests and proof harnesses must use disposable HOME/XDG roots and must never address the developer's real home, credentials, manager state, destinations, agents, or configuration.
+
+The owner-approved `third_party/go-toml` fork drops all decoder-owned storage before pooling. Its exact source is pinned in `third_party/go-toml.provenance.json`; `go mod verify` does not check local replacements. Run the separate pin check and upstream tests. Changing the fork or its identity requires review; never automatically rewrite its pin. The `Parser.OriginCommit` field denotes the upstream base, while `ModuleSum` binds the complete patched source. Preserve its license and unchanged upstream files.
 
 ## Go implementation rules
 

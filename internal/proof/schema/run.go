@@ -41,7 +41,7 @@ func Run(ctx context.Context, cfg Config) (Result, error) {
 	}
 	result := Result{
 		Version:             ResultVersion,
-		Parser:              ParserIdentity{Module: "github.com/pelletier/go-toml/v2", Version: "v2.4.3", ModuleSum: "h1:GTRvJQutkOSftxIFD5xw9aepkYNuPWmVJpffdDPYVpY=", GoModSum: "h1:2gIqNv+qfxSVS7cM2xJQKtLSTLUE9V8t9Stt+h56mCY=", OriginCommit: "071a36c2a57244f2e70369bfc69889fda2a1f60f"},
+		Parser:              ParserIdentity{Module: "github.com/pelletier/go-toml/v2", Version: "v2.4.3-zerb.1", ModuleSum: "h1:5hB+HyHqViZpFF0bpFFUYMD0v4y+9w/rtDABm6PmSIc=", GoModSum: "h1:2gIqNv+qfxSVS7cM2xJQKtLSTLUE9V8t9Stt+h56mCY=", OriginCommit: "071a36c2a57244f2e70369bfc69889fda2a1f60f"},
 		Requirements:        []string{"PC-010", "PC-011", "PC-014", "PC-016", "PC-040", "PC-041", "PC-042", "PC-043", "PC-050", "PC-060", "PC-070", "PC-071", "ARCH-003", "ARCH-004", "ARCH-015", "ARCH-020", "ARCH-024", "ARCH-028", "ARCH-029", "ARCH-030", "ARCH-031", "VAL-002", "VAL-003", "VAL-004", "VAL-005", "VAL-013", "VAL-014", "VAL-015", "VAL-016", "VAL-034", "VAL-035", "VAL-038", "VAL-039", "VAL-040"},
 		Bounds:              bounds(),
 		RejectedAssumption:  "A disposable parser/model harness, an observed userspace schedule, or a passing case is product implementation, installed-binary evidence, kernel-locking proof, or a support claim.",
