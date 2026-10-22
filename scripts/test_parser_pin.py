@@ -2,16 +2,20 @@
 
 import contextlib
 import copy
+import errno
 import io
 import json
 import os
 from pathlib import Path
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
 import unittest
 from unittest import mock
+import warnings
+import zipfile
 
 sys.dont_write_bytecode = True
 import check_parser_pin as pin
@@ -53,11 +57,13 @@ class PinTests(unittest.TestCase):
         self.root = self.base / "repository"
         self.root.mkdir()
         self.fork = self.root / pin.FORK_DIR
-        shutil.copytree(REPOSITORY / pin.FORK_DIR, self.fork)
-        for name in (pin.MANIFEST_FILE, "third_party/" + pin.PATCH_FILE):
+        (self.root / "third_party").mkdir()
+        for name in (pin.MANIFEST_FILE, "third_party/" + pin.PATCH_FILE, pin.ARCHIVE_FILE,
+                     pin.REGRESSION_FILE, pin.LICENSE_FILE):
             shutil.copyfile(REPOSITORY / name, self.root / name)
         self.manifest_path = self.root / pin.MANIFEST_FILE
         self.provenance = json.loads(self.manifest_path.read_bytes())
+        pin.prepare(self.root)
         self.mod = self.root / "go.mod"
         self.mod.write_text("module example.org/disposable\n\ngo 1.24.0\n"
                             f"require {pin.MODULE} {pin.VERSION}\n"
@@ -345,6 +351,239 @@ class PinTests(unittest.TestCase):
         self.assertEqual(status, 1)
         self.assertEqual(output.getvalue(), "")
         self.assertEqual(error.getvalue(), "parser pin: verification failed\n")
+
+    def test_default_check_does_not_prepare(self):
+        shutil.rmtree(self.fork)
+        error = io.StringIO()
+        with contextlib.redirect_stderr(error):
+            self.assertEqual(pin.main(["--root", str(self.root), "--go", str(self.go)]), 1)
+        self.assertFalse(self.fork.exists())
+        self.assertEqual(error.getvalue(), "parser pin: verification failed\n")
+
+    def test_prepare_relative_go_fails_before_materialization(self):
+        shutil.rmtree(self.fork)
+        error = io.StringIO()
+        with contextlib.redirect_stderr(error):
+            self.assertEqual(pin.main(["--prepare", "--root", str(self.root), "--go", "go"]), 1)
+        self.assertFalse(self.fork.exists())
+        self.assertEqual(error.getvalue(), "parser pin: verification failed\n")
+
+    def test_explicit_prepare_cli_materializes_exact_pin(self):
+        shutil.rmtree(self.fork)
+        output, error = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(output), contextlib.redirect_stderr(error):
+            self.assertEqual(pin.main(["--prepare", "--root", str(self.root), "--go", str(self.go)]), 0)
+        self.assertEqual(error.getvalue(), "")
+        files = pin.fork_files(self.root)
+        self.assertEqual(len(files), 114)
+        self.assertEqual(pin.hash1(files, pin.MODULE + "@" + pin.VERSION + "/"), pin.PATCHED_MODULE_SUM)
+        self.assertEqual(stat.S_IMODE(self.fork.stat().st_mode), 0o700)
+        self.assertTrue(all(stat.S_IMODE(path.stat().st_mode) == (0o700 if path.is_dir() else 0o600)
+                            for path in self.fork.rglob("*")))
+
+    def test_prepare_valid_existing_tree_is_noop(self):
+        before = {path.relative_to(self.fork): (path.stat().st_ino, path.stat().st_mtime_ns)
+                  for path in self.fork.rglob("*")}
+        with mock.patch.object(pin, "publish_noreplace", side_effect=AssertionError("unexpected publication")):
+            pin.prepare(self.root)
+        after = {path.relative_to(self.fork): (path.stat().st_ino, path.stat().st_mtime_ns)
+                 for path in self.fork.rglob("*")}
+        self.assertEqual(before, after)
+
+    def test_prepare_rejects_existing_tampered_tree_without_changes(self):
+        target = self.fork / "unmarshaler.go"
+        target.write_text("existing tampered content")
+        with self.assertRaises(pin.PinError):
+            pin.prepare(self.root)
+        self.assertEqual(target.read_text(), "existing tampered content")
+        self.assertEqual(list((self.root / "third_party").glob(".go-toml-*")), [])
+
+    def test_prepare_rejects_existing_extra_file_without_changes(self):
+        target = self.fork / "extra"
+        target.write_text("existing extra content")
+        with self.assertRaises(pin.PinError):
+            pin.prepare(self.root)
+        self.assertEqual(target.read_text(), "existing extra content")
+
+    def test_prepare_rejects_existing_symlink_without_changes(self):
+        shutil.rmtree(self.fork)
+        outside = self.base / "outside"
+        outside.mkdir()
+        sentinel = outside / "sentinel"
+        sentinel.write_text("preserve")
+        self.fork.symlink_to(outside, target_is_directory=True)
+        with self.assertRaises(pin.PinError):
+            pin.prepare(self.root)
+        self.assertTrue(self.fork.is_symlink())
+        self.assertEqual(sentinel.read_text(), "preserve")
+
+    def test_archive_tamper_rejects_before_zip_parser(self):
+        archive = self.root / pin.ARCHIVE_FILE
+        content = bytearray(archive.read_bytes())
+        content[len(content) // 2] ^= 1
+        archive.write_bytes(content)
+        with mock.patch.object(pin.zipfile, "ZipFile", side_effect=AssertionError("parsed unauthenticated bytes")):
+            self.refuse()
+
+    def test_prepare_rejects_tampered_external_inputs_without_publication(self):
+        shutil.rmtree(self.fork)
+        for name in (pin.ARCHIVE_FILE, "third_party/" + pin.PATCH_FILE, pin.REGRESSION_FILE, pin.LICENSE_FILE):
+            with self.subTest(name=name):
+                path = self.root / name
+                original = path.read_bytes()
+                path.write_bytes(original + b"tampered")
+                with self.assertRaises(pin.PinError):
+                    pin.prepare(self.root)
+                self.assertFalse(self.fork.exists())
+                self.assertEqual(list((self.root / "third_party").glob(".go-toml-*")), [])
+                path.write_bytes(original)
+
+    def test_existing_tree_cannot_hide_corrupt_packaged_inputs(self):
+        for name in (pin.ARCHIVE_FILE, "third_party/" + pin.PATCH_FILE, pin.REGRESSION_FILE, pin.LICENSE_FILE):
+            with self.subTest(name=name):
+                path = self.root / name
+                original = path.read_bytes()
+                path.write_bytes(original + b"tampered")
+                self.refuse()
+                with self.assertRaises(pin.PinError):
+                    pin.prepare(self.root)
+                self.assertTrue(self.fork.is_dir())
+                path.write_bytes(original)
+
+    def test_prepare_rejects_symlink_external_inputs(self):
+        shutil.rmtree(self.fork)
+        for name in (pin.ARCHIVE_FILE, pin.REGRESSION_FILE, pin.LICENSE_FILE):
+            with self.subTest(name=name):
+                path = self.root / name
+                original = path.read_bytes()
+                outside = self.base / "outside-input"
+                outside.write_bytes(original)
+                path.unlink()
+                path.symlink_to(outside)
+                with self.assertRaises(pin.PinError):
+                    pin.prepare(self.root)
+                self.assertFalse(self.fork.exists())
+                path.unlink()
+                path.write_bytes(original)
+
+    def test_prepare_interruption_cleans_owned_staging(self):
+        shutil.rmtree(self.fork)
+        unrelated = self.root / "third_party" / ".go-toml-unrelated"
+        unrelated.mkdir()
+        (unrelated / "sentinel").write_bytes(b"preserve")
+        original = pin.write_staged
+        def interrupted(directory, files):
+            original(directory, {"partial": b"partial"})
+            raise KeyboardInterrupt
+        with mock.patch.object(pin, "write_staged", side_effect=interrupted):
+            with self.assertRaises(KeyboardInterrupt):
+                pin.prepare(self.root)
+        self.assertFalse(self.fork.exists())
+        self.assertEqual(list((self.root / "third_party").glob(".go-toml-*")), [unrelated])
+        self.assertEqual((unrelated / "sentinel").read_bytes(), b"preserve")
+
+    def test_prepare_rechecks_staged_bytes_before_publication(self):
+        shutil.rmtree(self.fork)
+        original = pin.write_staged
+        def corrupt(directory, files):
+            original(directory, files)
+            (directory / "unmarshaler.go").write_bytes(b"corrupt")
+        with mock.patch.object(pin, "write_staged", side_effect=corrupt):
+            with self.assertRaises(pin.PinError):
+                pin.prepare(self.root)
+        self.assertFalse(self.fork.exists())
+        self.assertEqual(list((self.root / "third_party").glob(".go-toml-*")), [])
+
+    def test_prepare_unsupported_publication_fails_closed(self):
+        shutil.rmtree(self.fork)
+        with mock.patch.object(pin.sys, "platform", "unsupported"):
+            with self.assertRaises(pin.PinError):
+                pin.prepare(self.root)
+        self.assertFalse(self.fork.exists())
+        self.assertEqual(list((self.root / "third_party").glob(".go-toml-*")), [])
+
+    def test_prepare_libc_without_renameat2_fails_closed(self):
+        shutil.rmtree(self.fork)
+        with mock.patch.object(pin.ctypes, "CDLL", return_value=object()):
+            with self.assertRaises(pin.PinError):
+                pin.prepare(self.root)
+        self.assertFalse(self.fork.exists())
+        self.assertEqual(list((self.root / "third_party").glob(".go-toml-*")), [])
+
+    def test_prepare_kernel_without_renameat2_fails_closed(self):
+        shutil.rmtree(self.fork)
+        library = mock.Mock()
+        library.renameat2.return_value = -1
+        with mock.patch.object(pin.ctypes, "CDLL", return_value=library), mock.patch.object(pin.ctypes, "get_errno", return_value=errno.ENOSYS):
+            with self.assertRaises(pin.PinError):
+                pin.prepare(self.root)
+        self.assertFalse(self.fork.exists())
+        self.assertEqual(list((self.root / "third_party").glob(".go-toml-*")), [])
+
+    def test_prepare_does_not_clobber_concurrent_empty_directory(self):
+        shutil.rmtree(self.fork)
+        original = pin.publish_noreplace
+        def competing(directory, destination):
+            destination.mkdir()
+            original(directory, destination)
+        with mock.patch.object(pin, "publish_noreplace", side_effect=competing):
+            with self.assertRaises(pin.PinError):
+                pin.prepare(self.root)
+        self.assertTrue(self.fork.is_dir())
+        self.assertEqual(list(self.fork.iterdir()), [])
+        self.assertEqual(list((self.root / "third_party").glob(".go-toml-*")), [])
+
+    def test_unsafe_archive_entries_are_rejected(self):
+        data = (self.root / pin.ARCHIVE_FILE).read_bytes()
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            originals = [(entry.filename, archive.read(entry)) for entry in archive.infolist()]
+        prefix = pin.MODULE + "@" + pin.UPSTREAM_VERSION + "/"
+        variants = ("traversal", "absolute", "prefix", "duplicate", "symlink", "directory", "missing", "extra", "oversized")
+        for variant in variants:
+            with self.subTest(variant=variant):
+                rows = list(originals)
+                name, content = rows[0]
+                mode = 0
+                if variant == "traversal":
+                    name = prefix + "../outside"
+                elif variant == "absolute":
+                    name = prefix + "/outside"
+                elif variant == "prefix":
+                    name = "other@v1.0.0/" + name[len(prefix):]
+                elif variant == "duplicate":
+                    name = rows[1][0]
+                elif variant == "symlink":
+                    mode = stat.S_IFLNK | 0o777
+                elif variant == "directory":
+                    name += "/"
+                elif variant == "missing":
+                    rows.pop()
+                elif variant == "extra":
+                    rows.append((prefix + "extra", b"extra"))
+                elif variant == "oversized":
+                    content = b"x" * (pin.MAX_ARCHIVE_FILE + 1)
+                rows[0] = name, content
+                buffer = io.BytesIO()
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", UserWarning)
+                    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                        for index, (entry_name, entry_content) in enumerate(rows):
+                            entry = zipfile.ZipInfo(entry_name)
+                            if index == 0:
+                                entry.external_attr = mode << 16
+                            archive.writestr(entry, entry_content)
+                altered = buffer.getvalue()
+                # Isolate structural checks after the production authentication
+                # boundary; no forged archive is accepted by the real pin.
+                with mock.patch.object(pin, "ARCHIVE_SHA256", pin.sha256(altered)), mock.patch.object(pin, "ARCHIVE_BYTES", len(altered)):
+                    with self.assertRaises(pin.PinError):
+                        pin.archive_files(altered, self.provenance["upstream"]["files"])
+
+    def test_archive_aggregate_limit(self):
+        data = (self.root / pin.ARCHIVE_FILE).read_bytes()
+        with mock.patch.object(pin, "MAX_ARCHIVE_TOTAL", 1):
+            with self.assertRaises(pin.PinError):
+                pin.archive_files(data, self.provenance["upstream"]["files"])
 
 
 if __name__ == "__main__":

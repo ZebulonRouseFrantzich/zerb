@@ -9,8 +9,11 @@ The owner approved reviewed non-release Phase 2–4 implementation after the sep
 Use the activated Go 1.24 development tools and configured linter. In this linked cloud worktree use process-scoped `GOFLAGS='-mod=readonly -buildvcs=false'` with `/workspace/.devtools/activate.sh`; the VCS exception is local build plumbing, not a host qualification or trust-setting change. Use disposable build caches outside the repository and real HOME/XDG graph. Supply an output path outside those protected roots as a private operational report:
 
 ```sh
+python3 scripts/check_parser_pin.py --prepare --go "$(command -v go)"
 python3 scripts/cloud_conformance.py --output "$CLOUD_REPORT"
 ```
+
+Preparation reconstructs the ignored temporary TOML dependency offline before source capture; the cloud collector and its inventory-only mode remain read-only with respect to source. The complete expanded input remains included in the report's before/after identity. A fresh checkout needs this step before any Go command; see the [packaging and upstream-reversion procedure](../../third_party/README-go-toml.md).
 
 Separately run `go run ./tools/roadmapcheck` for roadmap definitions, references and local links. Its [documented scope](../../tools/roadmapcheck/README.md) is structural only; it grants no phase admission or qualification. Historical warnings in the append-only ledger remain visible without rewriting prior observations.
 

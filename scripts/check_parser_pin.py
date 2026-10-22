@@ -1,22 +1,29 @@
 #!/usr/bin/env python3
-"""Read-only PC-042 parser source/selection check; not host qualification.
+"""PC-042 parser source/selection check; not host qualification.
 
 The supplied Go executable must already be verified by the calling development
 gate. This routine checker rejects static symlinks, but does not promise a
-filesystem sandbox against concurrent hostile replacement. It never updates pins.
+filesystem sandbox against concurrent hostile replacement. The default is
+read-only. Explicit --prepare materializes an absent local fork offline; atomic
+no-clobber publication requires Linux renameat2. It never updates pins.
 """
 
 import argparse
 import base64
+import ctypes
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
 import re
 import shlex
+import shutil
 import stat
 import subprocess
 import sys
+import tempfile
+import zipfile
 
 
 MODULE = "github.com/pelletier/go-toml/v2"
@@ -33,6 +40,13 @@ PATCHED_SHA256 = "9203be82b3553d65b2eeecdb5b14b4e07729176792000d1c2359ff6b7a357c
 ADDED_TESTS = ["decoder_pool_release_test.go"]
 MANIFEST_FILE = "third_party/go-toml.provenance.json"
 FORK_DIR = "third_party/go-toml"
+ARCHIVE_FILE = "third_party/go-toml-v2.4.3.zip"
+REGRESSION_FILE = "third_party/go-toml-decoder_pool_release_test.go.txt"
+LICENSE_FILE = "third_party/go-toml.LICENSE"
+REGRESSION_SHA256 = "fb042d9ee8293827f25b6092fc7b9c33807991d7fd706439ffe4c9a9cf9f5efc"
+ARCHIVE_BYTES = 1_025_455
+MAX_ARCHIVE_FILE = 1 << 20
+MAX_ARCHIVE_TOTAL = 2 << 20
 HEX = re.compile(r"[0-9a-f]{64}\Z")
 
 
@@ -139,7 +153,11 @@ def manifest(root):
 
 
 def fork_files(root):
-    directory = no_links(root / FORK_DIR, directory=True)
+    return tree_files(root / FORK_DIR)
+
+
+def tree_files(directory):
+    directory = no_links(directory, directory=True)
     files = {}
     directories = set()
 
@@ -165,6 +183,97 @@ def fork_files(root):
             parent = parent.parent
     require(directories == parents, "extra empty parser fork directory")
     return files
+
+
+def archive_files(data, upstream):
+    # Authenticate the compressed bytes before invoking the ZIP parser.
+    require(len(data) == ARCHIVE_BYTES and sha256(data) == ARCHIVE_SHA256, "parser archive checksum mismatch")
+    prefix = MODULE + "@" + UPSTREAM_VERSION + "/"
+    files, total = {}, 0
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as archive:
+            require(len(archive.infolist()) == 113, "parser archive entry count mismatch")
+            for entry in archive.infolist():
+                require(entry.filename.startswith(prefix), "parser archive prefix mismatch")
+                name = entry.filename[len(prefix):]
+                mode = entry.external_attr >> 16
+                require(safe_name(name) and name in upstream and name not in files
+                        and not entry.is_dir() and stat.S_IFMT(mode) in (0, stat.S_IFREG)
+                        and not entry.external_attr & 0x10
+                        and not entry.flag_bits & 1
+                        and entry.compress_type in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED)
+                        and 0 <= entry.file_size <= MAX_ARCHIVE_FILE, "invalid parser archive entry")
+                total += entry.file_size
+                require(total <= MAX_ARCHIVE_TOTAL, "parser archive size limit")
+                content = archive.read(entry)
+                require(len(content) == entry.file_size and sha256(content) == upstream[name], "parser archive file checksum mismatch")
+                files[name] = content
+    except (zipfile.BadZipFile, RuntimeError, NotImplementedError):
+        raise PinError("invalid parser archive") from None
+    require(set(files) == set(upstream), "parser archive file set mismatch")
+    return files
+
+
+def packaged_files(root, value):
+    archive = no_links(root / ARCHIVE_FILE)
+    require(archive.stat().st_size == ARCHIVE_BYTES, "parser archive size mismatch")
+    files = archive_files(archive.read_bytes(), value["upstream"]["files"])
+    require(sha256(read_regular(root / LICENSE_FILE)) == value["upstream"]["files"]["LICENSE"], "parser license mismatch")
+    regression = read_regular(root / REGRESSION_FILE)
+    require(sha256(regression) == REGRESSION_SHA256, "parser regression mismatch")
+    # These two literal replacements are the reviewed, checksum-bound patch.
+    # No general patch interpreter or authored program is executed.
+    old = b"// decoderPool recycles decoders (and their internal buffers: parser arena,\n// seen-tracker entries, scratch buffers) across calls to Unmarshal and\n// Decode.\n"
+    new = b"// decoderPool reuses only decoder shells; released decoders retain no input\n// references or input-dependent backing storage.\n"
+    body = files["unmarshaler.go"]
+    require(body.count(old) == 1 and body.count(b"func putDecoder(d *decoder) {\n") == 1, "parser patch context mismatch")
+    files["unmarshaler.go"] = body.replace(old, new, 1).replace(b"func putDecoder(d *decoder) {\n", b"func putDecoder(d *decoder) {\n\t*d = decoder{}\n", 1)
+    require(sha256(files["unmarshaler.go"]) == PATCHED_SHA256, "parser patch result mismatch")
+    files[ADDED_TESTS[0]] = regression
+    require(hash1({name: sha256(data) for name, data in files.items()}, MODULE + "@" + VERSION + "/") == PATCHED_MODULE_SUM,
+            "packaged parser checksum mismatch")
+    return files
+
+
+def publish_noreplace(source, destination):
+    require(sys.platform == "linux", "atomic parser preparation requires Linux")
+    library = ctypes.CDLL(None, use_errno=True)
+    rename = getattr(library, "renameat2", None)
+    require(rename is not None, "atomic parser preparation unavailable")
+    rename.argtypes = (ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint)
+    rename.restype = ctypes.c_int
+    if rename(-100, os.fsencode(source), -100, os.fsencode(destination), 1) != 0:
+        raise PinError("atomic parser publication failed") from OSError(ctypes.get_errno(), "renameat2")
+
+
+def write_staged(directory, files):
+    for name, data in files.items():
+        path = directory
+        for part in Path(name).parts[:-1]:
+            path /= part
+            path.mkdir(mode=0o700, exist_ok=True)
+        descriptor = os.open(directory / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(descriptor, "wb") as output:
+            output.write(data)
+
+
+def prepare(root):
+    root = no_links(root, directory=True)
+    value = manifest(root)
+    files = packaged_files(root, value)
+    destination = root / FORK_DIR
+    if os.path.lexists(destination):
+        verify_fork(root, value)
+        return
+    temporary = Path(tempfile.mkdtemp(prefix=".go-toml-", dir=root / "third_party"))
+    try:
+        write_staged(temporary, files)
+        require(hash1(tree_files(temporary), MODULE + "@" + VERSION + "/") == PATCHED_MODULE_SUM,
+                "staged parser checksum mismatch")
+        publish_noreplace(temporary, destination)
+    finally:
+        if temporary.exists():
+            shutil.rmtree(temporary)
 
 
 def mod_lines(data):
@@ -247,9 +356,7 @@ def effective_selection(root, go):
             and no_links(selected["Dir"], directory=True) == expected, "effective parser directory mismatch")
 
 
-def check(root, go):
-    root = no_links(root, directory=True)
-    value = manifest(root)
+def verify_fork(root, value):
     files = fork_files(root)
     upstream = value["upstream"]["files"]
     require(set(files) == set(upstream).union(ADDED_TESTS), "parser fork file set mismatch")
@@ -259,6 +366,13 @@ def check(root, go):
     require(hash1({"go.mod": files["go.mod"]}) == GO_MOD_SUM, "parser go.mod checksum mismatch")
     modules = [words for words in mod_lines(read_regular(root / FORK_DIR / "go.mod")) if words and words[0] == "module"]
     require(modules == [["module", MODULE]], "parser module path mismatch")
+
+
+def check(root, go):
+    root = no_links(root, directory=True)
+    value = manifest(root)
+    packaged_files(root, value)
+    verify_fork(root, value)
     root_pin(root)
     effective_selection(root, go)
 
@@ -267,10 +381,14 @@ def main(argv=None):
     arguments = Arguments(prog="check_parser_pin", description=__doc__)
     arguments.add_argument("--go", required=True, help="absolute Go executable already verified by the caller")
     arguments.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1], help="repository root")
+    arguments.add_argument("--prepare", action="store_true", help="offline materialization of an absent fork (Linux only)")
     args = arguments.parse_args(argv)
     try:
+        require(Path(args.go).is_absolute(), "Go executable must be absolute")
+        if args.prepare:
+            prepare(args.root)
         check(args.root, args.go)
-    except (PinError, OSError, UnicodeError):
+    except (PinError, OSError, UnicodeError, KeyboardInterrupt):
         # Never expose authored manifest/path/module data or child output.
         print("parser pin: verification failed", file=sys.stderr)
         return 1

@@ -17,6 +17,7 @@ Every implementation and review claim must cite applicable requirement IDs. Reso
 ## Toolchain and commands
 
 - **Go version:** Go 1.24.
+- Before Go checks/builds in a fresh checkout: `python3 scripts/check_parser_pin.py --prepare --go /absolute/path/to/pinned/go` (Linux, Python standard library; offline).
 - Full unit/integration suite: `go test ./...`
 - Focused test: `go test -run TestName ./path/to/package`
 - Race suite: `go test -race ./...`
@@ -30,7 +31,7 @@ Every implementation and review claim must cite applicable requirement IDs. Reso
 
 Run the narrowest check that proves the change while iterating, then the phase-required gate once after integration. Do not weaken a gate to match a baseline failure. Tests and proof harnesses must use disposable HOME/XDG roots and must never address the developer's real home, credentials, manager state, destinations, agents, or configuration.
 
-The owner-approved `third_party/go-toml` fork drops all decoder-owned storage before pooling. Its exact source is pinned in `third_party/go-toml.provenance.json`; `go mod verify` does not check local replacements. Run the separate pin check and upstream tests. Changing the fork or its identity requires review; never automatically rewrite its pin. The `Parser.OriginCommit` field denotes the upstream base, while `ModuleSum` binds the complete patched source. Preserve its license and unchanged upstream files.
+The temporary owner-approved TOML fix drops all decoder-owned storage before pooling. Its authentic upstream ZIP, minimal patch, focused regression and license are checked in; `third_party/go-toml` is an ignored, exactly reconstructed build input. Preparation verifies before atomic no-clobber publication and refuses an altered existing tree; it never downloads or repairs by overwriting. The normal pin check remains read-only. `go mod verify` skips local replacements, so retain the separate source check and upstream tests. `Parser.OriginCommit` denotes the upstream base; `ModuleSum` binds the unchanged exact patched identity. Never automatically rewrite pins. Follow `third_party/README-go-toml.md` to retire this workaround after a reviewed upstream release passes the retention and parser corpus.
 
 ## Go implementation rules
 

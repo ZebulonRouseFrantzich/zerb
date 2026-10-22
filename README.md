@@ -29,9 +29,10 @@ Phase 0 is a provisional proof baseline. The owner-approved [split gate](docs/ro
 
 ## Development
 
-Go 1.24 is the target development toolchain. From a disposable development checkout:
+Go 1.24 is the target development toolchain. On Linux with Python 3, prepare the temporary TOML fix once in a fresh checkout, then run checks from disposable development roots:
 
 ```sh
+python3 scripts/check_parser_pin.py --prepare --go "$(command -v go)"
 go test ./...
 go test -race ./...
 go vet ./...
@@ -39,7 +40,7 @@ golangci-lint run
 go build -o bin/zerb ./cmd/zerb
 ```
 
-These are individual development checks, not installation steps or the complete cloud admission gate. Run `python3 scripts/cloud_conformance.py --output <outside-repository-report.json>` for the source-bound cloud report and see the [handoff](docs/roadmap/phase1-proof-handoff.md) for its limits. Focused replacement tests/race checks and phase-specific reviews are additionally required as product implementation proceeds. The recorded Phase 0 baseline passed tests, race tests, vet, and build; lint reported 54 issues in old code. See [proof results](docs/roadmap/proof-results.md) for the exact scope and limitations of that observation.
+Preparation is offline, authenticates the checked-in archive and exact patch, and refuses altered existing generated source. See [temporary dependency packaging and removal](third_party/README-go-toml.md). These are individual development checks, not installation steps or the complete cloud admission gate. After preparation, run `python3 scripts/cloud_conformance.py --output <outside-repository-report.json>` for the source-bound cloud report and see the [handoff](docs/roadmap/phase1-proof-handoff.md) for its limits. Focused replacement tests/race checks and phase-specific reviews are additionally required as product implementation proceeds. The recorded Phase 0 baseline passed tests, race tests, vet, and build; lint reported 54 issues in old code. See [proof results](docs/roadmap/proof-results.md) for the exact scope and limitations of that observation.
 
 ## Project scope
 
