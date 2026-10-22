@@ -10,6 +10,7 @@ import (
 	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -39,10 +40,13 @@ const (
 	workerOutputFD    = 4
 	maxInventoryItems = 200_000
 	maxInventoryBytes = int64(1 << 30)
+	maxFixedCABytes   = 1 << 20
+	fixedCASHA256     = "3ba2000fe3d55cb6c41323fabbb105743e2c9422151eea213311538b07b23f5a"
 )
 
 type miseNamespaceRequest struct {
 	Config         Config   `json:"config"`
+	FixedCAPEM     []byte   `json:"fixed_ca_pem"`
 	MountPoint     string   `json:"mount_point"`
 	ProtectedRoots []string `json:"protected_roots"`
 	CgroupPath     string   `json:"cgroup_path"`
@@ -197,7 +201,13 @@ func miseScenario(ctx context.Context, cfg Config, root string, _ []byte) Scenar
 		failed.Detail = "private namespace mandatory cgroup descriptor unavailable: " + err.Error() + "; mise invocations=0"
 		return failed
 	}
-	request := miseNamespaceRequest{Config: cfg, MountPoint: mountPoint, ProtectedRoots: cfg.ProtectedRoots, CgroupPath: cgroup.Path()}
+	caPEM, err := readFixedCA(cfg.CACert)
+	if err != nil {
+		cgroupDirectory.Close()
+		failed.Detail = err.Error()
+		return failed
+	}
+	request := miseNamespaceRequest{Config: cfg, FixedCAPEM: caPEM, MountPoint: mountPoint, ProtectedRoots: cfg.ProtectedRoots, CgroupPath: cgroup.Path()}
 	requestFile, reportFile, err := workerFiles(root, "mise-namespace", request)
 	if err != nil {
 		cgroupDirectory.Close()
@@ -313,6 +323,9 @@ func removeWorkerFiles(files ...*os.File) {
 }
 
 func runMiseNamespaceHarness(ctx context.Context, request miseNamespaceRequest) (Scenario, error) {
+	if _, err := reviewedCAPool(request.FixedCAPEM); err != nil {
+		return Scenario{}, err
+	}
 	if os.Geteuid() != 0 || os.Getegid() != 0 {
 		return Scenario{}, errors.New("namespace harness lacks namespaced setup identity")
 	}
@@ -373,7 +386,7 @@ func runMiseNamespaceHarness(ctx context.Context, request miseNamespaceRequest) 
 		return Scenario{}, fmt.Errorf("mount capped archive cache: %w", err)
 	}
 	archiveMounted = true
-	archivePath, descriptor, before, err := acquireArchiveDescriptor(ctx, archiveMount, lock, request.Config.CACert)
+	archivePath, descriptor, before, err := acquireArchiveDescriptor(ctx, archiveMount, lock, request.FixedCAPEM)
 	if err != nil {
 		return Scenario{}, err
 	}
@@ -421,6 +434,25 @@ func runMiseNamespaceHarness(ctx context.Context, request miseNamespaceRequest) 
 	if err := verifyArchiveDescriptor(descriptor, lock, before); err != nil {
 		return Scenario{}, err
 	}
+	scenario, err := runMiseWithAuthenticatedArchive(ctx, request, root, dir, archivePath, descriptor, lock, before, inventory, injection)
+	if err != nil {
+		return Scenario{}, err
+	}
+	if err := syscall.Unmount(archiveMount, 0); err != nil {
+		return Scenario{}, fmt.Errorf("unmount immutable archive cache: %w", err)
+	}
+	archiveMounted = false
+	if err := syscall.Unmount(request.MountPoint, 0); err != nil {
+		return Scenario{}, fmt.Errorf("unmount private workspace: %w", err)
+	}
+	workspaceMounted = false
+	if err := os.Remove(request.MountPoint); err != nil {
+		return Scenario{}, fmt.Errorf("remove private workspace mountpoint: %w", err)
+	}
+	return scenario, nil
+}
+
+func runMiseWithAuthenticatedArchive(ctx context.Context, request miseNamespaceRequest, root, dir, archivePath string, descriptor *os.File, lock lockFact, before syscall.Stat_t, inventory archiveInventory, injection archiveInjectionObservation) (Scenario, error) {
 	runnerConfig := request.Config
 	if err := verifyPublishedArchiveIdentity(descriptor, archivePath); err != nil {
 		return Scenario{}, err
@@ -447,17 +479,6 @@ func runMiseNamespaceHarness(ctx context.Context, request miseNamespaceRequest) 
 	}
 	if runErr != nil {
 		return Scenario{}, runErr
-	}
-	if err := syscall.Unmount(archiveMount, 0); err != nil {
-		return Scenario{}, fmt.Errorf("unmount immutable archive cache: %w", err)
-	}
-	archiveMounted = false
-	if err := syscall.Unmount(request.MountPoint, 0); err != nil {
-		return Scenario{}, fmt.Errorf("unmount private workspace: %w", err)
-	}
-	workspaceMounted = false
-	if err := os.Remove(request.MountPoint); err != nil {
-		return Scenario{}, fmt.Errorf("remove private workspace mountpoint: %w", err)
 	}
 	return scenario, nil
 }
@@ -507,7 +528,106 @@ func copyWorkerExecutable(source, destination string) error {
 	return os.Chown(destination, 1, 1)
 }
 
-func acquireArchiveDescriptor(ctx context.Context, cache string, lock lockFact, caCert string) (string, *os.File, syscall.Stat_t, error) {
+// readFixedCA binds the approved public bytes before entering a user namespace.
+func readFixedCA(name string) ([]byte, error) {
+	if name == "" || !filepath.IsAbs(name) || filepath.Clean(name) != name {
+		return nil, errors.New("fixed CA requires a canonical absolute file")
+	}
+	fd, err := syscall.Open("/", syscall.O_RDONLY|syscall.O_DIRECTORY|syscall.O_CLOEXEC, 0)
+	if err != nil {
+		return nil, errors.New("fixed CA root descriptor unavailable")
+	}
+	defer func() { _ = syscall.Close(fd) }()
+	var anchor syscall.Stat_t
+	if err := syscall.Fstat(fd, &anchor); err != nil {
+		return nil, errors.New("fixed CA root identity unavailable")
+	}
+	parts := strings.Split(strings.TrimPrefix(name, "/"), "/")
+	for i, part := range parts {
+		flags := syscall.O_RDONLY | syscall.O_NOFOLLOW | syscall.O_CLOEXEC | syscall.O_NONBLOCK
+		if i < len(parts)-1 {
+			flags |= syscall.O_DIRECTORY
+		}
+		next, err := syscall.Openat(fd, part, flags, 0)
+		if err != nil {
+			return nil, errors.New("fixed CA path could not be opened without links")
+		}
+		_ = syscall.Close(fd)
+		fd = next
+		var st syscall.Stat_t
+		if err := syscall.Fstat(fd, &st); err != nil || st.Uid != anchor.Uid && st.Uid != uint32(os.Geteuid()) {
+			return nil, errors.New("fixed CA path owner is invalid")
+		}
+		if i < len(parts)-1 {
+			if st.Mode&syscall.S_IFMT != syscall.S_IFDIR || st.Mode&0022 != 0 && (st.Uid != anchor.Uid || st.Mode&syscall.S_ISVTX == 0) {
+				return nil, errors.New("fixed CA ancestor type or mode is invalid")
+			}
+			continue
+		}
+		if st.Mode&syscall.S_IFMT != syscall.S_IFREG || st.Mode&0022 != 0 || st.Nlink != 1 || st.Size <= 0 || st.Size > maxFixedCABytes {
+			return nil, errors.New("fixed CA file type, mode, links, or size is invalid")
+		}
+		file := os.NewFile(uintptr(fd), "fixed-ca")
+		fd = -1 // file owns the descriptor from here.
+		bundle, readErr := io.ReadAll(io.LimitReader(file, maxFixedCABytes+1))
+		var after syscall.Stat_t
+		statErr := syscall.Fstat(int(file.Fd()), &after)
+		closeErr := file.Close()
+		if readErr != nil || statErr != nil || closeErr != nil || st.Dev != after.Dev || st.Ino != after.Ino || st.Mode != after.Mode || st.Uid != after.Uid || st.Gid != after.Gid || st.Nlink != after.Nlink || st.Size != after.Size || st.Mtim != after.Mtim || st.Ctim != after.Ctim || int64(len(bundle)) != st.Size {
+			return nil, errors.New("fixed CA file changed during authentication")
+		}
+		if _, err := reviewedCAPool(bundle); err != nil {
+			return nil, err
+		}
+		return bundle, nil
+	}
+	return nil, errors.New("fixed CA file is missing")
+}
+
+func reviewedCAPool(bundle []byte) (*x509.CertPool, error) {
+	if len(bundle) == 0 || len(bundle) > maxFixedCABytes {
+		return nil, errors.New("fixed CA bundle is empty or oversized")
+	}
+	digest := sha256.Sum256(bundle)
+	if hex.EncodeToString(digest[:]) != fixedCASHA256 {
+		return nil, errors.New("fixed CA bundle disagrees with reviewed digest")
+	}
+	return parseReviewedCAPool(bundle)
+}
+
+func parseCAPool(bundle []byte) (*x509.CertPool, error) {
+	roots := x509.NewCertPool()
+	count := 0
+	for remaining := bytes.TrimSpace(bundle); len(remaining) != 0; {
+		if !bytes.HasPrefix(remaining, []byte("-----BEGIN CERTIFICATE-----\n")) {
+			return nil, errors.New("fixed CA bundle contains non-certificate bytes")
+		}
+		block, rest := pem.Decode(remaining)
+		if block == nil || block.Type != "CERTIFICATE" || len(block.Headers) != 0 {
+			return nil, errors.New("fixed CA bundle contains invalid PEM")
+		}
+		if !bytes.Equal(bytes.TrimSpace(remaining[:len(remaining)-len(rest)]), bytes.TrimSpace(pem.EncodeToMemory(block))) {
+			return nil, errors.New("fixed CA bundle contains non-canonical PEM")
+		}
+		certificate, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			return nil, errors.New("fixed CA bundle contains an invalid certificate")
+		}
+		roots.AddCert(certificate)
+		count++
+		remaining = bytes.TrimSpace(rest)
+	}
+	if count == 0 {
+		return nil, errors.New("fixed CA bundle contains no certificates")
+	}
+	return roots, nil
+}
+
+func acquireArchiveDescriptor(ctx context.Context, cache string, lock lockFact, caPEM []byte) (string, *os.File, syscall.Stat_t, error) {
+	roots, err := reviewedCAPool(caPEM)
+	if err != nil {
+		return "", nil, syscall.Stat_t{}, err
+	}
 	parsed, err := url.Parse(lock.URL)
 	if err != nil {
 		return "", nil, syscall.Stat_t{}, err
@@ -543,7 +663,7 @@ func acquireArchiveDescriptor(ctx context.Context, cache string, lock lockFact, 
 	}
 	expectedAddress := net.JoinHostPort(parsed.Hostname(), port)
 	dialer := &net.Dialer{}
-	transport := &http.Transport{DisableCompression: true, Proxy: nil}
+	transport := &http.Transport{DisableCompression: true, Proxy: nil, TLSClientConfig: &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: roots, ServerName: parsed.Hostname()}}
 	defer transport.CloseIdleConnections()
 	transport.DialContext = func(dialCtx context.Context, network, address string) (net.Conn, error) {
 		if address != expectedAddress {
@@ -558,14 +678,6 @@ func acquireArchiveDescriptor(ctx context.Context, cache string, lock lockFact, 
 			failures = append(failures, dialErr)
 		}
 		return nil, errors.Join(failures...)
-	}
-	if caCert != "" {
-		roots := x509.NewCertPool()
-		pem, readErr := os.ReadFile(caCert)
-		if readErr != nil || !roots.AppendCertsFromPEM(pem) {
-			return "", nil, syscall.Stat_t{}, errors.New("configured provenance CA bundle is invalid")
-		}
-		transport.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12, RootCAs: roots, ServerName: parsed.Hostname()}
 	}
 	client := &http.Client{CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 		return errors.New("archive provenance redirect rejected")
@@ -653,6 +765,9 @@ func verifyPublishedArchiveIdentity(file *os.File, name string) error {
 	return nil
 }
 
+// The upstream archive grammar also admits the historical NUL regular-file type.
+const legacyTarRegularType byte = '\x00'
+
 func inventoryAuthenticatedArchive(file *os.File) (archiveInventory, error) {
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
 		return archiveInventory{}, err
@@ -702,7 +817,7 @@ func inventoryAuthenticatedArchive(file *os.File) (archiveInventory, error) {
 		}
 		entry := archiveEntry{Mode: uint32(header.Mode) & 07777}
 		switch header.Typeflag {
-		case tar.TypeReg, tar.TypeRegA:
+		case tar.TypeReg, legacyTarRegularType:
 			total += header.Size
 			if total > maxInventoryBytes {
 				return archiveInventory{}, errors.New("archive expanded-byte bound exceeded")

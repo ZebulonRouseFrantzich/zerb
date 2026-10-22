@@ -12,7 +12,7 @@ Read the relevant roadmap owner before planning, implementation, or review:
 6. `docs/roadmap/post-mvp.md` is non-committed intent, not an implementation contract.
 7. `docs/roadmap/proof-results.md` is append-only redacted evidence, never normative authority.
 
-Every implementation and review claim must cite applicable requirement IDs. Resolve conflicting prose in favor of the document that owns that contract, and fix the non-owning document rather than creating a second convention. Phase 0 contracts are provisional. Phase 1 may freeze only implementation-qualified proof candidates; it does not create support. Do not start product implementation before the Phase 1 evidence, approval, plan-review, and security-review gate freezes those contracts, and do not claim support until VAL-001 and the Phase 6 installed-binary verticals pass.
+Every implementation and review claim must cite applicable requirement IDs. Resolve conflicting prose in favor of the document that owns that contract, and fix the non-owning document rather than creating a second convention. Phase 0 contracts are provisional. Phase 1 may freeze only implementation-qualified proof candidates; it does not create support. The owner-approved split gate in delivery-plan.md permits reviewed non-release Phase 2–4 implementation after passing current source-bound cloud conformance and independent plan/security review. This leaves all unqualified contracts provisional, requires focused replacement tests/race checks and phase reviews, and never waives required runtime protections or admits a development fallback runner. Real frozen-host Phase 1 evidence, review and freeze approval remain mandatory before release/public cutover; support still requires VAL-001 and complete Phase 6 installed-binary acceptance.
 
 ## Toolchain and commands
 
@@ -96,8 +96,8 @@ Run the narrowest check that proves the change while iterating, then the phase-r
 
 ## Review and delivery gates
 
-- Review against the requirement owner, current delivery phase, and the disposition table. A missing ID, unsupported claim, widened grammar, unclassified artifact, or implementation before its freeze is a blocking defect.
-- Phase 1 requires owner approval, independent plan review, and focused security review after real proof incorporation.
+- Review against the requirement owner, current delivery phase, and the disposition table. A missing ID, unsupported claim, widened grammar, unclassified artifact, or implementation outside its admitted delivery gate is a blocking defect.
+- Cloud development admission requires current source-bound conformance plus independent plan and focused security review; an inventory-only report cannot admit work. Phase 1 qualification/freeze separately requires owner approval, independent plan review, and focused security review after the complete real frozen-host proof matrix. Missing cgroups, namespaces, filesystem or exact tool/CA prerequisites must fail closed; they never authorize a fallback or qualification claim.
 - Phase 2 requires focused security review of native Git policy, environment/descriptor handling, archive/root primitives, lock ownership, state transitions, canonical digests, and receipt completion before mutation integration.
 - Provider references, functions, processes, storage, channels, and values are excluded from the MVP. A disposable embedded fixture must fail static validation before candidate creation. Selected-gitlink input must fail earlier before authentication, network, materialization, or validator entry. Future provider or private selected transport support requires new reviewed contracts and real evidence; never weaken an MVP exclusion or treat a mock as support evidence.
 - Phase 6 requires the atomic public/source cutover, complete installed-binary and failure-matrix acceptance, final tracked/import/dependency/artifact sweeps, DeepReview, and security review with every finding resolved.

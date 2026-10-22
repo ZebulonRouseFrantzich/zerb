@@ -49,7 +49,7 @@ func Run(ctx context.Context, cfg Config) (result Result, retErr error) {
 	}
 	result.Executable, err = identity(gitPath)
 	if err != nil {
-		return result, fmt.Errorf("Git identity: %w", err)
+		return result, fmt.Errorf("git identity: %w", err)
 	}
 	sourceID, err := validateReviewedSource(cfg.Source)
 	if err != nil {
@@ -135,20 +135,7 @@ func Run(ctx context.Context, cfg Config) (result Result, retErr error) {
 	}
 	mounted = true
 
-	roles := []struct{ name, path string }{{"base", base}, {"owned-run", owned}, {"home", filepath.Join(owned, "home")}, {"xdg-config", filepath.Join(owned, "xdg", "config")}, {"xdg-data", filepath.Join(owned, "xdg", "data")}, {"xdg-cache", filepath.Join(owned, "xdg", "cache")}, {"xdg-state", filepath.Join(owned, "xdg", "state")}, {"manager", filepath.Join(owned, "manager")}, {"destination", filepath.Join(owned, "destination")}, {"generated-source", filepath.Join(owned, "materialized")}, {"evidence", filepath.Join(owned, "evidence")}, {"artifact", artifactDir}, {"outside-sentinel", outside}}
-	for _, role := range roles {
-		if role.name != "base" && role.name != "owned-run" && role.name != "outside-sentinel" {
-			if err := os.MkdirAll(role.path, 0o700); err != nil {
-				return result, err
-			}
-		}
-		id, idErr := rootIdentity(role.name, role.path)
-		if idErr != nil {
-			return result, idErr
-		}
-		result.Roots = append(result.Roots, id)
-	}
-	if err := plantHostileGitAmbient(owned); err != nil {
+	if err := prepareProofRoots(base, owned, artifactDir, outside, &result); err != nil {
 		return result, err
 	}
 
@@ -167,13 +154,9 @@ func Run(ctx context.Context, cfg Config) (result Result, retErr error) {
 	if err != nil {
 		return result, err
 	}
-	transportPortIndex := strings.LastIndexByte(transport, ':')
-	if transportPortIndex < 0 {
-		return result, errors.New("fixture transport port unavailable")
-	}
-	transportPort, err := strconv.Atoi(transport[transportPortIndex+1:])
-	if err != nil || transportPort < 1 || transportPort > 65535 {
-		return result, errors.New("fixture transport port invalid")
+	transportPort, err := fixtureTransportPort(transport)
+	if err != nil {
+		return result, err
 	}
 	defer func() {
 		if closeErr := closeServer(); retErr == nil && closeErr != nil {
@@ -210,7 +193,7 @@ func Run(ctx context.Context, cfg Config) (result Result, retErr error) {
 	const versionPrefix = "git version "
 	version := strings.TrimSpace(string(versionOut))
 	if version != versionPrefix+PinnedGitVersion {
-		return result, fmt.Errorf("Git version mismatch: required %s", PinnedGitVersion)
+		return result, fmt.Errorf("git version mismatch: required %s", PinnedGitVersion)
 	}
 	execPathOut, err := r.run(ctx, "git-exec-path", append(policy, "--exec-path")...)
 	if err != nil {
@@ -219,7 +202,7 @@ func Run(ctx context.Context, cfg Config) (result Result, retErr error) {
 	httpsHelperExec := filepath.Join(strings.TrimSpace(string(execPathOut)), "git-remote-https")
 	httpsHelper, err := canonicalExecutable(httpsHelperExec)
 	if err != nil {
-		return result, fmt.Errorf("Git HTTPS transport helper identity: %w", err)
+		return result, fmt.Errorf("git HTTPS transport helper identity: %w", err)
 	}
 	result.Executable.UpstreamVersion = PinnedGitVersion
 	fetchArgs := append(append([]string{}, policy...), "fetch", "--no-tags", "--no-recurse-submodules", "--no-write-fetch-head", transport, "refs/heads/main")
@@ -228,8 +211,115 @@ func Run(ctx context.Context, cfg Config) (result Result, retErr error) {
 		return result, err
 	}
 	result.Scenarios = append(result.Scenarios, observed("local-fixture-object-acquisition", []string{"VAL-008", "VAL-011", "VAL-017"}, "actual Git fetched the explicit loopback fixture for deterministic object inspection only; this is expressly non-transport evidence"))
+	if err := exerciseTransport(ctx, cfg.Source, r, policy, objectStore, transport, curlResolves, publicAnswers, &result); err != nil {
+		return result, err
+	}
+	if err := materializeFixture(ctx, r, policy, objectStore, fixture, &result); err != nil {
+		return result, err
+	}
+	runInputRejections(&result)
+	if err := runHardDiskBoundary(ctx, r, owned, &result); err != nil {
+		return result, err
+	}
+	classifyProofObservations(&result, gitPath, httpsHelperExec, httpsHelper)
+
+	if err := verifyMarkerAbsence(ctx, gitPath, repositoryRoot, owned, markerValue, &result); err != nil {
+		return result, err
+	}
+	cleanupDone, err = finishProofResult(&result, artifactDir, markerValue, cleanup)
+	return result, err
+}
+
+func verifyMarkerAbsence(ctx context.Context, gitPath, repositoryRoot, owned string, markerValue []byte, result *Result) error {
+	if err := scanForMarker(owned, markerValue); err != nil {
+		return err
+	}
+	if err := scanForMarker(repositoryRoot, markerValue); err != nil {
+		return err
+	}
+	if err := scanRepositoryObjects(ctx, gitPath, repositoryRoot, owned, markerValue); err != nil {
+		return err
+	}
+	result.Scenarios = append(result.Scenarios, observed("ambient-marker-redaction", []string{"VAL-017", "VAL-040"}, "fresh ambient marker bytes were absent from every child output, transient trace, controlled proof file, complete worktree/index/reachable-object scope, nested submodule repository, and retained evidence surface"))
+	if result.Access.MarkerSpills == 0 {
+		result.Scenarios = append(result.Scenarios, observed("transient-trace-marker-scan", []string{"VAL-017", "VAL-040"}, "every raw trace was scanned before deletion and contained no ambient marker bytes"))
+	} else {
+		result.Scenarios = append(result.Scenarios, failed("transient-trace-marker-scan", []string{"VAL-017", "VAL-040"}, "an ambient marker reached a raw child trace before deletion"))
+	}
+	return nil
+}
+
+func prepareProofRoots(base, owned, artifactDir, outside string, result *Result) error {
+	roles := []struct{ name, path string }{{"base", base}, {"owned-run", owned}, {"home", filepath.Join(owned, "home")}, {"xdg-config", filepath.Join(owned, "xdg", "config")}, {"xdg-data", filepath.Join(owned, "xdg", "data")}, {"xdg-cache", filepath.Join(owned, "xdg", "cache")}, {"xdg-state", filepath.Join(owned, "xdg", "state")}, {"manager", filepath.Join(owned, "manager")}, {"destination", filepath.Join(owned, "destination")}, {"generated-source", filepath.Join(owned, "materialized")}, {"evidence", filepath.Join(owned, "evidence")}, {"artifact", artifactDir}, {"outside-sentinel", outside}}
+	for _, role := range roles {
+		if role.name != "base" && role.name != "owned-run" && role.name != "outside-sentinel" {
+			if err := os.MkdirAll(role.path, 0o700); err != nil {
+				return err
+			}
+		}
+		id, idErr := rootIdentity(role.name, role.path)
+		if idErr != nil {
+			return idErr
+		}
+		result.Roots = append(result.Roots, id)
+	}
+	if err := plantHostileGitAmbient(owned); err != nil {
+		return err
+	}
+	return nil
+}
+
+func fixtureTransportPort(transport string) (int, error) {
+	transportPortIndex := strings.LastIndexByte(transport, ':')
+	if transportPortIndex < 0 {
+		return 0, errors.New("fixture transport port unavailable")
+	}
+	transportPort, err := strconv.Atoi(transport[transportPortIndex+1:])
+	if err != nil || transportPort < 1 || transportPort > 65535 {
+		return 0, errors.New("fixture transport port invalid")
+	}
+	return transportPort, nil
+}
+
+func finishProofResult(result *Result, artifactDir string, markerValue []byte, cleanup func() error) (cleanupDone bool, err error) {
+	artifact := filepath.Join(artifactDir, "git-proof-result.json")
+	if err := os.MkdirAll(artifactDir, 0o700); err != nil {
+		return cleanupDone, err
+	}
+	result.Cleanup.RedactedArtifactCopied = true
+	encoded, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return cleanupDone, err
+	}
+	if bytes.Contains(encoded, markerValue) {
+		return cleanupDone, errors.New("raw ambient marker reached result")
+	}
+	if err := os.WriteFile(artifact, append(encoded, '\n'), 0o600); err != nil {
+		result.Cleanup.RedactedArtifactCopied = false
+		return cleanupDone, err
+	}
+	cleanupErr := cleanup()
+	cleanupDone = true
+	finalEncoded, marshalErr := json.MarshalIndent(result, "", "  ")
+	if marshalErr != nil {
+		return cleanupDone, marshalErr
+	}
+	if bytes.Contains(finalEncoded, markerValue) {
+		return cleanupDone, errors.New("raw ambient marker reached final result")
+	}
+	if err := os.WriteFile(artifact, append(finalEncoded, '\n'), 0o600); err != nil {
+		return cleanupDone, err
+	}
+	if cleanupErr != nil {
+		return cleanupDone, cleanupErr
+	}
+	return cleanupDone, nil
+}
+
+func exerciseTransport(ctx context.Context, source string, r runner, policy []string, objectStore, transport string, curlResolves []string, publicAnswers []netip.Addr, result *Result) error {
+	owned := r.owned
 	publicPolicy := pinnedHTTPSPolicyArgs(objectStore, curlResolves)
-	publicArgs := append(append([]string{}, publicPolicy...), "ls-remote", "--exit-code", cfg.Source, "HEAD")
+	publicArgs := append(append([]string{}, publicPolicy...), "ls-remote", "--exit-code", source, "HEAD")
 	publicRunner := r
 	publicRunner.allowLoopback = false
 	publicRunner.allowedPublic = make(map[netip.Addr]bool, len(publicAnswers))
@@ -239,7 +329,7 @@ func Run(ctx context.Context, cfg Config) (result Result, retErr error) {
 	}
 	if _, publicErr := publicRunner.run(ctx, "canonical-public-https", publicArgs...); publicErr != nil {
 		if errors.Is(publicErr, errTraceViolation) {
-			return result, publicErr
+			return publicErr
 		}
 		result.Scenarios = append(result.Scenarios, failed("canonical-public-https-transport", []string{"VAL-006", "VAL-007", "VAL-011"}, "actual reviewed-source HTTPS Git failed under permanent native address pinning, fixed CA, TLS hostname verification, and no-redirect/no-proxy/no-auth policy; detailed error omitted from retained result"))
 	} else if !result.Access.TraceComplete || !result.Invocations[len(result.Invocations)-1].TraceComplete {
@@ -254,7 +344,7 @@ func Run(ctx context.Context, cfg Config) (result Result, retErr error) {
 		before := len(result.Invocations)
 		_, negativeErr := r.run(ctx, negative.name, append(append([]string{}, policy...), "ls-remote", "--exit-code", negative.url, "HEAD")...)
 		if errors.Is(negativeErr, errTraceViolation) {
-			return result, negativeErr
+			return negativeErr
 		}
 		if negativeErr == nil || len(result.Invocations) != before+1 || result.Invocations[len(result.Invocations)-1].ExitCode == 0 {
 			result.Scenarios = append(result.Scenarios, failed(negative.name, []string{"VAL-007", "VAL-011"}, "loopback deterministic fault did not fail through actual Git as required"))
@@ -267,7 +357,7 @@ func Run(ctx context.Context, cfg Config) (result Result, retErr error) {
 	beforeSlow := len(result.Invocations)
 	_, slowErr := slowRunner.run(ctx, "loopback-stall-interruption", append(append([]string{}, policy...), "ls-remote", transport+"/stall.git", "HEAD")...)
 	if errors.Is(slowErr, errTraceViolation) {
-		return result, slowErr
+		return slowErr
 	}
 	if slowErr == nil || len(result.Invocations) != beforeSlow+1 || result.Invocations[len(result.Invocations)-1].ExitCode == 0 {
 		result.Scenarios = append(result.Scenarios, failed("loopback-stall-interruption", []string{"VAL-007", "VAL-011", "VAL-019"}, "a deliberately stalled transport did not terminate through the wall-time/supervisor/cgroup boundary"))
@@ -276,12 +366,12 @@ func Run(ctx context.Context, cfg Config) (result Result, retErr error) {
 	}
 	partialStore := filepath.Join(owned, "partial-failure.git")
 	if err := makeBareStore(partialStore); err != nil {
-		return result, err
+		return err
 	}
 	partialPolicy := gitPolicyArgs(partialStore)
 	_, partialErr := r.run(ctx, "loopback-partial-failure", append(partialPolicy, "fetch", "--no-tags", "--no-recurse-submodules", "--no-write-fetch-head", transport+"/missing.git", "refs/heads/main")...)
 	if errors.Is(partialErr, errTraceViolation) {
-		return result, partialErr
+		return partialErr
 	}
 	removePartialErr := os.RemoveAll(partialStore)
 	if partialErr == nil || removePartialErr != nil || pathExists(partialStore) {
@@ -294,7 +384,7 @@ func Run(ctx context.Context, cfg Config) (result Result, retErr error) {
 	hostileWriteErr := os.WriteFile(hostilePack, hostileBytes, 0600)
 	_, hostileErr := r.run(ctx, "hostile-pack-rejection", append(append([]string{}, policy...), "index-pack", "--strict", hostilePack)...)
 	if errors.Is(hostileErr, errTraceViolation) {
-		return result, hostileErr
+		return hostileErr
 	}
 	hostileRemoveErr := os.Remove(hostilePack)
 	hostileIndexExists := pathExists(strings.TrimSuffix(hostilePack, ".pack") + ".idx")
@@ -305,60 +395,65 @@ func Run(ctx context.Context, cfg Config) (result Result, retErr error) {
 	}
 	result.Scenarios = append(result.Scenarios, observed("transport-negative-matrix", []string{"VAL-007", "VAL-011"}, "actual Git exercised deterministic redirect, authentication-challenge, high-rate malformed stream, partial/interrupted transfer, stalled stream, and hostile-pack failures; no exact wire-byte ceiling is claimed because pinned Git/libcurl exposes no such native boundary and the proof inserts no proxy or relay"))
 
+	return nil
+}
+
+func materializeFixture(ctx context.Context, r runner, policy []string, objectStore string, fixture *fixture, result *Result) error {
+	owned := r.owned
 	commitOut, err := r.run(ctx, "commit", append(policy, "rev-parse", fixture.commit+"^{commit}")...)
 	if err != nil {
-		return result, err
+		return err
 	}
 	commit := strings.TrimSpace(string(commitOut))
 	if commit != fixture.commit {
-		return result, errors.New("fetched commit mismatch")
+		return errors.New("fetched commit mismatch")
 	}
 	rootOut, err := r.run(ctx, "root-tree", append(policy, "rev-parse", commit+"^{tree}")...)
 	if err != nil {
-		return result, err
+		return err
 	}
 	rootTree := strings.TrimSpace(string(rootOut))
 	if rootTree != fixture.rootTree {
-		return result, errors.New("fetched root tree mismatch")
+		return errors.New("fetched root tree mismatch")
 	}
 	liveTrees := TreeObservation{Commit: commit, RootTree: rootTree}
 	liveTrees.EmbeddedComponents = []ComponentTree{{LogicalID: "base", Path: "profiles/base", Tree: fixture.baseTree}, {LogicalID: "selected", Path: "profiles/selected", Tree: fixture.selectedTree}}
 	for _, gl := range fixture.gitlinks {
 		kind, checkErr := validateStaticGitlink(gl.locator)
 		if checkErr != nil || kind != gl.kind {
-			return result, errors.New("fixture gitlink validation failed")
+			return errors.New("fixture gitlink validation failed")
 		}
 		liveTrees.UnselectedGitlinks = append(liveTrees.UnselectedGitlinks, GitlinkFact{Path: gl.path, Commit: gl.commit, Kind: kind})
 	}
 	if err := verifyFetchedDeclarations(ctx, r, policy, fixture, rootTree); err != nil {
-		return result, err
+		return err
 	}
 	result.Scenarios = append(result.Scenarios, observed("fetched-static-declarations", []string{"VAL-008", "VAL-009", "VAL-012"}, "bounded plumbing observed exact manifest, .gitmodules, embedded tree relations, and two unselected gitlink modes/commits"))
 
 	entries, depth, expanded, err := inspectAndMaterialize(ctx, r, policy, filepath.Join(owned, "materialized"), &liveTrees)
 	if err != nil {
 		result.Scenarios = append(result.Scenarios, failed("bounded-materialization", []string{"VAL-008"}, "bounded materialization failed; detailed object/path error omitted from retained result"))
-		return result, err
+		return err
 	}
 	result.Resources.TreeEntries, result.Resources.TreeDepth, result.Resources.ExpandedBytes = entries, depth, expanded
 	result.Resources.TransferBytes, _ = fixture.transferObservation()
 	result.Resources.DiskBytes, result.Resources.ObjectCount, err = diskUsage(objectStore)
 	if err != nil {
-		return result, err
+		return err
 	}
 	result.Scenarios = append(result.Scenarios, observed("bounded-materialization", []string{"VAL-008", "VAL-012"}, "bounded no-checkout plumbing admitted only directories and ordinary executable/non-executable files; source, commit, component tree, and availability stayed separate"))
 	if err := redactTreeIdentities(&liveTrees); err != nil {
-		return result, err
+		return err
 	}
 	result.Trees = liveTrees
 
-	runInputRejections(&result)
-	if err := runHardDiskBoundary(ctx, r, owned, &result); err != nil {
-		return result, err
-	}
+	return nil
+}
+
+func classifyProofObservations(result *Result, gitPath, httpsHelperExec, httpsHelper string) {
 	// Aggregate transfer bytes are observational only: pinned Git/libcurl has
 	// no native exact wire-byte ceiling, and this proof does not insert a relay.
-	classifyTrace(&result, gitPath, httpsHelperExec, httpsHelper)
+	classifyTrace(result, gitPath, httpsHelperExec, httpsHelper)
 	traceQualifies := result.Access.TraceFiles > 0 && result.Access.TraceComplete && result.Access.UnknownEvents == 0
 	if !traceQualifies {
 		result.Scenarios = append(result.Scenarios, failed("closed-trace-classification", []string{"VAL-007", "VAL-009", "VAL-010", "VAL-011"}, "trace loss, truncation, or an unknown file/process/network record prevented complete classification; zero-access claims are not made"))
@@ -380,54 +475,6 @@ func Run(ctx context.Context, cfg Config) (result Result, retErr error) {
 	} else {
 		result.Scenarios = append(result.Scenarios, failed("managed-resource-cgroup", []string{"VAL-007", "VAL-023"}, "a traced Git invocation lacked the delegated resource boundary, exceeded the process limit, or left a cgroup member after supervision"))
 	}
-
-	if err := scanForMarker(owned, markerValue); err != nil {
-		return result, err
-	}
-	if err := scanForMarker(repositoryRoot, markerValue); err != nil {
-		return result, err
-	}
-	if err := scanRepositoryObjects(ctx, gitPath, repositoryRoot, owned, markerValue); err != nil {
-		return result, err
-	}
-	result.Scenarios = append(result.Scenarios, observed("ambient-marker-redaction", []string{"VAL-017", "VAL-040"}, "fresh ambient marker bytes were absent from every child output, transient trace, controlled proof file, complete worktree/index/reachable-object scope, nested submodule repository, and retained evidence surface"))
-	if result.Access.MarkerSpills == 0 {
-		result.Scenarios = append(result.Scenarios, observed("transient-trace-marker-scan", []string{"VAL-017", "VAL-040"}, "every raw trace was scanned before deletion and contained no ambient marker bytes"))
-	} else {
-		result.Scenarios = append(result.Scenarios, failed("transient-trace-marker-scan", []string{"VAL-017", "VAL-040"}, "an ambient marker reached a raw child trace before deletion"))
-	}
-	artifact := filepath.Join(artifactDir, "git-proof-result.json")
-	if err := os.MkdirAll(artifactDir, 0o700); err != nil {
-		return result, err
-	}
-	result.Cleanup.RedactedArtifactCopied = true
-	encoded, err := json.MarshalIndent(result, "", "  ")
-	if err != nil {
-		return result, err
-	}
-	if bytes.Contains(encoded, markerValue) {
-		return result, errors.New("raw ambient marker reached result")
-	}
-	if err := os.WriteFile(artifact, append(encoded, '\n'), 0o600); err != nil {
-		result.Cleanup.RedactedArtifactCopied = false
-		return result, err
-	}
-	cleanupErr := cleanup()
-	cleanupDone = true
-	finalEncoded, marshalErr := json.MarshalIndent(result, "", "  ")
-	if marshalErr != nil {
-		return result, marshalErr
-	}
-	if bytes.Contains(finalEncoded, markerValue) {
-		return result, errors.New("raw ambient marker reached final result")
-	}
-	if err := os.WriteFile(artifact, append(finalEncoded, '\n'), 0o600); err != nil {
-		return result, err
-	}
-	if cleanupErr != nil {
-		return result, cleanupErr
-	}
-	return result, nil
 }
 
 func validateConfig(cfg Config) (string, string, string, string, error) {
@@ -1080,7 +1127,7 @@ func diskUsage(root string) (int64, int, error) {
 }
 func isLowerHex(s string) bool {
 	for _, c := range []byte(s) {
-		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			return false
 		}
 	}

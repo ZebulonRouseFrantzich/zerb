@@ -710,11 +710,16 @@ type pendingReceiptRecord struct {
 }
 
 type currentRecord struct {
-	Schema    int           `json:"schema"`
-	Domain    string        `json:"domain"`
-	Status    string        `json:"status"`
-	Candidate receiptDigest `json:"candidate"`
-	Receipt   receiptDigest `json:"receipt"`
+	Schema           int           `json:"schema"`
+	Domain           string        `json:"domain"`
+	Status           string        `json:"status"`
+	Instance         string        `json:"instance"`
+	OperationID      string        `json:"operation_id"`
+	OperationToken   string        `json:"operation_token"`
+	WriterGeneration uint64        `json:"writer_generation"`
+	WriterToken      string        `json:"writer_token"`
+	Candidate        receiptDigest `json:"candidate"`
+	Receipt          receiptDigest `json:"receipt"`
 }
 
 var stateReserved = []string{"admission.lock", "candidates", "current.json", "init.lock", "journals", "receipts", "root.json", "writer-owner.json", "writer.lock"}
@@ -1224,8 +1229,64 @@ func pendingReceipt(_ string, candidate, _ string) pendingReceiptRecord {
 	return pendingReceiptRecord{Schema: 1, Domain: "zerb.receipt", Digest: receiptDigest("sha256:" + recordDigest(facts)), Facts: facts}
 }
 
-func stableCurrent(_ string, candidate, receipt, _ string) currentRecord {
-	return currentRecord{Schema: 1, Domain: "zerb.current", Status: "stable", Candidate: receiptDigest(candidate), Receipt: receiptDigest(receipt)}
+func stableCurrent(instance string, candidate, receipt, operation string) currentRecord {
+	return currentRecord{Schema: 1, Domain: "zerb.current", Status: "stable", Instance: instance,
+		OperationID: recordDigest("prior-operation:" + operation)[:32], OperationToken: recordDigest("prior-operation-token:" + operation)[:32],
+		WriterGeneration: 1, WriterToken: recordDigest("prior-writer:" + operation)[:32], Candidate: receiptDigest(candidate), Receipt: receiptDigest(receipt)}
+}
+
+func baselineCurrent(r graphRefs) currentRecord {
+	if r.priorCurrent.Schema != 0 {
+		return r.priorCurrent
+	}
+	current := stableCurrent(r.instance, r.a, r.receiptA, r.journal)
+	if r.generation > 2 {
+		current.WriterGeneration = r.generation - 2
+	}
+	current.WriterToken = r.priorWriterToken
+	return current
+}
+
+func validIdentityToken(token string) bool {
+	if len(token) != 32 {
+		return false
+	}
+	for _, c := range token {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+func validCurrentIdentity(current currentRecord, instance string) bool {
+	return current.Schema == 1 && current.Domain == "zerb.current" && current.Status == "stable" &&
+		current.Instance == instance && validIdentityToken(current.Instance) &&
+		validIdentityToken(current.OperationID) && validIdentityToken(current.OperationToken) && validIdentityToken(current.WriterToken) &&
+		current.WriterGeneration > 0 && current.OperationID != current.OperationToken &&
+		current.OperationID != current.WriterToken && current.OperationToken != current.WriterToken
+}
+
+func currentMatchesJournal(current currentRecord, journal journalRecord) bool {
+	return current.OperationID == journal.OperationID && current.OperationToken == journal.OperationToken &&
+		current.WriterGeneration <= journal.WriterGeneration &&
+		(current.WriterGeneration == journal.WriterGeneration && current.WriterToken == journal.WriterToken ||
+			current.WriterGeneration < journal.WriterGeneration && journal.WriterPreviousToken != "" && current.WriterToken != journal.WriterToken &&
+				(isGenerationSuccessor(current.WriterGeneration, journal.WriterGeneration) && current.WriterToken == journal.WriterPreviousToken ||
+					!isGenerationSuccessor(current.WriterGeneration, journal.WriterGeneration) && current.WriterToken != journal.WriterPreviousToken))
+}
+
+func currentMatchesHeldWriter(current currentRecord, writer writerOwnerRecord) bool {
+	return current.WriterGeneration == writer.Generation && current.WriterToken == writer.Token ||
+		current.WriterGeneration < writer.Generation && writer.PreviousToken != "" && current.WriterToken != writer.Token &&
+			(current.WriterGeneration == writer.PreviousGeneration && current.WriterToken == writer.PreviousToken ||
+				current.WriterGeneration < writer.PreviousGeneration && current.WriterToken != writer.PreviousToken)
+}
+
+func currentPrecedesReleasedWriter(current currentRecord, writer writerOwnerRecord) bool {
+	return current.WriterGeneration < writer.Generation &&
+		(current.WriterGeneration == writer.PreviousGeneration && current.WriterToken == writer.PreviousToken ||
+			current.WriterGeneration < writer.PreviousGeneration && current.WriterToken != writer.PreviousToken)
 }
 
 func exactPhase(state, oldPhase string) phase {
@@ -1342,24 +1403,24 @@ func exactInitAllowing(s, d string, uid int, allowedEntry string) bool {
 		exactRecordBytes(filepath.Join(d, "owner.json"), namespaceOwner(root.Instance, "data"))
 }
 
-func exactCurrent(s, d string, uid int) string {
+func readCurrentAuthority(s, d string, uid int) (rootOwnerRecord, writerOwnerRecord, bool) {
 	if !safeRootDir(s, uid) || !safeRootDir(d, uid) || !exactNames(d, dataReserved) {
-		return ""
+		return rootOwnerRecord{}, writerOwnerRecord{}, false
 	}
 	rootPath, ownerPath, writerPath := filepath.Join(s, "root.json"), filepath.Join(d, "owner.json"), filepath.Join(s, "writer-owner.json")
 	for _, name := range []string{"init.lock", "admission.lock", "writer.lock"} {
 		if !safeLockUID(filepath.Join(s, name), uid) {
-			return ""
+			return rootOwnerRecord{}, writerOwnerRecord{}, false
 		}
 	}
 	if !safeRegularUID(rootPath, uid) || !safeRegularUID(ownerPath, uid) || !safeRegularUID(writerPath, uid) {
-		return ""
+		return rootOwnerRecord{}, writerOwnerRecord{}, false
 	}
 	var root rootOwnerRecord
 	var owner namespaceOwnerRecord
 	var writer writerOwnerRecord
 	if readRecord(rootPath, &root) != nil || readRecord(ownerPath, &owner) != nil || readRecord(writerPath, &writer) != nil {
-		return ""
+		return rootOwnerRecord{}, writerOwnerRecord{}, false
 	}
 	if root != initializedRoot(root.Instance) || root.Instance == "" || owner != namespaceOwner(root.Instance, "data") ||
 		writer.Schema != 1 || writer.Domain != "zerb.writer-owner" || writer.Instance != root.Instance ||
@@ -1367,137 +1428,118 @@ func exactCurrent(s, d string, uid int) string {
 		(writer.Status == "released" && (writer.Token != "" || validProcessIdentity(writer.Process))) ||
 		(writer.Status == "held" && (writer.Token == "" || !validProcessIdentity(writer.Process))) ||
 		!validWriterPredecessor(writer) {
-		return ""
+		return rootOwnerRecord{}, writerOwnerRecord{}, false
 	}
 	for _, name := range []string{"candidates", "journals", "receipts"} {
 		if !safeRootDir(filepath.Join(s, name), uid) {
-			return ""
+			return rootOwnerRecord{}, writerOwnerRecord{}, false
 		}
 	}
-	base := []string{"admission.lock", "candidates", "init.lock", "journals", "receipts", "root.json", "writer-owner.json", "writer.lock"}
-	currentPresent := exists(filepath.Join(s, "current.json"))
-	names := append([]string(nil), base...)
-	if currentPresent {
-		names = append(names, "current.json")
-		sort.Strings(names)
-	}
-	if !exactNames(s, names) {
-		return ""
-	}
-	journalEntries, err := os.ReadDir(filepath.Join(s, "journals"))
-	if err != nil || len(journalEntries) > 1 {
-		return ""
-	}
+	return root, writer, true
+}
+
+func readCurrentRelation(s string, uid int, instance string, currentPresent bool) (currentRecord, pendingReceiptRecord, bool) {
 	var current currentRecord
 	var currentReceipt pendingReceiptRecord
 	if currentPresent {
 		currentPath := filepath.Join(s, "current.json")
 		if !safeRegularUID(currentPath, uid) || readRecord(currentPath, &current) != nil ||
-			current.Schema != 1 || current.Domain != "zerb.current" || current.Status != "stable" ||
+			!validCurrentIdentity(current, instance) ||
 			current.Candidate == "" || current.Receipt == "" ||
-			!validCandidate(filepath.Join(s, "candidates", string(current.Candidate)+".json"), root.Instance, string(current.Candidate)) ||
+			!validCandidate(filepath.Join(s, "candidates", string(current.Candidate)+".json"), instance, string(current.Candidate)) ||
 			readRecord(filepath.Join(s, "receipts", string(current.Receipt)+".json"), &currentReceipt) != nil ||
 			currentReceipt.Digest != current.Receipt ||
 			!validPendingReceiptFor(filepath.Join(s, "receipts", string(current.Receipt)+".json"), string(current.Candidate), currentReceipt.Facts.Previous) ||
 			!currentDigestsMatch(s, current) {
-			return ""
+			return currentRecord{}, pendingReceiptRecord{}, false
 		}
 		if currentReceipt.Facts.Previous != "" && !validReceiptDigest(string(currentReceipt.Facts.Previous)) {
-			return ""
+			return currentRecord{}, pendingReceiptRecord{}, false
 		}
 	}
-	if len(journalEntries) == 0 {
-		if !currentPresent && writer.Status == "released" && writer != releasedWriter(root.Instance, "", 0, 0, "") {
-			return ""
-		}
-		if !currentPresent {
-			if !validCandidateDirectory(filepath.Join(s, "candidates")) || !emptyDir(filepath.Join(s, "receipts")) {
-				return ""
-			}
-			if writer.Status != "released" {
-				return ""
-			}
-			return "READY(∅)"
-		}
-		if !validCandidateDirectory(filepath.Join(s, "candidates"), string(current.Candidate)) ||
-			!exactLeafNames(filepath.Join(s, "receipts"), string(current.Receipt)+".json") {
-			return ""
-		}
-		if writer.Status == "held" {
-			return "CLEANUP(B)"
-		}
-		return "STABLE(A)"
-	}
-	if !journalEntries[0].Type().IsRegular() || writer.Status != "held" {
+	return current, currentReceipt, true
+}
+
+func exactJournalLessCurrent(s, instance string, currentPresent bool, writer writerOwnerRecord, current currentRecord) string {
+	if !currentPresent && writer.Status == "released" && writer != releasedWriter(instance, "", 0, 0, "") {
 		return ""
 	}
-	journalPath := filepath.Join(s, "journals", journalEntries[0].Name())
-	journalID := strings.TrimSuffix(journalEntries[0].Name(), ".json")
+	if !currentPresent {
+		if !validCandidateDirectory(filepath.Join(s, "candidates")) || !emptyDir(filepath.Join(s, "receipts")) {
+			return ""
+		}
+		if writer.Status != "released" {
+			return ""
+		}
+		return "READY(∅)"
+	}
+	if !validCandidateDirectory(filepath.Join(s, "candidates"), string(current.Candidate)) ||
+		!exactLeafNames(filepath.Join(s, "receipts"), string(current.Receipt)+".json") {
+		return ""
+	}
+	if writer.Status == "held" {
+		if !currentMatchesHeldWriter(current, writer) {
+			return ""
+		}
+		return "CLEANUP(B)"
+	}
+	if !currentPrecedesReleasedWriter(current, writer) {
+		return ""
+	}
+	return "STABLE(A)"
+}
+
+func readCurrentJournal(s string, uid int, instance string, entry os.DirEntry, writer writerOwnerRecord) (journalRecord, bool) {
+	if !entry.Type().IsRegular() || writer.Status != "held" {
+		return journalRecord{}, false
+	}
+	journalPath := filepath.Join(s, "journals", entry.Name())
+	journalID := strings.TrimSuffix(entry.Name(), ".json")
 	var journal journalRecord
-	if journalID == journalEntries[0].Name() || !safeRegularUID(journalPath, uid) || readRecord(journalPath, &journal) != nil ||
-		journal.Schema != 1 || journal.Domain != "zerb.journal" || journal.Instance != root.Instance ||
+	if journalID == entry.Name() || !safeRegularUID(journalPath, uid) || readRecord(journalPath, &journal) != nil ||
+		journal.Schema != 1 || journal.Domain != "zerb.journal" || journal.Instance != instance ||
 		journal.OperationID != journalID || journal.Candidate == "" {
-		return ""
+		return journalRecord{}, false
 	}
 	currentWriter := journal.WriterGeneration == writer.Generation &&
 		journal.WriterToken == writer.Token && journal.WriterPreviousToken == writer.PreviousToken
 	journalAhead := isGenerationSuccessor(writer.Generation, journal.WriterGeneration) &&
 		journal.WriterPreviousToken == writer.Token
 	if (!currentWriter && !journalAhead) || !validJournalPrefix(journal) ||
-		!validCandidate(filepath.Join(s, "candidates", string(journal.Candidate)+".json"), root.Instance, string(journal.Candidate)) {
+		!validCandidate(filepath.Join(s, "candidates", string(journal.Candidate)+".json"), instance, string(journal.Candidate)) {
+		return journalRecord{}, false
+	}
+	return journal, true
+}
+
+func exactPriorTransition(s, instance string, journal journalRecord, nextReceipt pendingReceiptRecord, nextReceiptExists bool) string {
+	if journal.Phase == phaseCleanup {
 		return ""
 	}
-	nextReceipt := pendingReceiptFor(string(journal.Candidate), journal.Previous)
-	nextReceiptPath := filepath.Join(s, "receipts", string(nextReceipt.Digest)+".json")
-	nextReceiptExists := exists(nextReceiptPath)
-	if (journal.Previous == "") != (journal.PreviousReceipt == "") ||
-		(journal.PreviousReceipt != "" && !validReceiptDigest(string(journal.PreviousReceipt))) ||
-		(nextReceiptExists && !validPendingReceiptFor(nextReceiptPath, string(journal.Candidate), journal.Previous)) {
+	requiredCandidates := []string{string(journal.Candidate)}
+	if journal.Previous != journal.Candidate {
+		requiredCandidates = append(requiredCandidates, string(journal.Previous))
+	}
+	requiredReceipts := []string{string(journal.PreviousReceipt) + ".json"}
+	if nextReceiptExists && nextReceipt.Digest != journal.PreviousReceipt {
+		requiredReceipts = append(requiredReceipts, string(nextReceipt.Digest)+".json")
+	}
+	if !validCandidate(filepath.Join(s, "candidates", string(journal.Previous)+".json"), instance, string(journal.Previous)) ||
+		!validCandidateDirectory(filepath.Join(s, "candidates"), requiredCandidates...) ||
+		(nextReceiptExists && nextReceipt.Digest != journal.PreviousReceipt && journal.Phase != phasePending) ||
+		!exactLeafNames(filepath.Join(s, "receipts"), requiredReceipts...) {
 		return ""
 	}
-	if !currentPresent {
-		if journal.Previous != "" || journal.PreviousReceipt != "" || journal.Phase == phaseCleanup ||
-			!validCandidateDirectory(filepath.Join(s, "candidates"), string(journal.Candidate)) {
-			return ""
-		}
-		if nextReceiptExists {
-			if journal.Phase != phasePending || !exactLeafNames(filepath.Join(s, "receipts"), string(nextReceipt.Digest)+".json") {
-				return ""
-			}
-		} else if !emptyDir(filepath.Join(s, "receipts")) {
-			return ""
-		}
-		return "TRANSITION(∅,B)"
-	}
-	beforeCommit := current.Candidate == journal.Previous && current.Receipt == journal.PreviousReceipt && journal.Previous != ""
-	if beforeCommit {
-		requiredCandidates := []string{string(journal.Candidate)}
-		if journal.Previous != journal.Candidate {
-			requiredCandidates = append(requiredCandidates, string(journal.Previous))
-		}
-		requiredReceipts := []string{string(journal.PreviousReceipt) + ".json"}
-		if nextReceiptExists && nextReceipt.Digest != journal.PreviousReceipt {
-			requiredReceipts = append(requiredReceipts, string(nextReceipt.Digest)+".json")
-		}
-		if !validCandidate(filepath.Join(s, "candidates", string(journal.Previous)+".json"), root.Instance, string(journal.Previous)) ||
-			!validCandidateDirectory(filepath.Join(s, "candidates"), requiredCandidates...) ||
-			(nextReceiptExists && nextReceipt.Digest != journal.PreviousReceipt && journal.Phase != phasePending) ||
-			!exactLeafNames(filepath.Join(s, "receipts"), requiredReceipts...) {
-			return ""
-		}
-		return "TRANSITION(A,B)"
-	}
-	if current.Candidate != journal.Candidate || current.Receipt != nextReceipt.Digest ||
-		currentReceipt.Facts.Previous != journal.Previous ||
-		(journal.Phase != phasePending && journal.Phase != phaseCleanup) {
-		return ""
-	}
+	return "TRANSITION(A,B)"
+}
+
+func exactCommittedCleanup(s, instance string, journal journalRecord, nextReceipt pendingReceiptRecord) string {
 	previousCandidateDistinct := journal.Previous != "" && journal.Previous != journal.Candidate
 	previousReceiptDistinct := journal.PreviousReceipt != "" && journal.PreviousReceipt != nextReceipt.Digest
 	previousCandidateExists := previousCandidateDistinct && exists(filepath.Join(s, "candidates", string(journal.Previous)+".json"))
 	previousReceiptPath := filepath.Join(s, "receipts", string(journal.PreviousReceipt)+".json")
 	previousReceiptExists := previousReceiptDistinct && exists(previousReceiptPath)
-	if previousCandidateExists && !validCandidate(filepath.Join(s, "candidates", string(journal.Previous)+".json"), root.Instance, string(journal.Previous)) {
+	if previousCandidateExists && !validCandidate(filepath.Join(s, "candidates", string(journal.Previous)+".json"), instance, string(journal.Previous)) {
 		return ""
 	}
 	if previousReceiptExists {
@@ -1526,8 +1568,75 @@ func exactCurrent(s, d string, uid int) string {
 		return ""
 	}
 	return "CLEANUP(B)"
+
 }
 
+func exactCurrent(s, d string, uid int) string {
+	root, writer, valid := readCurrentAuthority(s, d, uid)
+	if !valid {
+		return ""
+	}
+	base := []string{"admission.lock", "candidates", "init.lock", "journals", "receipts", "root.json", "writer-owner.json", "writer.lock"}
+	currentPresent := exists(filepath.Join(s, "current.json"))
+	names := append([]string(nil), base...)
+	if currentPresent {
+		names = append(names, "current.json")
+		sort.Strings(names)
+	}
+	if !exactNames(s, names) {
+		return ""
+	}
+	journalEntries, err := os.ReadDir(filepath.Join(s, "journals"))
+	if err != nil || len(journalEntries) > 1 {
+		return ""
+	}
+	current, currentReceipt, valid := readCurrentRelation(s, uid, root.Instance, currentPresent)
+	if !valid {
+		return ""
+	}
+	if len(journalEntries) == 0 {
+		return exactJournalLessCurrent(s, root.Instance, currentPresent, writer, current)
+	}
+	journal, valid := readCurrentJournal(s, uid, root.Instance, journalEntries[0], writer)
+	if !valid {
+		return ""
+	}
+	nextReceipt := pendingReceiptFor(string(journal.Candidate), journal.Previous)
+	nextReceiptPath := filepath.Join(s, "receipts", string(nextReceipt.Digest)+".json")
+	nextReceiptExists := exists(nextReceiptPath)
+	if (journal.Previous == "") != (journal.PreviousReceipt == "") ||
+		(journal.PreviousReceipt != "" && !validReceiptDigest(string(journal.PreviousReceipt))) ||
+		(nextReceiptExists && !validPendingReceiptFor(nextReceiptPath, string(journal.Candidate), journal.Previous)) {
+		return ""
+	}
+	if !currentPresent {
+		if journal.Previous != "" || journal.PreviousReceipt != "" || journal.Phase == phaseCleanup ||
+			!validCandidateDirectory(filepath.Join(s, "candidates"), string(journal.Candidate)) {
+			return ""
+		}
+		if nextReceiptExists {
+			if journal.Phase != phasePending || !exactLeafNames(filepath.Join(s, "receipts"), string(nextReceipt.Digest)+".json") {
+				return ""
+			}
+		} else if !emptyDir(filepath.Join(s, "receipts")) {
+			return ""
+		}
+		return "TRANSITION(∅,B)"
+	}
+	committedOperation := currentMatchesJournal(current, journal)
+	beforeCommit := !committedOperation && current.OperationID != journal.OperationID &&
+		current.OperationToken != journal.OperationToken && current.WriterGeneration < writer.Generation &&
+		current.Candidate == journal.Previous && current.Receipt == journal.PreviousReceipt && journal.Previous != ""
+	if beforeCommit {
+		return exactPriorTransition(s, root.Instance, journal, nextReceipt, nextReceiptExists)
+	}
+	if !committedOperation || current.Candidate != journal.Candidate || current.Receipt != nextReceipt.Digest ||
+		currentReceipt.Facts.Previous != journal.Previous ||
+		(journal.Phase != phasePending && journal.Phase != phaseCleanup) {
+		return ""
+	}
+	return exactCommittedCleanup(s, root.Instance, journal, nextReceipt)
+}
 func safeRootDir(p string, uid int) bool {
 	i, e := os.Lstat(p)
 	return e == nil && safeDirectoryInfo(i, uid)
@@ -1842,6 +1951,8 @@ func classScenario(id, got, want, fixture string) Scenario {
 }
 
 type graphRefs struct {
+	priorCurrent           currentRecord
+	committedCurrent       currentRecord
 	generation             uint64
 	instance               string
 	token                  string
@@ -1868,8 +1979,8 @@ func freshGraphRefs() graphRefs {
 	a := string(candidateDigestFor("proof-current"))
 	b := string(candidateDigestFor("proof-next"))
 	receiptA := string(pendingReceiptFor(a, "").Digest)
-	return graphRefs{
-		generation:             1,
+	r := graphRefs{
+		generation:             3,
 		instance:               one(),
 		token:                  one(),
 		operationToken:         one(),
@@ -1882,9 +1993,12 @@ func freshGraphRefs() graphRefs {
 		receiptB:               string(pendingReceiptFor(b, receiptDigest(a)).Digest),
 		journal:                one(),
 	}
+	r.priorWriterToken = stableCurrent(r.instance, r.a, r.receiptA, r.journal).WriterToken
+	return r
 }
 func freshBootstrapRefs() graphRefs {
 	r := freshGraphRefs()
+	r.generation = 1
 	r.a = ""
 	r.receiptA = ""
 	r.receiptB = string(pendingReceiptFor(r.b, "").Digest)
@@ -1904,23 +2018,26 @@ func makeGraph(base, graph string) (string, string, graphRefs) {
 	_ = writeRecord(filepath.Join(d, "owner.json"), namespaceOwner(r.instance, "data"))
 	_ = writeRecord(filepath.Join(s, "writer-owner.json"), releasedWriter(r.instance, "", 0, 0, ""))
 	if graph == "READY(∅)" {
+		r.generation = 1
 		return s, d, r
 	}
+	r.priorCurrent = baselineCurrent(r)
+	_ = writeRecord(filepath.Join(s, "writer-owner.json"), baselineReleasedWriter(r))
 	_ = writeRecord(filepath.Join(s, "candidates", r.a+".json"), candidateReference(r.instance, r.a))
 	_ = writeRecord(filepath.Join(s, "receipts", r.receiptA+".json"), pendingReceiptFor(r.a, ""))
-	_ = writeRecord(filepath.Join(s, "current.json"), stableCurrent(r.instance, r.a, r.receiptA, r.journal))
+	_ = writeRecord(filepath.Join(s, "current.json"), baselineCurrent(r))
 	if graph == "STABLE(A)" {
 		return s, d, r
 	}
-	transitionOwner := heldWriter(r.instance, r.writerToken, 1, processIdentity{PID: 999997, Start: 1, PIDNamespace: 1}, 0, transitionPreviousWriterToken(r))
+	transitionOwner := heldWriter(r.instance, r.writerToken, r.generation, processIdentity{PID: 999997, Start: 1, PIDNamespace: 1}, r.generation-1, transitionPreviousWriterToken(r))
 	_ = writeRecord(filepath.Join(s, "writer-owner.json"), transitionOwner)
 	_ = writeRecord(filepath.Join(s, "candidates", r.b+".json"), candidateReference(r.instance, r.b))
-	journal := transitionJournalRecord(r, "mutating", string(phaseHomeApply), mutationPhases, 1, r.writerToken)
+	journal := transitionJournalRecord(r, "mutating", string(phaseHomeApply), mutationPhases, r.generation, r.writerToken)
 	_ = writeRecord(filepath.Join(s, "receipts", r.receiptB+".json"), transitionPendingReceipt(r))
 	journal.Phase = phasePending
 	if graph == "CLEANUP(B)" {
 		journal.Phase = phaseCleanup
-		_ = writeRecord(filepath.Join(s, "current.json"), stableCurrent(r.instance, r.b, r.receiptB, r.journal))
+		_ = writeRecord(filepath.Join(s, "current.json"), transitionCurrent(r))
 	}
 	_ = writeRecord(filepath.Join(s, "journals", r.journal+".json"), journal)
 	return s, d, r
@@ -2120,7 +2237,7 @@ func runClassifierRelations(root *prooffs.OwnedRoot, add func(Scenario)) {
 			_ = writeRecord(filepath.Join(s, "journals", x+".json"), value)
 		}},
 		{"second-current", func(s, _ string, r graphRefs) {
-			_ = writeRecord(filepath.Join(s, "current.second.json"), stableCurrent(r.instance, r.a, r.receiptA, r.journal))
+			_ = writeRecord(filepath.Join(s, "current.second.json"), baselineCurrent(r))
 		}},
 		{"candidate-filename-id-mismatch", func(s, _ string, r graphRefs) {
 			_ = writeRecord(filepath.Join(s, "candidates", r.a+".json"), candidateReference(r.instance, r.b))
@@ -2178,7 +2295,7 @@ func runClassifierRelations(root *prooffs.OwnedRoot, add func(Scenario)) {
 			_ = os.Remove(filepath.Join(s, "candidates", r.a+".json"))
 			_ = os.Remove(filepath.Join(s, "receipts", r.receiptA+".json"))
 			_ = os.Remove(filepath.Join(s, "journals", r.journal+".json"))
-			_ = writeRecord(filepath.Join(s, "writer-owner.json"), releasedWriter(r.instance, "", 2, 1, r.writerToken))
+			_ = writeRecord(filepath.Join(s, "writer-owner.json"), releasedWriter(r.instance, "", r.generation+1, r.generation, r.writerToken))
 		}, "STABLE(A)"},
 	}
 	for _, cleanupStage := range cleanupStages {
@@ -2348,6 +2465,287 @@ func runBootstrapHandoffFailures(root *prooffs.OwnedRoot, add func(Scenario)) {
 	}
 }
 
+// initializationAcquisition models ARCH-030's returned ownership, including failed handoffs.
+type initializationAcquisition struct {
+	initialization *proofLease
+	target         *proofLease
+}
+
+func (a *initializationAcquisition) consumeInitialization() {
+	a.initialization.release()
+	a.initialization = nil
+}
+
+func (a *initializationAcquisition) release() {
+	if a.target != nil {
+		a.target.release()
+		a.target = nil
+	}
+	if a.initialization != nil {
+		a.consumeInitialization()
+	}
+}
+
+func publishBootstrapOwnerInjected(s, injection string, refs *graphRefs, identity processIdentity) (prooffs.PublicationIdentity, writerOwnerRecord, error) {
+	var prior writerOwnerRecord
+	token, tokenErr := FreshToken()
+	priorErr := readRecord(filepath.Join(s, "writer-owner.json"), &prior)
+	_, priorIdentityErr := exactRecordFile(filepath.Join(s, "writer-owner.json"), prior, nil)
+	if tokenErr != nil || priorErr != nil || priorIdentityErr != nil || prior != releasedWriter(refs.instance, "", 0, 0, "") {
+		return prooffs.PublicationIdentity{}, writerOwnerRecord{}, errors.New("initial writer predecessor was not exact")
+	}
+	refs.writerToken = token
+	held := heldWriter(refs.instance, refs.writerToken, 1, identity, 0, "")
+	heldIdentity, err := publishRecordIdentity(s, "writer-owner.json", held)
+	if err != nil {
+		return prooffs.PublicationIdentity{}, writerOwnerRecord{}, err
+	}
+	if injection == "held-owner-reopen-mismatch" || injection == "held-owner-reopen-altered" {
+		substituted := held
+		if injection == "held-owner-reopen-altered" {
+			substituted.Instance = strings.Repeat("a", 32)
+			if substituted.Instance == refs.instance {
+				substituted.Instance = strings.Repeat("b", 32)
+			}
+		}
+		if err = publishRecord(s, "writer-owner.json", substituted); err != nil {
+			return prooffs.PublicationIdentity{}, writerOwnerRecord{}, err
+		}
+	}
+	var reopened writerOwnerRecord
+	_, heldIdentityErr := exactRecordFile(filepath.Join(s, "writer-owner.json"), held, &heldIdentity)
+	ownerHeld := readRecord(filepath.Join(s, "writer-owner.json"), &reopened) == nil && reopened == held &&
+		validWriterPredecessor(reopened) && heldIdentityErr == nil
+	if !ownerHeld {
+		return prooffs.PublicationIdentity{}, writerOwnerRecord{}, errors.New("held writer owner reopen mismatch")
+	}
+	released := releasedWriter(refs.instance, "", 2, 1, refs.writerToken)
+	return heldIdentity, released, nil
+}
+
+func verifyReleasedBootstrapOwnerInjected(s, injection string, refs graphRefs, released writerOwnerRecord, releasedIdentity prooffs.PublicationIdentity) error {
+	if injection == "released-owner-reopen-mismatch" || injection == "released-owner-reopen-altered" {
+		substituted := released
+		if injection == "released-owner-reopen-altered" {
+			substituted.Instance = strings.Repeat("a", 32)
+			if substituted.Instance == refs.instance {
+				substituted.Instance = strings.Repeat("b", 32)
+			}
+		}
+		if err := publishRecord(s, "writer-owner.json", substituted); err != nil {
+			return err
+		}
+	}
+	var releasedReopened writerOwnerRecord
+	_, releasedIdentityErr := exactRecordFile(filepath.Join(s, "writer-owner.json"), released, &releasedIdentity)
+	ownerReleased := readRecord(filepath.Join(s, "writer-owner.json"), &releasedReopened) == nil &&
+		releasedReopened == released && validWriterPredecessor(releasedReopened) && releasedIdentityErr == nil
+	if !ownerReleased {
+		return errors.New("released writer owner reopen mismatch")
+	}
+	return nil
+}
+
+type initializationHandoffChecks struct {
+	initialClassification, wantInitial                      string
+	fullReady                                               bool
+	contenderResult                                         commandContenderSnapshot
+	continuedAfterConsume, ownerHeld, ownerReleased         bool
+	initBlocked, admissionBlocked, writerBlocked            bool
+	initConsumed, admissionStillBlocked, writerStillBlocked bool
+}
+
+func (c initializationHandoffChecks) failed() bool {
+	return c.initialClassification != c.wantInitial || !c.fullReady || c.contenderResult.InitAttempts == 0 ||
+		c.contenderResult.CurrentAttempts == 0 || c.contenderResult.Acquisitions != 0 || !c.continuedAfterConsume ||
+		!c.ownerHeld || !c.ownerReleased || !c.initBlocked || !c.admissionBlocked || !c.writerBlocked || !c.initConsumed ||
+		!c.admissionStillBlocked || !c.writerStillBlocked
+}
+
+func initializeCommandInjected(s, d, expectedState, command, injection string, scenario Scenario) (Scenario, initializationAcquisition) {
+	acquisition := initializationAcquisition{}
+	if expectedState == "CLEAN" {
+		if err := os.MkdirAll(s, 0700); err != nil || createDurableEmpty(s, "init.lock") != nil {
+			scenario.Status, scenario.Observation = Failed, "failed to create disposable stable initialization inode"
+			return scenario, acquisition
+		}
+		scenario.Writes = []string{"fixtures/<typed-admission>/state"}
+	}
+	lease, err := acquireStableLease(s, struct {
+		name string
+		typ  int16
+	}{"init.lock", fWRLCK})
+	if err != nil {
+		scenario.Status, scenario.Observation = Failed, err.Error()
+		return scenario, acquisition
+	}
+	acquisition.initialization = lease
+	initialClassification := classify(s, d)
+	scenario.Classification = initialClassification
+	scenario.Lease = "I-X"
+	scenario.Admission, scenario.Guidance = routePolicy(expectedState, command)
+	if expectedState == "INIT" && command == "recover-repair" {
+		scenario.Observation = "named router acquired and reopened the exact stable I-X inode for the separately exercised initialization-repair producer"
+		return scenario, acquisition
+	}
+	refs := freshGraphRefs()
+	if command == "bootstrap" {
+		refs = freshBootstrapRefs()
+	}
+	identity, identityErr := processIdentityForPID(os.Getpid())
+	if identityErr != nil {
+		scenario.Status, scenario.Observation = Failed, identityErr.Error()
+		return scenario, acquisition
+	}
+	cache := filepath.Join(filepath.Dir(s), "cache")
+	if err = initializeReadyPrefix(s, d, cache, refs, identity, lease); err != nil {
+		scenario.Status, scenario.Observation = Failed, err.Error()
+		return scenario, acquisition
+	}
+	initializationAuthority, authorityErr := actualFixtureObjects(map[string]string{"state": s, "data": d, "cache": cache})
+	if authorityErr != nil {
+		scenario.Status, scenario.Observation = Failed, authorityErr.Error()
+		return scenario, acquisition
+	}
+	external := ""
+	if command == "bootstrap" {
+		external = filepath.Join(filepath.Dir(s), "external")
+		if err = os.Mkdir(external, 0700); err != nil || syncDir(filepath.Dir(external)) != nil {
+			scenario.Status, scenario.Observation = Failed, "failed to create disposable external transition root"
+			return scenario, acquisition
+		}
+	}
+	scenario.Writes = []string{"fixtures/<typed-admission>/state", "fixtures/<typed-admission>/data", "fixtures/<typed-admission>/cache"}
+	if command == "bootstrap" {
+		scenario.Writes = append(scenario.Writes, "fixtures/<typed-admission>/external")
+	}
+	requests := []struct {
+		name string
+		typ  int16
+	}{{"admission.lock", fWRLCK}}
+	scenario.Lease = "I-X+A-X"
+	if command == "bootstrap" {
+		requests = append(requests, struct {
+			name string
+			typ  int16
+		}{"writer.lock", fWRLCK})
+		scenario.Lease = "I-X+A-X+W-X"
+	}
+	commandContender := startContinuousCommandContender(s, d, command == "bootstrap")
+	if !waitForContender(commandContender, func(snapshot commandContenderSnapshot) bool {
+		return snapshot.InitAttempts > 0
+	}) {
+		commandContender.stopAndWait()
+		scenario.Status, scenario.Observation = Failed, "current-command contender did not attempt I-X while root remained initializing"
+		return scenario, acquisition
+	}
+	beforeTarget := commandContender.snapshot()
+	if injection == "target-acquisition-failure" {
+		commandContender.stopAndWait()
+		scenario.Status, scenario.Observation = Failed, "target acquisition failed before I-X consume"
+		return scenario, acquisition
+	}
+	currentLease, err := acquireStableLease(s, requests...)
+	if err != nil {
+		commandContender.stopAndWait()
+		scenario.Status, scenario.Observation = Failed, err.Error()
+		return scenario, acquisition
+	}
+	acquisition.target = currentLease
+	if !waitForContender(commandContender, func(snapshot commandContenderSnapshot) bool {
+		return snapshot.Attempts > beforeTarget.Attempts
+	}) {
+		commandContender.stopAndWait()
+		scenario.Status, scenario.Observation = Failed, "current-command contender did not remain active across target acquisition"
+		return scenario, acquisition
+	}
+	finalizeFailure := func(observation string) Scenario {
+		commandContender.stopAndWait()
+		admissionBlocked := leaseAttemptBlocked(s, "admission.lock", fWRLCK)
+		writerBlocked := command != "bootstrap" || leaseAttemptBlocked(s, "writer.lock", fWRLCK)
+		scenario.Status = Failed
+		scenario.Observation = fmt.Sprintf("%s aborted before I-X consume and target unlock; admission_blocked=%t writer_blocked=%t", observation, admissionBlocked, writerBlocked)
+		return scenario
+	}
+	reopenedPrefix, reopenErr := actualFixtureObjects(map[string]string{"state": s, "data": d, "cache": cache})
+	if reopenErr != nil || !fixtureObjectsEqual(initializationAuthority, reopenedPrefix) {
+		return finalizeFailure("initialization protected prefix changed before final-root publication"), acquisition
+	}
+	if err = publishInitializedRoot(s, refs.instance); err != nil {
+		return finalizeFailure(err.Error()), acquisition
+	}
+	publishedPrefix, publishErr := actualFixtureObjects(map[string]string{"state": s, "data": d, "cache": cache})
+	if publishErr != nil || !fixtureObjectsEqualExceptKeys(initializationAuthority, publishedPrefix, map[string]bool{"state:.": true, "state:root.json": true}) {
+		return finalizeFailure("initialized-root publication changed unauthorized object"), acquisition
+	}
+	if !waitForContender(commandContender, func(snapshot commandContenderSnapshot) bool {
+		return snapshot.CurrentAttempts > 0
+	}) {
+		return finalizeFailure("current-command contender did not attempt the visible initialized relation"), acquisition
+	}
+	ready := classify(s, d)
+	fullReady := ready == "READY(∅)" && fullReadyGraphValid(s, d, cache, refs.instance)
+	ownerHeld, ownerReleased := true, true
+	var heldIdentity, releasedIdentity prooffs.PublicationIdentity
+	var released writerOwnerRecord
+	if command == "bootstrap" {
+		heldIdentity, released, err = publishBootstrapOwnerInjected(s, injection, &refs, identity)
+		if err != nil {
+			return finalizeFailure(err.Error()), acquisition
+		}
+	}
+	initBlocked := leaseAttemptBlocked(s, "init.lock", fWRLCK)
+	admissionBlocked := leaseAttemptBlocked(s, "admission.lock", fWRLCK)
+	writerBlocked := command != "bootstrap" || leaseAttemptBlocked(s, "writer.lock", fWRLCK)
+	beforeConsume := commandContender.snapshot()
+	acquisition.consumeInitialization()
+	initConsumed := leaseAttemptAvailable(s, "init.lock", fWRLCK)
+	admissionStillBlocked := leaseAttemptBlocked(s, "admission.lock", fWRLCK)
+	writerStillBlocked := command != "bootstrap" || leaseAttemptBlocked(s, "writer.lock", fWRLCK)
+	continuedAfterConsume := waitForContender(commandContender, func(snapshot commandContenderSnapshot) bool {
+		return snapshot.Attempts > beforeConsume.Attempts && snapshot.CurrentAttempts > beforeConsume.CurrentAttempts
+	})
+	finalizeAfterConsume := func(observation string) Scenario {
+		commandContender.stopAndWait()
+		admissionHeld := leaseAttemptBlocked(s, "admission.lock", fWRLCK)
+		writerHeld := command != "bootstrap" || leaseAttemptBlocked(s, "writer.lock", fWRLCK)
+		scenario.Status = Failed
+		scenario.Observation = fmt.Sprintf("%s aborted before target unlock after I-X consume; admission_blocked=%t writer_blocked=%t", observation, admissionHeld, writerHeld)
+		return scenario
+	}
+	if command == "bootstrap" {
+		if err = executeTransitionWithLease(s, d, external, refs, identity, nil, nil, currentLease, true, heldIdentity, &releasedIdentity); err != nil {
+			return finalizeAfterConsume(err.Error()), acquisition
+		}
+		if err = verifyReleasedBootstrapOwnerInjected(s, injection, refs, released, releasedIdentity); err != nil {
+			return finalizeAfterConsume(err.Error()), acquisition
+		}
+	}
+	contenderResult := commandContender.snapshot()
+	commandContender.stopAndWait()
+	wantInitial := expectedState
+	if expectedState == "CLEAN" {
+		wantInitial = "INIT"
+	}
+	checks := initializationHandoffChecks{
+		initialClassification: initialClassification, wantInitial: wantInitial,
+		fullReady: fullReady, contenderResult: contenderResult,
+		continuedAfterConsume: continuedAfterConsume, ownerHeld: ownerHeld, ownerReleased: ownerReleased,
+		initBlocked: initBlocked, admissionBlocked: admissionBlocked, writerBlocked: writerBlocked,
+		initConsumed: initConsumed, admissionStillBlocked: admissionStillBlocked, writerStillBlocked: writerStillBlocked,
+	}
+	if checks.failed() {
+		scenario.Status = Failed
+	}
+	scenario.Observation = fmt.Sprintf("router retained stable I-X from initializing classification %s; published and revalidated the exact initialization prefix; continuous current-command contender attempted I-X before and across target acquisition, then exact A-X after final-root publication and I-X consume without acquiring: attempts=%d init=%d current=%d acquisitions=%d; reopened and classified exact READY=%t; incompatible locks blocked before I-X consume init=%t admission=%t writer=%t and after consume admission=%t writer=%t; returned_target_lease=true", initialClassification, contenderResult.Attempts, contenderResult.InitAttempts, contenderResult.CurrentAttempts, contenderResult.Acquisitions, fullReady, initBlocked, admissionBlocked, writerBlocked, admissionStillBlocked, writerStillBlocked)
+	if command == "bootstrap" {
+		scenario.Boundaries.CandidateRevalidations++
+		scenario.Boundaries.ManagerRevalidations++
+		scenario.Observation += fmt.Sprintf("; bootstrap alone retained W-X, reopened held writer authority through I-X consume, completed the candidate/journal/mutation/receipt/current/cleanup transition, and published/reopened released owner only at operation release=%t/%t", ownerHeld, ownerReleased)
+	}
+	return scenario, acquisition
+}
+
 func routeCommand(s, d, expectedState, command string) Scenario {
 	return routeCommandInjected(s, d, expectedState, command, "")
 }
@@ -2376,235 +2774,18 @@ func routeCommandInjected(s, d, expectedState, command, injection string) Scenar
 			scenario.Observation = "named router took a read-only diagnostic topology snapshot, made no product-root write, and returned without initialization"
 			return scenario
 		}
-		if expectedState == "CLEAN" {
-			if err := os.MkdirAll(s, 0700); err != nil || createDurableEmpty(s, "init.lock") != nil {
-				scenario.Status, scenario.Observation = Failed, "failed to create disposable stable initialization inode"
-				return scenario
+		initialized, acquisition := initializeCommandInjected(s, d, expectedState, command, injection, scenario)
+		returnedTarget := acquisition.target != nil
+		acquisition.release()
+		if initialized.Status == Observed && returnedTarget {
+			admissionAvailable := leaseAttemptAvailable(s, "admission.lock", fWRLCK)
+			writerAvailable := command != "bootstrap" || leaseAttemptAvailable(s, "writer.lock", fWRLCK)
+			if !admissionAvailable || !writerAvailable {
+				initialized.Status = Failed
 			}
-			scenario.Writes = []string{"fixtures/<typed-admission>/state"}
+			initialized.Observation += fmt.Sprintf("; caller released returned acquisition: admission_available=%t writer_available=%t", admissionAvailable, writerAvailable)
 		}
-		lease, err := acquireStableLease(s, struct {
-			name string
-			typ  int16
-		}{"init.lock", fWRLCK})
-		if err != nil {
-			scenario.Status, scenario.Observation = Failed, err.Error()
-			return scenario
-		}
-		initialClassification := classify(s, d)
-		scenario.Classification = initialClassification
-		scenario.Lease = "I-X"
-		scenario.Admission, scenario.Guidance = routePolicy(expectedState, command)
-		if repairsInitialization {
-			lease.release()
-			scenario.Observation = "named router acquired and reopened the exact stable I-X inode for the separately exercised initialization-repair producer"
-			return scenario
-		}
-		refs := freshGraphRefs()
-		if command == "bootstrap" {
-			refs = freshBootstrapRefs()
-		}
-		identity, identityErr := processIdentityForPID(os.Getpid())
-		if identityErr != nil {
-			lease.release()
-			scenario.Status, scenario.Observation = Failed, identityErr.Error()
-			return scenario
-		}
-		cache := filepath.Join(filepath.Dir(s), "cache")
-		if err = initializeReadyPrefix(s, d, cache, refs, identity, lease); err != nil {
-			lease.release()
-			scenario.Status, scenario.Observation = Failed, err.Error()
-			return scenario
-		}
-		initializationAuthority, authorityErr := actualFixtureObjects(map[string]string{"state": s, "data": d, "cache": cache})
-		if authorityErr != nil {
-			lease.release()
-			scenario.Status, scenario.Observation = Failed, authorityErr.Error()
-			return scenario
-		}
-		external := ""
-		if command == "bootstrap" {
-			external = filepath.Join(filepath.Dir(s), "external")
-			if err = os.Mkdir(external, 0700); err != nil || syncDir(filepath.Dir(external)) != nil {
-				lease.release()
-				scenario.Status, scenario.Observation = Failed, "failed to create disposable external transition root"
-				return scenario
-			}
-		}
-		scenario.Writes = []string{"fixtures/<typed-admission>/state", "fixtures/<typed-admission>/data", "fixtures/<typed-admission>/cache"}
-		if command == "bootstrap" {
-			scenario.Writes = append(scenario.Writes, "fixtures/<typed-admission>/external")
-		}
-		requests := []struct {
-			name string
-			typ  int16
-		}{{"admission.lock", fWRLCK}}
-		scenario.Lease = "I-X+A-X"
-		if command == "bootstrap" {
-			requests = append(requests, struct {
-				name string
-				typ  int16
-			}{"writer.lock", fWRLCK})
-			scenario.Lease = "I-X+A-X+W-X"
-		}
-		commandContender := startContinuousCommandContender(s, d, command == "bootstrap")
-		if !waitForContender(commandContender, func(snapshot commandContenderSnapshot) bool {
-			return snapshot.InitAttempts > 0
-		}) {
-			commandContender.stopAndWait()
-			lease.release()
-			scenario.Status, scenario.Observation = Failed, "current-command contender did not attempt I-X while root remained initializing"
-			return scenario
-		}
-		beforeTarget := commandContender.snapshot()
-		currentLease, err := acquireStableLease(s, requests...)
-		if err != nil {
-			commandContender.stopAndWait()
-			lease.release()
-			scenario.Status, scenario.Observation = Failed, err.Error()
-			return scenario
-		}
-		if !waitForContender(commandContender, func(snapshot commandContenderSnapshot) bool {
-			return snapshot.Attempts > beforeTarget.Attempts
-		}) {
-			commandContender.stopAndWait()
-			currentLease.release()
-			lease.release()
-			scenario.Status, scenario.Observation = Failed, "current-command contender did not remain active across target acquisition"
-			return scenario
-		}
-		finalizeFailure := func(observation string) Scenario {
-			commandContender.stopAndWait()
-			admissionBlocked := leaseAttemptBlocked(s, "admission.lock", fWRLCK)
-			writerBlocked := command != "bootstrap" || leaseAttemptBlocked(s, "writer.lock", fWRLCK)
-			currentLease.release()
-			lease.release()
-			scenario.Status = Failed
-			scenario.Observation = fmt.Sprintf("%s aborted before I-X consume and target unlock; admission_blocked=%t writer_blocked=%t", observation, admissionBlocked, writerBlocked)
-			return scenario
-		}
-		reopenedPrefix, reopenErr := actualFixtureObjects(map[string]string{"state": s, "data": d, "cache": cache})
-		if reopenErr != nil || !fixtureObjectsEqual(initializationAuthority, reopenedPrefix) {
-			return finalizeFailure("initialization protected prefix changed before final-root publication")
-		}
-		if err = publishInitializedRoot(s, refs.instance); err != nil {
-			return finalizeFailure(err.Error())
-		}
-		publishedPrefix, publishErr := actualFixtureObjects(map[string]string{"state": s, "data": d, "cache": cache})
-		if publishErr != nil || !fixtureObjectsEqualExceptKeys(initializationAuthority, publishedPrefix, map[string]bool{"state:.": true, "state:root.json": true}) {
-			return finalizeFailure("initialized-root publication changed unauthorized object")
-		}
-		if !waitForContender(commandContender, func(snapshot commandContenderSnapshot) bool {
-			return snapshot.CurrentAttempts > 0
-		}) {
-			return finalizeFailure("current-command contender did not attempt the visible initialized relation")
-		}
-		ready := classify(s, d)
-		fullReady := ready == "READY(∅)" && fullReadyGraphValid(s, d, cache, refs.instance)
-		ownerHeld, ownerReleased := true, true
-		var heldIdentity, releasedIdentity prooffs.PublicationIdentity
-		var released writerOwnerRecord
-		if command == "bootstrap" {
-			var prior writerOwnerRecord
-			token, tokenErr := FreshToken()
-			priorErr := readRecord(filepath.Join(s, "writer-owner.json"), &prior)
-			_, priorIdentityErr := exactRecordFile(filepath.Join(s, "writer-owner.json"), prior, nil)
-			if tokenErr != nil || priorErr != nil || priorIdentityErr != nil || prior != releasedWriter(refs.instance, "", 0, 0, "") {
-				return finalizeFailure("initial writer predecessor was not exact")
-			}
-			refs.writerToken = token
-			held := heldWriter(refs.instance, refs.writerToken, 1, identity, 0, "")
-			heldIdentity, err = publishRecordIdentity(s, "writer-owner.json", held)
-			if err != nil {
-				return finalizeFailure(err.Error())
-			}
-			if injection == "held-owner-reopen-mismatch" || injection == "held-owner-reopen-altered" {
-				substituted := held
-				if injection == "held-owner-reopen-altered" {
-					substituted.Instance = strings.Repeat("a", 32)
-					if substituted.Instance == refs.instance {
-						substituted.Instance = strings.Repeat("b", 32)
-					}
-				}
-				if err = publishRecord(s, "writer-owner.json", substituted); err != nil {
-					return finalizeFailure(err.Error())
-				}
-			}
-			var reopened writerOwnerRecord
-			_, heldIdentityErr := exactRecordFile(filepath.Join(s, "writer-owner.json"), held, &heldIdentity)
-			ownerHeld = readRecord(filepath.Join(s, "writer-owner.json"), &reopened) == nil && reopened == held &&
-				validWriterPredecessor(reopened) && heldIdentityErr == nil
-			if !ownerHeld {
-				return finalizeFailure("held writer owner reopen mismatch")
-			}
-			released = releasedWriter(refs.instance, "", 2, 1, refs.writerToken)
-		}
-		initBlocked := leaseAttemptBlocked(s, "init.lock", fWRLCK)
-		admissionBlocked := leaseAttemptBlocked(s, "admission.lock", fWRLCK)
-		writerBlocked := command != "bootstrap" || leaseAttemptBlocked(s, "writer.lock", fWRLCK)
-		beforeConsume := commandContender.snapshot()
-		lease.release()
-		initConsumed := leaseAttemptAvailable(s, "init.lock", fWRLCK)
-		admissionStillBlocked := leaseAttemptBlocked(s, "admission.lock", fWRLCK)
-		writerStillBlocked := command != "bootstrap" || leaseAttemptBlocked(s, "writer.lock", fWRLCK)
-		continuedAfterConsume := waitForContender(commandContender, func(snapshot commandContenderSnapshot) bool {
-			return snapshot.Attempts > beforeConsume.Attempts && snapshot.CurrentAttempts > beforeConsume.CurrentAttempts
-		})
-		finalizeAfterConsume := func(observation string) Scenario {
-			commandContender.stopAndWait()
-			admissionHeld := leaseAttemptBlocked(s, "admission.lock", fWRLCK)
-			writerHeld := command != "bootstrap" || leaseAttemptBlocked(s, "writer.lock", fWRLCK)
-			currentLease.release()
-			scenario.Status = Failed
-			scenario.Observation = fmt.Sprintf("%s aborted before target unlock after I-X consume; admission_blocked=%t writer_blocked=%t", observation, admissionHeld, writerHeld)
-			return scenario
-		}
-		if command == "bootstrap" {
-			if err = executeTransitionWithLease(s, d, external, refs, identity, nil, nil, currentLease, true, heldIdentity, &releasedIdentity); err != nil {
-				return finalizeAfterConsume(err.Error())
-			}
-			if injection == "released-owner-reopen-mismatch" || injection == "released-owner-reopen-altered" {
-				substituted := released
-				if injection == "released-owner-reopen-altered" {
-					substituted.Instance = strings.Repeat("a", 32)
-					if substituted.Instance == refs.instance {
-						substituted.Instance = strings.Repeat("b", 32)
-					}
-				}
-				if err = publishRecord(s, "writer-owner.json", substituted); err != nil {
-					return finalizeAfterConsume(err.Error())
-				}
-			}
-			var releasedReopened writerOwnerRecord
-			_, releasedIdentityErr := exactRecordFile(filepath.Join(s, "writer-owner.json"), released, &releasedIdentity)
-			ownerReleased = readRecord(filepath.Join(s, "writer-owner.json"), &releasedReopened) == nil &&
-				releasedReopened == released && validWriterPredecessor(releasedReopened) && releasedIdentityErr == nil
-			if !ownerReleased {
-				return finalizeAfterConsume("released writer owner reopen mismatch")
-			}
-		}
-		contenderResult := commandContender.snapshot()
-		commandContender.stopAndWait()
-		currentLease.release()
-		admissionAfterRelease := leaseAttemptAvailable(s, "admission.lock", fWRLCK)
-		writerAfterRelease := command != "bootstrap" || leaseAttemptAvailable(s, "writer.lock", fWRLCK)
-		wantInitial := expectedState
-		if expectedState == "CLEAN" {
-			wantInitial = "INIT"
-		}
-		if initialClassification != wantInitial || !fullReady || contenderResult.InitAttempts == 0 ||
-			contenderResult.CurrentAttempts == 0 || contenderResult.Acquisitions != 0 || !continuedAfterConsume ||
-			!ownerHeld || !ownerReleased || !initBlocked || !admissionBlocked || !writerBlocked || !initConsumed ||
-			!admissionStillBlocked || !writerStillBlocked || !admissionAfterRelease || !writerAfterRelease {
-			scenario.Status = Failed
-		}
-		scenario.Observation = fmt.Sprintf("router retained stable I-X from initializing classification %s; published and revalidated the exact initialization prefix; continuous current-command contender attempted I-X before and across target acquisition, then exact A-X after final-root publication and I-X consume without acquiring: attempts=%d init=%d current=%d acquisitions=%d; reopened and classified exact READY=%t; incompatible locks blocked before I-X consume init=%t admission=%t writer=%t and after consume admission=%t writer=%t; target acquisition after release admission=%t writer=%t", initialClassification, contenderResult.Attempts, contenderResult.InitAttempts, contenderResult.CurrentAttempts, contenderResult.Acquisitions, fullReady, initBlocked, admissionBlocked, writerBlocked, admissionStillBlocked, writerStillBlocked, admissionAfterRelease, writerAfterRelease)
-		if command == "bootstrap" {
-			scenario.Boundaries.CandidateRevalidations++
-			scenario.Boundaries.ManagerRevalidations++
-			scenario.Observation += fmt.Sprintf("; bootstrap alone retained W-X, reopened held writer authority through I-X consume, completed the candidate/journal/mutation/receipt/current/cleanup transition, and published/reopened released owner only at operation release=%t/%t", ownerHeld, ownerReleased)
-		}
-		return scenario
+		return initialized
 	}
 	leaseName, typ := "A-X", int16(fWRLCK)
 	if command == "doctor" || command == "exec" || command == "shell" {
@@ -2890,6 +3071,26 @@ func runAdmissionRaces(ctx context.Context, root *prooffs.OwnedRoot, add func(Sc
 	add(Scenario{ID: "VAL-033/router/unsafe-init-topology-only", Requirements: []string{"VAL-026", "VAL-033"}, Status: Observed, Fixture: "unsafe init.lock symlink", Classification: got, Command: "doctor", Admission: "diagnose", Lease: "topology-only", Writes: []string{}, Observation: "router refused to open unsafe init.lock and performed exact no-write topology diagnosis; no synchronization path was replaced"})
 }
 
+func planLeaseExcludesReaders(s string, lease *proofLease, lockIdentity os.FileInfo) bool {
+	heldIdentity, statErr := lease.files[0].Stat()
+	pathIdentity, pathErr := os.Lstat(filepath.Join(s, "admission.lock"))
+	if statErr != nil || pathErr != nil || !os.SameFile(lockIdentity, heldIdentity) || !os.SameFile(heldIdentity, pathIdentity) {
+		return false
+	}
+	competitor, acquireErr := acquireStableLease(s, struct {
+		name string
+		typ  int16
+	}{"admission.lock", fRDLCK})
+	if acquireErr == nil {
+		competitor.release()
+		return false
+	}
+	if !errors.Is(acquireErr, syscall.EAGAIN) && !errors.Is(acquireErr, syscall.EACCES) {
+		return false
+	}
+	return true
+}
+
 func exercisePlanLifetime(ctx context.Context, root *prooffs.OwnedRoot) (Status, string) {
 	s, d, refs := makeGraph(root.Path, "READY(∅)")
 	cache := filepath.Join(filepath.Dir(s), "plan-cache")
@@ -2916,20 +3117,7 @@ func exercisePlanLifetime(ctx context.Context, root *prooffs.OwnedRoot) (Status,
 	boundaries, blocked := 0, 0
 	checkBoundary := func() bool {
 		boundaries++
-		heldIdentity, statErr := lease.files[0].Stat()
-		pathIdentity, pathErr := os.Lstat(filepath.Join(s, "admission.lock"))
-		if statErr != nil || pathErr != nil || !os.SameFile(lockIdentity, heldIdentity) || !os.SameFile(heldIdentity, pathIdentity) {
-			return false
-		}
-		competitor, acquireErr := acquireStableLease(s, struct {
-			name string
-			typ  int16
-		}{"admission.lock", fRDLCK})
-		if acquireErr == nil {
-			competitor.release()
-			return false
-		}
-		if !errors.Is(acquireErr, syscall.EAGAIN) && !errors.Is(acquireErr, syscall.EACCES) {
+		if !planLeaseExcludesReaders(s, lease, lockIdentity) {
 			return false
 		}
 		blocked++
@@ -3084,11 +3272,7 @@ const (
 
 func ofd(fd int, typ int16) error {
 	l := syscall.Flock_t{Type: typ}
-	_, _, e := syscall.Syscall(syscall.SYS_FCNTL, uintptr(fd), uintptr(fOFDSetLK), uintptr(unsafe.Pointer(&l)))
-	if e != 0 {
-		return e
-	}
-	return nil
+	return syscall.FcntlFlock(uintptr(fd), fOFDSetLK, &l)
 }
 func runLocks(ctx context.Context, cfg Config, root *prooffs.OwnedRoot, add func(Scenario)) {
 	p := filepath.Join(root.Path, "admission-proof.lock")
@@ -3112,200 +3296,8 @@ func runLocks(ctx context.Context, cfg Config, root *prooffs.OwnedRoot, add func
 	_ = ofd(int(a.Fd()), fUNLCK)
 	runLockRaces(ctx, cfg, root, add)
 }
-func runLockRaces(ctx context.Context, cfg Config, root *prooffs.OwnedRoot, add func(Scenario)) {
-	for _, kind := range []string{"init", "admission", "writer"} {
-		p := filepath.Join(root.Path, kind+"-race.lock")
-		_ = os.WriteFile(p, nil, 0600)
-		before, _ := os.Lstat(p)
-		start := make(chan struct{})
-		release := make(chan struct{})
-		results := make(chan bool, 2)
-		for range 2 {
-			go func() {
-				f, e := os.OpenFile(p, os.O_RDWR, 0)
-				if e != nil {
-					results <- false
-					return
-				}
-				defer f.Close()
-				<-start
-				if ofd(int(f.Fd()), fWRLCK) != nil {
-					results <- false
-					return
-				}
-				results <- true
-				<-release
-				_ = ofd(int(f.Fd()), fUNLCK)
-			}()
-		}
-		close(start)
-		successes := 0
-		for range 2 {
-			if <-results {
-				successes++
-			}
-		}
-		close(release)
-		after, _ := os.Lstat(p)
-		stable := before != nil && after != nil && os.SameFile(before, after)
-		status := Observed
-		if successes != 1 || !stable {
-			status = Failed
-		}
-		add(Scenario{ID: "VAL-030/locks/" + kind + "-simultaneous-race", Requirements: []string{"VAL-025", "VAL-030"}, Status: status, Fixture: kind + " stable inode with two simultaneous OFD contenders", Lease: strings.ToUpper(string(kind[0])) + "-X", Writes: []string{kind + "-race.lock"}, Observation: fmt.Sprintf("exclusive winners=%d; pathname inode stable=%t", successes, stable)})
-	}
-	p := filepath.Join(root.Path, "writer-owner-transfer.json")
-	refs := freshGraphRefs()
-	initDir := filepath.Join(root.Path, "two-initializers")
-	_ = os.Mkdir(initDir, 0700)
-	initLock := filepath.Join(initDir, "init.lock")
-	_ = os.WriteFile(initLock, nil, 0600)
-	refsInit := freshGraphRefs()
-	startInit := make(chan struct{})
-	releaseInit := make(chan struct{})
-	initResults := make(chan bool, 2)
-	for range 2 {
-		go func() {
-			f, e := os.OpenFile(initLock, os.O_RDWR, 0)
-			if e != nil {
-				initResults <- false
-				return
-			}
-			defer f.Close()
-			<-startInit
-			if ofd(int(f.Fd()), fWRLCK) != nil {
-				initResults <- false
-				return
-			}
-			identity, identityErr := processIdentityForPID(os.Getpid())
-			if identityErr != nil {
-				initResults <- false
-				return
-			}
-			claim := initializingRoot(refsInit.instance, refsInit.token, 0, identity)
-			e = publishRecord(initDir, "root.json", claim)
-			initResults <- e == nil
-			<-releaseInit
-			_ = ofd(int(f.Fd()), fUNLCK)
-		}()
-	}
-	close(startInit)
-	initWinners := 0
-	for range 2 {
-		if <-initResults {
-			initWinners++
-		}
-	}
-	close(releaseInit)
-	var claim rootOwnerRecord
-	claimErr := readRecord(filepath.Join(initDir, "root.json"), &claim)
-	initEntries, _ := os.ReadDir(initDir)
-	status := Observed
-	if initWinners != 1 || claimErr != nil || claim.Instance != refsInit.instance || claim.Token != refsInit.token || len(initEntries) != 2 {
-		status = Failed
-	}
-	add(Scenario{ID: "VAL-025/two-initializers", Requirements: []string{"VAL-025"}, Status: status, Fixture: "two simultaneous OFD init-lock contenders", Lease: "I-X", Writes: []string{"two-initializers/init.lock", "two-initializers/root.json"}, Observation: fmt.Sprintf("durable claim winners=%d; exact namespace entries=%d; loser made no publication", initWinners, len(initEntries))})
-
-	deadIdentity := processIdentity{PID: 999999, Start: 1, PIDNamespace: 1}
-	_ = writeRecord(p, heldWriter(refs.instance, refs.writerToken, 4, deadIdentity, 3, refs.priorWriterToken))
-	ownerLock := filepath.Join(root.Path, "writer-owner-transfer.lock")
-	_ = os.WriteFile(ownerLock, nil, 0600)
-	beforeLock, _ := os.Lstat(ownerLock)
-	lockFile, _ := os.OpenFile(ownerLock, os.O_RDWR, 0)
-	lockErr := ofd(int(lockFile.Fd()), fWRLCK)
-	var prior writerOwnerRecord
-	priorErr := readRecord(p, &prior)
-	liveIdentity, liveIdentityErr := processIdentityForPID(os.Getpid())
-	nextGeneration, nextGenerationOK := generationSuccessor(prior.Generation)
-	next := heldWriter(refs.instance, refs.journal, nextGeneration, liveIdentity, prior.Generation, prior.Token)
-	pubErr := errors.New("writer generation exhausted")
-	if nextGenerationOK {
-		pubErr = publishRecord(filepath.Dir(p), filepath.Base(p), next)
-	}
-	var reopened writerOwnerRecord
-	reopenErr := readRecord(p, &reopened)
-	afterLock, _ := os.Lstat(ownerLock)
-	stableLock := beforeLock != nil && afterLock != nil && os.SameFile(beforeLock, afterLock)
-	_ = ofd(int(lockFile.Fd()), fUNLCK)
-	_ = lockFile.Close()
-	status = Observed
-	if lockErr != nil || priorErr != nil || liveIdentityErr != nil || !nextGenerationOK ||
-		pubErr != nil || reopenErr != nil || !stableLock ||
-		reopened.Generation != 5 || reopened.Token != refs.journal || reopened.Process != liveIdentity ||
-		reopened.PreviousGeneration != prior.Generation || reopened.PreviousToken != prior.Token {
-		status = Failed
-	}
-	add(Scenario{ID: "VAL-030/owner/stale-compare-transfer", Requirements: []string{"VAL-030", "VAL-032"}, Status: status, Fixture: "stale durable process identity and generation-4 owner", Lease: "A-X+W-X", Writes: []string{"writer-owner-transfer.json"}, Observation: "under the stable writer lock, the durable predecessor tuple was reopened; generation advanced once with a fresh token and complete live PID/start/namespace identity; publication was reopened"})
-	liveObserved := liveIdentityErr == nil && validProcessIdentity(liveIdentity)
-	status = Observed
-	if !liveObserved {
-		status = Failed
-	}
-	add(Scenario{ID: "VAL-030/owner/live-process-identity", Requirements: []string{"VAL-030"}, Status: status, Fixture: "current durable PID/process-start/PID-namespace tuple", Lease: "A-X+W-X", Writes: []string{}, Observation: "complete PID plus process-start and PID-namespace identity was read and classified live"})
-	pSub := filepath.Join(root.Path, "writer-substitution.lock")
-	heldSub := pSub + ".held"
-	_ = os.WriteFile(pSub, nil, 0600)
-	beforeSub, _ := os.Lstat(pSub)
-	heldFD, _ := os.OpenFile(pSub, os.O_RDWR, 0)
-	acquireErr := ofd(int(heldFD.Fd()), fWRLCK)
-	_ = os.Rename(pSub, heldSub)
-	_ = os.WriteFile(pSub, nil, 0600)
-	afterSub, _ := os.Lstat(pSub)
-	fdInfo, _ := heldFD.Stat()
-	replacement, _ := os.OpenFile(pSub, os.O_RDWR, 0)
-	replacementAcquire := ofd(int(replacement.Fd()), fWRLCK) == nil
-	stableFD := beforeSub != nil && fdInfo != nil && os.SameFile(beforeSub, fdInfo)
-	pathChanged := beforeSub != nil && afterSub != nil && !os.SameFile(beforeSub, afterSub)
-	status = Observed
-	if acquireErr != nil || !stableFD || !pathChanged || !replacementAcquire {
-		status = Failed
-	}
-	_ = ofd(int(replacement.Fd()), fUNLCK)
-	_ = replacement.Close()
-	_ = ofd(int(heldFD.Fd()), fUNLCK)
-	_ = heldFD.Close()
-	add(Scenario{ID: "VAL-030/locks/path-inode-substitution", Requirements: []string{"VAL-030", "VAL-031"}, Status: status, Fixture: "writer lock pathname replaced while original OFD remained locked", Lease: "A-X+W-X", Writes: []string{"writer-substitution.lock", "writer-substitution.lock.held"}, Observation: "original descriptor retained its inode; replacement pathname had a distinct inode and independent lock, so stable-inode revalidation rejected authority"})
-	abaStatus := Observed
-	removeReplacementErr := os.Remove(pSub)
-	restoreLockErr := error(nil)
-	if removeReplacementErr == nil {
-		restoreLockErr = os.Rename(heldSub, pSub)
-	}
-	restoredSub, restoredSubErr := os.Lstat(pSub)
-	lockIdentityRepeated := restoredSubErr == nil && beforeSub != nil && os.SameFile(beforeSub, restoredSub)
-	abaDir := filepath.Join(root.Path, "owner-record-aba")
-	ownerPath := filepath.Join(abaDir, "writer-owner.json")
-	ownerHeld := ownerPath + ".held"
-	abaRefs := freshGraphRefs()
-	oldOwner := heldWriter(abaRefs.instance, abaRefs.writerToken, 4, processIdentity{PID: 41, Start: 1, PIDNamespace: 1}, 3, abaRefs.token)
-	newOwner := heldWriter(abaRefs.instance, abaRefs.journal, 5, processIdentity{PID: 42, Start: 2, PIDNamespace: 1}, 4, abaRefs.writerToken)
-	mkdirErr := os.Mkdir(abaDir, 0700)
-	oldWriteErr := writeRecord(ownerPath, oldOwner)
-	oldInfo, oldStatErr := os.Lstat(ownerPath)
-	holdErr := os.Rename(ownerPath, ownerHeld)
-	newWriteErr := writeRecord(ownerPath, newOwner)
-	middleInfo, middleStatErr := os.Lstat(ownerPath)
-	middleChanged := oldStatErr == nil && middleStatErr == nil && !os.SameFile(oldInfo, middleInfo)
-	removeNewErr := os.Remove(ownerPath)
-	restoreOwnerErr := os.Rename(ownerHeld, ownerPath)
-	finalInfo, finalStatErr := os.Lstat(ownerPath)
-	var restoredOwner writerOwnerRecord
-	finalReadErr := readRecord(ownerPath, &restoredOwner)
-	ownerIdentityRepeated := oldStatErr == nil && finalStatErr == nil && os.SameFile(oldInfo, finalInfo)
-	fullRestorationObserved := removeReplacementErr == nil && restoreLockErr == nil && lockIdentityRepeated && mkdirErr == nil && oldWriteErr == nil &&
-		holdErr == nil && newWriteErr == nil && middleChanged && removeNewErr == nil && restoreOwnerErr == nil && ownerIdentityRepeated &&
-		finalReadErr == nil && restoredOwner == oldOwner
-	if !fullRestorationObserved {
-		abaStatus = Failed
-	}
-	add(Scenario{ID: "VAL-030/ABA", Requirements: []string{"VAL-030", "ARCH-023", "ARCH-031"}, Status: abaStatus, Fixture: "stable lock and owner paths forced through complete A-to-B-to-A inode and byte restoration", Lease: "A-X+W-X", Writes: []string{"writer-substitution.lock", "owner-record-aba/writer-owner.json"}, Observation: fmt.Sprintf("full lock+owner A-B-A restoration observed=%t; endpoint inode/bytes/generation/token comparisons cannot reveal the intervening authority and therefore do not prove ABA exclusion", fullRestorationObserved), RejectedAssumption: "A-versus-B inequality, or equality at two endpoints, proves an original holder cannot advance after full authority restoration; a normative threat model must forbid synchronization-inode/owner-record restoration by an actor able to rename within the protected parent, or add an independently cumulative non-restorable authority"})
-	runGenerationOverflowProof(root, add)
-	runPIDReuseProof(ctx, cfg, root, add)
-	runTwoReclaimers(root, add)
-}
-
 func runGenerationOverflowProof(root *prooffs.OwnedRoot, add func(Scenario)) {
-	const total = 6
+	const total = 8
 	verified := 0
 	var failures []string
 	maxGeneration := ^uint64(0)
@@ -3372,10 +3364,13 @@ func runGenerationOverflowProof(root *prooffs.OwnedRoot, add func(Scenario)) {
 		ownerGeneration  uint64
 		activeGeneration uint64
 		transferPending  bool
+		residue          bool
 	}{
-		{"recovery-owner-max-minus-one", maxGeneration - 1, maxGeneration - 1, false},
-		{"recovery-journal-ahead-max", maxGeneration - 1, maxGeneration, true},
-		{"recovery-owner-max", maxGeneration, maxGeneration, false},
+		{"recovery-owner-max-minus-one", maxGeneration - 1, maxGeneration - 1, false, false},
+		{"recovery-journal-ahead-max", maxGeneration - 1, maxGeneration, true, false},
+		{"recovery-owner-max", maxGeneration, maxGeneration, false, false},
+		{"recovery-residue-max-minus-one", maxGeneration - 1, maxGeneration - 1, false, true},
+		{"recovery-residue-max", maxGeneration, maxGeneration, false, true},
 	}
 	for _, recoveryCase := range recoveryCases {
 		s, d, external, refs, err = prepareTransitionRecoveryFixture(
@@ -3408,8 +3403,20 @@ func runGenerationOverflowProof(root *prooffs.OwnedRoot, add func(Scenario)) {
 			failures = append(failures, recoveryCase.name+"-fixture")
 			continue
 		}
+		var authority *transitionRecoveryAuthority
+		if recoveryCase.residue {
+			if os.WriteFile(filepath.Join(s, "journals", ".proof-overflow-residue"), nil, 0600) != nil || syncDir(filepath.Join(s, "journals")) != nil {
+				failures = append(failures, recoveryCase.name+"-residue")
+				continue
+			}
+			authority = &transitionRecoveryAuthority{
+				Boundary:      transitionBoundary{Point: string(prooffs.AfterTemp)},
+				Identity:      processIdentity{PID: 999998, Start: 2, PIDNamespace: 1},
+				ExpectResidue: true, RecoveryStage: "recovery-journal-transfer",
+			}
+		}
 		before, inventoryErr := actualFixtureObjects(map[string]string{"state": s, "data": d, "external": external})
-		_, recoveryErr := transitionCommandRouter(s, d, external, refs, "recover-resume")
+		_, recoveryErr := transitionCommandRouterInjected(s, d, external, refs, "recover-resume", authority)
 		after, afterErr := actualFixtureObjects(map[string]string{"state": s, "data": d, "external": external})
 		if inventoryErr == nil && afterErr == nil && recoveryErr != nil && fixtureObjectsEqual(before, after) {
 			verified++
@@ -3426,10 +3433,10 @@ func runGenerationOverflowProof(root *prooffs.OwnedRoot, add func(Scenario)) {
 		ID:                 "VAL-030/owner/generation-overflow",
 		Requirements:       []string{"ARCH-023", "ARCH-024", "ARCH-031", "VAL-030", "VAL-031", "VAL-032"},
 		Status:             status,
-		Fixture:            "maximum uint64 initialization, fresh-transition, recovered-owner, and journal-ahead generations",
+		Fixture:            "maximum uint64 initialization, fresh-transition, recovered-owner, journal-ahead, and exact interrupted-residue generations",
 		Lease:              "I-X and ordered A-X+W-X",
 		Writes:             []string{"fixtures/<typed-generation-overflow>/state", "fixtures/<typed-generation-overflow>/data"},
-		Observation:        fmt.Sprintf("rejected generation exhaustion before candidate, journal-transfer, owner-transfer, external effect, or later publication=%d/%d; failures=%v", verified, total, failures),
+		Observation:        fmt.Sprintf("rejected generation exhaustion before candidate, residue cleanup, journal-transfer, owner-transfer, external effect, or later publication=%d/%d; failures=%v", verified, total, failures),
 		RejectedAssumption: "unsigned generation arithmetic remains monotonic when an admitted transition or either recovered ownership step lacks a successor",
 		FailedBoundaries:   failures,
 	})
@@ -3630,48 +3637,8 @@ func extractArchiveUnderHostileUmask(root *prooffs.OwnedRoot, name string, blob 
 	return prooffs.ExtractAuthenticatedTarAt(int(root.Dir.Fd()), name, blob, provenance, lim, opt)
 }
 
-func runArchives(root *prooffs.OwnedRoot, add func(Scenario)) {
-	lim := prooffs.ArchiveLimits{EntryBytes: 16, TotalBytes: 24, Count: 3, Depth: 3}
-	validBlob := tarBlob([]tar.Header{
-		{Name: "bin", Mode: 0700, Typeflag: tar.TypeDir},
-		{Name: "bin/tool", Mode: 0700, Size: 5, Typeflag: tar.TypeReg},
-		{Name: "config", Mode: 0600, Size: 3, Typeflag: tar.TypeReg},
-	})
-	validProvenance := prooffs.StateProofArchiveProvenance()
-	sentinelBefore, sentinelBeforeErr := archiveSentinelBytes(root)
-	stagesBefore := archiveStageCount(root)
-	allObserved := sentinelBeforeErr == nil && stagesBefore == 0
-
-	success := extractArchiveUnderHostileUmask(root, "archive-success", validBlob, validProvenance, lim, prooffs.ArchiveOptions{})
-	successOK := success.Rejection == "" &&
-		success.IntegrityVerified && success.ProvenanceVerified && success.Parsed && success.Prevalidated &&
-		success.Extracted && success.Published && success.ParentSynced &&
-		success.Reopened && success.Verified && !success.Cleaned &&
-		success.Entries == 3 && success.ExpandedBytes == 8 &&
-		success.Creates == 4 && success.Writes == 2 &&
-		success.FileSyncs == 2 && success.DirectorySyncs == 2 &&
-		success.Renames == 1 && success.ParentSyncs == 1 &&
-		success.Reopens == 4 && success.Boundaries == 16
-	successStatus := Observed
-	if !successOK {
-		successStatus = Failed
-		allObserved = false
-	}
-	add(Scenario{
-		ID:           "VAL-028/archive/valid",
-		Requirements: []string{"VAL-028"},
-		Status:       successStatus,
-		Fixture:      "three-entry frozen regular-file and directory tree under 0777 umask",
-		Writes:       []string{},
-		Observation: fmt.Sprintf(
-			"independent-provenance=%t integrity=%t parsed=%t prevalidated=%t extracted=%t published=%t parent-synced=%t reopened=%t verified=%t entries=%d bytes=%d tree-identity-checks=%d boundaries=%d creates=%d writes=%d file-syncs=%d directory-syncs=%d renames=%d parent-syncs=%d reopens=%d",
-			success.ProvenanceVerified, success.IntegrityVerified, success.Parsed, success.Prevalidated, success.Extracted, success.Published,
-			success.ParentSynced, success.Reopened, success.Verified, success.Entries, success.ExpandedBytes,
-			success.Entries+1, success.Boundaries, success.Creates, success.Writes, success.FileSyncs,
-			success.DirectorySyncs, success.Renames, success.ParentSyncs, success.Reopens,
-		),
-	})
-
+func runArchiveRejections(root *prooffs.OwnedRoot, lim prooffs.ArchiveLimits, add func(Scenario)) (int, bool) {
+	allObserved := true
 	baseFile := tarBlob([]tar.Header{{Name: "x", Mode: 0600, Typeflag: tar.TypeReg}})
 	malformed := bytes.Clone(baseFile)
 	malformed[0] ^= 0xff
@@ -3707,7 +3674,7 @@ func runArchives(root *prooffs.OwnedRoot, add func(Scenario)) {
 		{"fifo", tarBlob([]tar.Header{{Name: "x", Mode: 0600, Typeflag: tar.TypeFifo}}), "", "link-device-socket-or-unsupported-type"},
 		{"socket", rewrittenTarHeader(baseFile, "x", 's'), "", "link-device-socket-or-unsupported-type"},
 		{"unsupported-type", rewrittenTarHeader(baseFile, "x", tar.TypeCont), "", "link-device-socket-or-unsupported-type"},
-		{"regular-type-alias", rewrittenTarHeader(baseFile, "x", tar.TypeRegA), "", "link-device-socket-or-unsupported-type"},
+		{"regular-type-alias", rewrittenTarHeader(baseFile, "x", '\x00'), "", "link-device-socket-or-unsupported-type"},
 		{"unsupported-metadata", pax, "", "unsupported-format-or-metadata"},
 		{"mode", tarBlob([]tar.Header{{Name: "x", Mode: 0644, Typeflag: tar.TypeReg}}), "", "unsupported-mode"},
 		{"executable-mode", tarBlob([]tar.Header{{Name: "x", Mode: 0755, Typeflag: tar.TypeReg}}), "", "unsupported-mode"},
@@ -3755,6 +3722,23 @@ func runArchives(root *prooffs.OwnedRoot, add func(Scenario)) {
 		})
 	}
 
+	return len(cases), allObserved
+}
+
+func archiveSuccessObserved(success prooffs.ArchiveObservation) bool {
+	return success.Rejection == "" &&
+		success.IntegrityVerified && success.ProvenanceVerified && success.Parsed && success.Prevalidated &&
+		success.Extracted && success.Published && success.ParentSynced &&
+		success.Reopened && success.Verified && !success.Cleaned &&
+		success.Entries == 3 && success.ExpandedBytes == 8 &&
+		success.Creates == 4 && success.Writes == 2 &&
+		success.FileSyncs == 2 && success.DirectorySyncs == 2 &&
+		success.Renames == 1 && success.ParentSyncs == 1 &&
+		success.Reopens == 4 && success.Boundaries == 16
+}
+
+func runArchiveTamperChecks(root *prooffs.OwnedRoot, validBlob []byte, validProvenance prooffs.ArchiveProvenance, lim prooffs.ArchiveLimits, add func(Scenario)) bool {
+	allObserved := true
 	modified := append(bytes.Clone(validBlob), byte('x'))
 	modifiedObservation := extractArchiveUnderHostileUmask(root, "archive-modified", modified, validProvenance, lim, prooffs.ArchiveOptions{})
 	modifiedOK := modifiedObservation.ProvenanceVerified && !modifiedObservation.IntegrityVerified && !modifiedObservation.Parsed &&
@@ -3797,6 +3781,49 @@ func runArchives(root *prooffs.OwnedRoot, add func(Scenario)) {
 		Writes:       []string{},
 		Observation:  fmt.Sprintf("provenance=%t integrity=%t parsed=%t extraction-boundaries=%d rejection=%s", provenanceObservation.ProvenanceVerified, provenanceObservation.IntegrityVerified, provenanceObservation.Parsed, provenanceObservation.Boundaries, provenanceObservation.Rejection),
 	})
+
+	return allObserved
+}
+
+func runArchives(root *prooffs.OwnedRoot, add func(Scenario)) {
+	lim := prooffs.ArchiveLimits{EntryBytes: 16, TotalBytes: 24, Count: 3, Depth: 3}
+	validBlob := tarBlob([]tar.Header{
+		{Name: "bin", Mode: 0700, Typeflag: tar.TypeDir},
+		{Name: "bin/tool", Mode: 0700, Size: 5, Typeflag: tar.TypeReg},
+		{Name: "config", Mode: 0600, Size: 3, Typeflag: tar.TypeReg},
+	})
+	validProvenance := prooffs.StateProofArchiveProvenance()
+	sentinelBefore, sentinelBeforeErr := archiveSentinelBytes(root)
+	stagesBefore := archiveStageCount(root)
+	allObserved := sentinelBeforeErr == nil && stagesBefore == 0
+
+	success := extractArchiveUnderHostileUmask(root, "archive-success", validBlob, validProvenance, lim, prooffs.ArchiveOptions{})
+	successOK := archiveSuccessObserved(success)
+	successStatus := Observed
+	if !successOK {
+		successStatus = Failed
+		allObserved = false
+	}
+	add(Scenario{
+		ID:           "VAL-028/archive/valid",
+		Requirements: []string{"VAL-028"},
+		Status:       successStatus,
+		Fixture:      "three-entry frozen regular-file and directory tree under 0777 umask",
+		Writes:       []string{},
+		Observation: fmt.Sprintf(
+			"independent-provenance=%t integrity=%t parsed=%t prevalidated=%t extracted=%t published=%t parent-synced=%t reopened=%t verified=%t entries=%d bytes=%d tree-identity-checks=%d boundaries=%d creates=%d writes=%d file-syncs=%d directory-syncs=%d renames=%d parent-syncs=%d reopens=%d",
+			success.ProvenanceVerified, success.IntegrityVerified, success.Parsed, success.Prevalidated, success.Extracted, success.Published,
+			success.ParentSynced, success.Reopened, success.Verified, success.Entries, success.ExpandedBytes,
+			success.Entries+1, success.Boundaries, success.Creates, success.Writes, success.FileSyncs,
+			success.DirectorySyncs, success.Renames, success.ParentSyncs, success.Reopens,
+		),
+	})
+
+	rejectionCount, rejectionsObserved := runArchiveRejections(root, lim, add)
+	allObserved = allObserved && rejectionsObserved
+
+	tamperObserved := runArchiveTamperChecks(root, validBlob, validProvenance, lim, add)
+	allObserved = allObserved && tamperObserved
 
 	injected := 0
 	cleaned := 0
@@ -3910,7 +3937,7 @@ func runArchives(root *prooffs.OwnedRoot, add func(Scenario)) {
 		Writes:       []string{},
 		Observation: fmt.Sprintf(
 			"entries=%d expanded-bytes=%d rejection-cases=%d injected-prefixes=%d cleaned-prefixes=%d recovered-prefixes=%d success-boundaries=%d sentinel-checks=1",
-			success.Entries, success.ExpandedBytes, len(cases)+1, injected, cleaned, recovered, success.Boundaries,
+			success.Entries, success.ExpandedBytes, rejectionCount+1, injected, cleaned, recovered, success.Boundaries,
 		),
 	})
 }
@@ -3951,7 +3978,7 @@ func driveTransition(s string, r graphRefs, stop string) error {
 	if err != nil {
 		return err
 	}
-	if err = publishRecord(s, "writer-owner.json", heldWriter(r.instance, r.writerToken, 1, identity, 0, transitionPreviousWriterToken(r))); err != nil {
+	if err = publishRecord(s, "writer-owner.json", heldWriter(r.instance, r.writerToken, r.generation, identity, r.generation-1, transitionPreviousWriterToken(r))); err != nil {
 		return err
 	}
 	stage := func(name string, action func() error) (bool, error) {
@@ -3966,7 +3993,7 @@ func driveTransition(s string, r graphRefs, stop string) error {
 		return stageErr
 	}
 	if done, stageErr := stage("journal-prepared-publication", func() error {
-		return publishRecord(filepath.Join(s, "journals"), r.journal+".json", transitionJournalRecord(r, "prepared", "", nil, 1, r.writerToken))
+		return publishRecord(filepath.Join(s, "journals"), r.journal+".json", transitionJournalRecord(r, "prepared", "", nil, r.generation, r.writerToken))
 	}); done {
 		return stageErr
 	}
@@ -3974,20 +4001,20 @@ func driveTransition(s string, r graphRefs, stop string) error {
 	for _, phase := range mutationPhases {
 		beforeName := "journal-" + phase + "-precondition"
 		if done, stageErr := stage(beforeName, func() error {
-			return publishRecord(filepath.Join(s, "journals"), r.journal+".json", transitionJournalRecord(r, "mutating", phase, completed, 1, r.writerToken))
+			return publishRecord(filepath.Join(s, "journals"), r.journal+".json", transitionJournalRecord(r, "mutating", phase, completed, r.generation, r.writerToken))
 		}); done {
 			return stageErr
 		}
 		completed = append(completed, phase)
 		afterName := "journal-" + phase + "-result"
 		if done, stageErr := stage(afterName, func() error {
-			return publishRecord(filepath.Join(s, "journals"), r.journal+".json", transitionJournalRecord(r, "mutating", phase, completed, 1, r.writerToken))
+			return publishRecord(filepath.Join(s, "journals"), r.journal+".json", transitionJournalRecord(r, "mutating", phase, completed, r.generation, r.writerToken))
 		}); done {
 			return stageErr
 		}
 	}
 	if done, stageErr := stage("journal-pending-receipt-publication", func() error {
-		return publishRecord(filepath.Join(s, "journals"), r.journal+".json", transitionJournalRecord(r, string(phasePending), "", mutationPhases, 1, r.writerToken))
+		return publishRecord(filepath.Join(s, "journals"), r.journal+".json", transitionJournalRecord(r, string(phasePending), "", mutationPhases, r.generation, r.writerToken))
 	}); done {
 		return stageErr
 	}
@@ -3997,11 +4024,11 @@ func driveTransition(s string, r graphRefs, stop string) error {
 		return stageErr
 	}
 	if done, stageErr := stage("current-publication", func() error {
-		return publishRecord(s, "current.json", stableCurrent(r.instance, r.b, r.receiptB, r.journal))
+		return publishRecord(s, "current.json", transitionCurrent(r))
 	}); done {
 		return stageErr
 	}
-	if err = publishRecord(filepath.Join(s, "journals"), r.journal+".json", transitionJournalRecord(r, "cleanup", "", mutationPhases, 1, r.writerToken)); err != nil {
+	if err = publishRecord(filepath.Join(s, "journals"), r.journal+".json", transitionJournalRecord(r, "cleanup", "", mutationPhases, r.generation, r.writerToken)); err != nil {
 		return err
 	}
 	if stop == "journal-cleanup-publication" {
@@ -4028,7 +4055,7 @@ func driveTransition(s string, r graphRefs, stop string) error {
 	if err = syncDir(s); err != nil {
 		return err
 	}
-	return publishRecord(s, "writer-owner.json", releasedWriter(r.instance, "", 2, 1, r.writerToken))
+	return publishRecord(s, "writer-owner.json", releasedWriter(r.instance, "", r.generation+1, r.generation, r.writerToken))
 }
 func publishRecord(dir, name string, value any) error {
 	_, err := publishRecordIdentity(dir, name, value)
@@ -4305,10 +4332,6 @@ func durableStageAfterAction(stage string, r graphRefs) string {
 	if stage == "pending-receipt-publication" && r.receiptA != "" && r.receiptA == r.receiptB {
 		return "journal-pending-receipt-publication"
 	}
-	if stage == "current-publication" && r.a != "" && r.a == r.b &&
-		r.receiptA != "" && r.receiptA == r.receiptB {
-		return "journal-pending-receipt-publication"
-	}
 	return stage
 }
 
@@ -4335,6 +4358,8 @@ func durableStageForBoundary(boundary transitionBoundary, r graphRefs) string {
 }
 
 type deterministicWorkerSpec struct {
+	PriorCurrent     currentRecord    `json:"prior_current"`
+	CommittedCurrent currentRecord    `json:"committed_current"`
 	State            string           `json:"state"`
 	Data             string           `json:"data"`
 	Cache            string           `json:"cache"`
@@ -4359,12 +4384,12 @@ type deterministicWorkerSpec struct {
 }
 
 func (s deterministicWorkerSpec) refs() graphRefs {
-	return graphRefs{generation: s.Generation, instance: s.Instance, token: s.Token, operationToken: s.OperationToken, priorWriterToken: s.PriorWriterToken, writerToken: s.WriterToken, a: s.A, b: s.B, receiptAPrevious: s.ReceiptAPrevious, receiptA: s.ReceiptA, receiptB: s.ReceiptB, journal: s.Journal}
+	return graphRefs{priorCurrent: s.PriorCurrent, committedCurrent: s.CommittedCurrent, generation: s.Generation, instance: s.Instance, token: s.Token, operationToken: s.OperationToken, priorWriterToken: s.PriorWriterToken, writerToken: s.WriterToken, a: s.A, b: s.B, receiptAPrevious: s.ReceiptAPrevious, receiptA: s.ReceiptA, receiptB: s.ReceiptB, journal: s.Journal}
 }
 
 func workerSpecFor(s, d, cache, external, boundary string, r graphRefs) deterministicWorkerSpec {
 	return deterministicWorkerSpec{
-		State: s, Data: d, Cache: cache, External: external, Boundary: boundary,
+		PriorCurrent: r.priorCurrent, CommittedCurrent: r.committedCurrent, State: s, Data: d, Cache: cache, External: external, Boundary: boundary,
 		Generation: r.generation, Instance: r.instance, Token: r.token, OperationToken: r.operationToken,
 		PriorWriterToken: r.priorWriterToken, WriterToken: r.writerToken, A: r.a, B: r.b,
 		ReceiptAPrevious: r.receiptAPrevious, ReceiptA: r.receiptA, ReceiptB: r.receiptB, Journal: r.journal,
@@ -4425,7 +4450,12 @@ func transitionPendingReceipt(r graphRefs) pendingReceiptRecord {
 }
 
 func transitionCurrent(r graphRefs) currentRecord {
-	return stableCurrent(r.instance, r.b, r.receiptB, r.journal)
+	if r.committedCurrent.Schema != 0 {
+		return r.committedCurrent
+	}
+	return currentRecord{Schema: 1, Domain: "zerb.current", Status: "stable", Instance: r.instance,
+		OperationID: r.journal, OperationToken: r.operationToken, WriterGeneration: r.generation, WriterToken: r.writerToken,
+		Candidate: receiptDigest(r.b), Receipt: receiptDigest(r.receiptB)}
 }
 
 type gatedChild struct {
@@ -5156,6 +5186,58 @@ func completeInitializationUnderLease(
 	return completeInitializationPrefixUnderLease(spec, claim, lease, true, hooks...)
 }
 
+func initializationVisibleRoots(spec deterministicWorkerSpec) map[string]string {
+	roots := map[string]string{"state": spec.State}
+	if exists(spec.Data) {
+		roots["data"] = spec.Data
+	}
+	if exists(spec.Cache) {
+		roots["cache"] = spec.Cache
+	}
+	return roots
+}
+
+func validateInitializationCompletionAuthority(spec deterministicWorkerSpec, claim rootOwnerRecord, lease *proofLease, requireClaim bool, want map[string]fixtureObject) error {
+	if len(lease.files) != 1 || len(lease.names) != 1 || lease.names[0] != "init.lock" {
+		return errors.New("initialization lease set mismatch")
+	}
+	opened, statErr := lease.files[0].Stat()
+	pathInfo, pathErr := os.Lstat(filepath.Join(spec.State, "init.lock"))
+	if statErr != nil || pathErr != nil || !os.SameFile(opened, pathInfo) ||
+		!safeLockUID(filepath.Join(spec.State, "init.lock"), os.Geteuid()) {
+		return errors.New("initialization lock authority substitution")
+	}
+	if requireClaim && !exactRecordBytes(filepath.Join(spec.State, "root.json"), claim) {
+		return errors.New("initialization claim authority substitution")
+	}
+	got, inventoryErr := actualFixtureObjects(initializationVisibleRoots(spec))
+	if inventoryErr != nil || !fixtureObjectsEqual(want, got) {
+		return errors.New("initialization protected-prefix substitution")
+	}
+	return nil
+}
+
+func ensureInitializationDirectory(parent, name string, owner any) error {
+	path := filepath.Join(parent, name)
+	if exists(path) {
+		if !safeRootDir(path, os.Geteuid()) {
+			return errors.New("initialization directory reopen mismatch")
+		}
+		if emptyDir(path) || (owner != nil && exactLeafNames(path, "owner.json") &&
+			exactRecordBytes(filepath.Join(path, "owner.json"), owner)) {
+			return nil
+		}
+		return errors.New("initialization directory contents mismatch")
+	}
+	if err := createDurableDirectory(parent, name); err != nil {
+		return err
+	}
+	if !safeRootDir(path, os.Geteuid()) || !emptyDir(path) {
+		return errors.New("initialization directory publication mismatch")
+	}
+	return nil
+}
+
 func completeInitializationPrefixUnderLease(
 	spec deterministicWorkerSpec,
 	claim rootOwnerRecord,
@@ -5170,38 +5252,12 @@ func completeInitializationPrefixUnderLease(
 	if len(hooks) == 1 {
 		hook = hooks[0]
 	}
-	currentRoots := func() map[string]string {
-		roots := map[string]string{"state": spec.State}
-		if exists(spec.Data) {
-			roots["data"] = spec.Data
-		}
-		if exists(spec.Cache) {
-			roots["cache"] = spec.Cache
-		}
-		return roots
-	}
-	expected, err := actualFixtureObjects(currentRoots())
+	expected, err := actualFixtureObjects(initializationVisibleRoots(spec))
 	if err != nil {
 		return err
 	}
 	validateAuthority := func(requireClaim bool, want map[string]fixtureObject) error {
-		if len(lease.files) != 1 || len(lease.names) != 1 || lease.names[0] != "init.lock" {
-			return errors.New("initialization lease set mismatch")
-		}
-		opened, statErr := lease.files[0].Stat()
-		pathInfo, pathErr := os.Lstat(filepath.Join(spec.State, "init.lock"))
-		if statErr != nil || pathErr != nil || !os.SameFile(opened, pathInfo) ||
-			!safeLockUID(filepath.Join(spec.State, "init.lock"), os.Geteuid()) {
-			return errors.New("initialization lock authority substitution")
-		}
-		if requireClaim && !exactRecordBytes(filepath.Join(spec.State, "root.json"), claim) {
-			return errors.New("initialization claim authority substitution")
-		}
-		got, inventoryErr := actualFixtureObjects(currentRoots())
-		if inventoryErr != nil || !fixtureObjectsEqual(want, got) {
-			return errors.New("initialization protected-prefix substitution")
-		}
-		return nil
+		return validateInitializationCompletionAuthority(spec, claim, lease, requireClaim, want)
 	}
 	run := func(stage string, final bool, allowed map[string]bool, action func() error) error {
 		if err := validateAuthority(true, expected); err != nil {
@@ -5218,7 +5274,7 @@ func completeInitializationPrefixUnderLease(
 		if err := action(); err != nil {
 			return err
 		}
-		after, inventoryErr := actualFixtureObjects(currentRoots())
+		after, inventoryErr := actualFixtureObjects(initializationVisibleRoots(spec))
 		if inventoryErr != nil || !fixtureObjectsEqualExceptKeys(expected, after, allowed) {
 			return errors.New("initialization action changed unauthorized object")
 		}
@@ -5253,26 +5309,6 @@ func completeInitializationPrefixUnderLease(
 		}
 		return nil
 	}
-	ensureDirectory := func(parent, name string, owner any) error {
-		path := filepath.Join(parent, name)
-		if exists(path) {
-			if !safeRootDir(path, os.Geteuid()) {
-				return errors.New("initialization directory reopen mismatch")
-			}
-			if emptyDir(path) || (owner != nil && exactLeafNames(path, "owner.json") &&
-				exactRecordBytes(filepath.Join(path, "owner.json"), owner)) {
-				return nil
-			}
-			return errors.New("initialization directory contents mismatch")
-		}
-		if err := createDurableDirectory(parent, name); err != nil {
-			return err
-		}
-		if !safeRootDir(path, os.Geteuid()) || !emptyDir(path) {
-			return errors.New("initialization directory publication mismatch")
-		}
-		return nil
-	}
 	for _, lock := range []struct {
 		stage string
 		name  string
@@ -5302,7 +5338,7 @@ func completeInitializationPrefixUnderLease(
 		name := name
 		allowed := map[string]bool{"state:.": true, "state:" + name: true}
 		if err := run(name+"-directory", false, allowed, func() error {
-			return ensureDirectory(spec.State, name, nil)
+			return ensureInitializationDirectory(spec.State, name, nil)
 		}); err != nil {
 			return err
 		}
@@ -5318,7 +5354,7 @@ func completeInitializationPrefixUnderLease(
 		owner := namespaceOwner(spec.Instance, namespace.role)
 		allowed := map[string]bool{namespace.label + ":.": true}
 		if err := run(namespace.stage, false, allowed, func() error {
-			return ensureDirectory(pair, filepath.Base(namespace.path), owner)
+			return ensureInitializationDirectory(pair, filepath.Base(namespace.path), owner)
 		}); err != nil {
 			return err
 		}
@@ -5789,467 +5825,6 @@ func prepareInitializationTakeoverResidueFixture(base string) (deterministicWork
 	return spec, residuePath, nil
 }
 
-func runInitializationAuthoritySubstitutionMatrix(root *prooffs.OwnedRoot) (int, int, []string) {
-	verified := 0
-	total := 0
-	var failures []string
-	takeoverPoints := []string{
-		"takeover-before-liveness",
-		"takeover-after-liveness",
-		"takeover-before-publication",
-		"takeover-after-publication",
-	}
-	for _, boundary := range []prooffs.Boundary{
-		prooffs.BeforeTemp,
-		prooffs.AfterTemp,
-		prooffs.AfterWrite,
-		prooffs.AfterFileSync,
-		prooffs.BeforeRename,
-		prooffs.AfterRename,
-		prooffs.AfterParentSync,
-		prooffs.AfterReopen,
-	} {
-		takeoverPoints = append(takeoverPoints, "takeover-publication/"+string(boundary))
-	}
-	for _, point := range takeoverPoints {
-		variants := []string{"extra-entry", "claim-identity", "init-lock-identity"}
-		if point == "takeover-publication/"+string(prooffs.BeforeRename) {
-			variants = append(variants, "takeover-temp-identity")
-		}
-		for _, variant := range variants {
-			total++
-			spec, err := prepareInitializationRepairFixture(root.Path, point)
-			if err != nil {
-				failures = append(failures, point+"/"+variant+"/prepare")
-				continue
-			}
-			hit := false
-			var substitutedTakeoverPath string
-			_, repairErr := initializationCommandRouter(spec, processIdentity{PID: 999999, Start: 1, PIDNamespace: 1}, "recover-repair", func(name string) error {
-				if name != point {
-					return nil
-				}
-				hit = true
-				switch variant {
-				case "extra-entry":
-					return os.WriteFile(filepath.Join(spec.State, "unexpected"), []byte("noncooperating initialization substitution"), 0600)
-				case "claim-identity":
-					return durableRecordIdentitySubstitution(filepath.Join(spec.State, "root.json"), nil)
-				case "takeover-temp-identity":
-					entries, err := os.ReadDir(spec.State)
-					if err != nil {
-						return err
-					}
-					for _, entry := range entries {
-						if strings.HasPrefix(entry.Name(), ".proof-takeover-") {
-							substitutedTakeoverPath = filepath.Join(spec.State, entry.Name())
-							return durableRecordIdentitySubstitution(substitutedTakeoverPath, nil)
-						}
-					}
-					return errors.New("takeover temporary unavailable")
-				default:
-					if err := os.Remove(filepath.Join(spec.State, "init.lock")); err != nil {
-						return err
-					}
-					return createDurableEmpty(spec.State, "init.lock")
-				}
-			})
-			replacementPreserved := variant != "takeover-temp-identity" ||
-				(substitutedTakeoverPath != "" && exists(substitutedTakeoverPath))
-			if hit && repairErr != nil && replacementPreserved && !fullInitializationValid(spec) {
-				verified++
-			} else {
-				failures = append(failures, point+"/"+variant)
-			}
-		}
-	}
-	cleanupCases := []struct {
-		point string
-		stale bool
-	}{
-		{"takeover-residue-before-unlink", false},
-		{"takeover-residue-after-unlink", false},
-		{"takeover-stale-residue-before-unlink", true},
-		{"takeover-stale-residue-after-unlink", true},
-	}
-	for _, cleanupCase := range cleanupCases {
-		for _, variant := range []string{"extra-entry", "claim-identity", "init-lock-identity", "residue-identity"} {
-			total++
-			spec, residuePath, err := prepareInitializationResidueFixture(root.Path)
-			if cleanupCase.stale {
-				spec, residuePath, err = prepareInitializationTakeoverResidueFixture(root.Path)
-			}
-			if err != nil {
-				failures = append(failures, cleanupCase.point+"/"+variant+"/prepare")
-				continue
-			}
-			residueContent, err := readNoFollowBounded(residuePath, maxRecognitionFile)
-			if err != nil {
-				failures = append(failures, cleanupCase.point+"/"+variant+"/residue")
-				continue
-			}
-			hit := false
-			_, repairErr := initializationCommandRouter(spec, processIdentity{PID: 999999, Start: 1, PIDNamespace: 1}, "recover-repair", func(name string) error {
-				if name != cleanupCase.point {
-					return nil
-				}
-				hit = true
-				switch variant {
-				case "extra-entry":
-					return os.WriteFile(filepath.Join(spec.State, "unexpected"), []byte("noncooperating initialization substitution"), 0600)
-				case "claim-identity":
-					return durableRecordIdentitySubstitution(filepath.Join(spec.State, "root.json"), nil)
-				case "init-lock-identity":
-					if err := os.Remove(filepath.Join(spec.State, "init.lock")); err != nil {
-						return err
-					}
-					return createDurableEmpty(spec.State, "init.lock")
-				default:
-					if exists(residuePath) {
-						return durableRecordIdentitySubstitution(residuePath, nil)
-					}
-					if err := os.WriteFile(residuePath, residueContent, 0600); err != nil {
-						return err
-					}
-					return syncDir(spec.State)
-				}
-			})
-			if hit && repairErr != nil && !fullInitializationValid(spec) {
-				verified++
-			} else {
-				failures = append(failures, cleanupCase.point+"/"+variant)
-			}
-		}
-	}
-	stages := orderedInitializationStages[2:]
-	for _, stage := range stages {
-		for _, point := range []string{stage + "/before-action", stage} {
-			for _, variant := range []string{"extra-entry", "claim-identity", "init-lock-identity"} {
-				total++
-				spec, err := prepareInitializationRepairFixture(root.Path, stage)
-				if err != nil {
-					failures = append(failures, point+"/"+variant+"/prepare")
-					continue
-				}
-				hit := false
-				_, repairErr := initializationCommandRouter(spec, processIdentity{PID: 999999, Start: 1, PIDNamespace: 1}, "recover-repair", func(name string) error {
-					if name != point {
-						return nil
-					}
-					hit = true
-					switch variant {
-					case "extra-entry":
-						return os.WriteFile(filepath.Join(spec.State, "unexpected"), []byte("noncooperating initialization substitution"), 0600)
-					case "claim-identity":
-						return durableRecordIdentitySubstitution(filepath.Join(spec.State, "root.json"), nil)
-					default:
-						if err := os.Remove(filepath.Join(spec.State, "init.lock")); err != nil {
-							return err
-						}
-						return createDurableEmpty(spec.State, "init.lock")
-					}
-				})
-				// A post-publication replacement can preserve a semantically valid
-				// initialized graph; the required outcome is identity detection and
-				// refusal, because there is no later initialization action to suppress.
-				if hit && repairErr != nil && (stage == "initialized-root" || !fullInitializationValid(spec)) {
-					verified++
-				} else {
-					failures = append(failures, point+"/"+variant)
-				}
-			}
-		}
-	}
-	for _, variant := range []string{"state-root", "data-root", "cache-root"} {
-		total++
-		spec, err := prepareInitializationRepairFixture(root.Path, variant)
-		if err != nil {
-			failures = append(failures, variant+"/prepare")
-			continue
-		}
-		point := "admission-lock/before-action"
-		if variant == "data-root" {
-			point = "data-root"
-		} else if variant == "cache-root" {
-			point = "cache-root"
-		}
-		hit := false
-		_, repairErr := initializationCommandRouter(spec, processIdentity{PID: 999999, Start: 1, PIDNamespace: 1}, "recover-repair", func(name string) error {
-			if name != point {
-				return nil
-			}
-			hit = true
-			path := spec.State
-			if variant == "data-root" {
-				path = spec.Data
-			} else if variant == "cache-root" {
-				path = spec.Cache
-			}
-			if err := os.Rename(path, path+".substituted"); err != nil {
-				return err
-			}
-			if err := os.Mkdir(path, 0700); err != nil {
-				return err
-			}
-			return syncDir(filepath.Dir(path))
-		})
-		if hit && repairErr != nil && !fullInitializationValid(spec) {
-			verified++
-		} else {
-			failures = append(failures, variant)
-		}
-	}
-	return verified, total, failures
-}
-
-func runFullInitializationPublication(ctx context.Context, cfg Config, root *prooffs.OwnedRoot, add func(Scenario)) {
-	runOrderedInitializationPrefixes(root, add)
-	if cfg.SelfExecutable == "" {
-		add(Scenario{ID: "VAL-025/full-initialization-publication", Requirements: []string{"VAL-025", "VAL-031"}, Status: Inconclusive, Fixture: "child initializer", Writes: []string{}, Observation: "SelfExecutable not supplied; child boundary matrix not run"})
-		return
-	}
-	boundaries := []prooffs.Boundary{prooffs.AfterTemp, prooffs.AfterWrite, prooffs.AfterFileSync, prooffs.AfterRename, prooffs.AfterParentSync, prooffs.AfterReopen}
-	verified := 0
-	for _, boundary := range boundaries {
-		s, d := resetRoots(root.Path, true, false)
-		pair := filepath.Dir(s)
-		cache := filepath.Join(pair, "cache")
-		if err := createDurableEmpty(s, "init.lock"); err != nil || syncDir(pair) != nil || syncDir(filepath.Dir(pair)) != nil {
-			continue
-		}
-		lockBefore, err := os.Lstat(filepath.Join(s, "init.lock"))
-		if err != nil {
-			continue
-		}
-		refs := freshGraphRefs()
-		spec := workerSpecFor(s, d, cache, "", string(boundary), refs)
-		specPath := filepath.Join(pair, "worker-spec.json")
-		if writeDeterministicWorkerSpec(specPath, spec) != nil {
-			continue
-		}
-		child, err := startGatedChild(ctx, cfg.SelfExecutable, "init-publication-die", specPath, root)
-		if err != nil {
-			continue
-		}
-		claim := initializingRoot(spec.Instance, spec.Token, 0, child.identity)
-		refsByObject := make(map[string]string)
-		beforeLoser, _, beforeErr := protectedInventory(map[string]string{"state": s}, refsByObject)
-		loser := exec.CommandContext(ctx, cfg.SelfExecutable, "--worker", "init-contender", "--worker-path", specPath)
-		loser.Env = []string{"PATH=/nonexistent", "HOME=" + filepath.Join(root.Path, "home"), "XDG_STATE_HOME=" + filepath.Join(root.Path, "xdg-state")}
-		loserErr := loser.Run()
-		afterLoser, _, afterErr := protectedInventory(map[string]string{"state": s}, refsByObject)
-		claimExact := exactRecordBytes(filepath.Join(s, "root.json"), claim)
-		killed := child.releaseAndWaitForKill()
-		lockAfter, statErr := os.Lstat(filepath.Join(s, "init.lock"))
-		stableInode := statErr == nil && os.SameFile(lockBefore, lockAfter)
-		prefixExact := inspectInitializationPrefix(spec, child.identity)
-		doctorBefore, _, doctorBeforeErr := protectedInventory(map[string]string{"state": s}, refsByObject)
-		diagnosis, doctorErr := initializationCommandRouter(spec, child.identity, "doctor")
-		doctorAfter, _, doctorAfterErr := protectedInventory(map[string]string{"state": s}, refsByObject)
-		repaired, repairErr := initializationCommandRouter(spec, child.identity, "recover-repair")
-		if beforeErr == nil && afterErr == nil && loserErr == nil && inventoriesEqual(beforeLoser, afterLoser) && claimExact && killed && stableInode && prefixExact &&
-			doctorBeforeErr == nil && doctorAfterErr == nil && inventoriesEqual(doctorBefore, doctorAfter) && doctorErr == nil && diagnosis == "INIT exact durable prefix" &&
-			repairErr == nil && repaired == "READY(∅)" && fullInitializationValid(spec) {
-			verified++
-		}
-	}
-	successorStages := []string{
-		"takeover-before-liveness",
-		"takeover-after-liveness",
-		"takeover-before-publication",
-		"takeover-after-publication",
-	}
-	for _, boundary := range []prooffs.Boundary{
-		prooffs.BeforeTemp,
-		prooffs.AfterTemp,
-		prooffs.AfterWrite,
-		prooffs.AfterFileSync,
-		prooffs.BeforeRename,
-		prooffs.AfterRename,
-		prooffs.AfterParentSync,
-		prooffs.AfterReopen,
-	} {
-		successorStages = append(successorStages, "takeover-publication/"+string(boundary))
-	}
-	successorStages = append(successorStages, orderedInitializationStages[2:]...)
-	successorVerified := 0
-	for _, stage := range successorStages {
-		spec, err := prepareInitializationRepairFixture(root.Path, stage)
-		if err != nil {
-			continue
-		}
-		specPath := filepath.Join(filepath.Dir(spec.State), "worker-spec.json")
-		if writeDeterministicWorkerSpec(specPath, spec) != nil {
-			continue
-		}
-		child, err := startGatedChild(ctx, cfg.SelfExecutable, "init-repair-die", specPath, root)
-		if err != nil {
-			continue
-		}
-		killed := child.releaseAndWaitForKill()
-		var successorClaim rootOwnerRecord
-		prefixExact := fullInitializationValid(spec)
-		if !prefixExact {
-			prefixExact = readRecord(filepath.Join(spec.State, "root.json"), &successorClaim) == nil &&
-				(exactInitializationRepairPrefix(spec, successorClaim) ||
-					inspectInitializationPrefix(spec, successorClaim.Process))
-		}
-		repaired, repairErr := initializationCommandRouter(spec, child.identity, "recover-repair")
-		if killed && prefixExact && repairErr == nil && repaired == "READY(∅)" && fullInitializationValid(spec) {
-			successorVerified++
-		}
-	}
-	prefixTakeoverTotal := len(orderedInitializationStages) - 2
-	prefixTakeoverVerified := 0
-	for stop := 1; stop < len(orderedInitializationStages)-1; stop++ {
-		spec, err := prepareInitializationPrefixRepairFixture(
-			root.Path,
-			stop,
-			"takeover-publication/"+string(prooffs.BeforeRename),
-		)
-		if err != nil {
-			continue
-		}
-		specPath := filepath.Join(filepath.Dir(spec.State), "worker-spec.json")
-		if writeDeterministicWorkerSpec(specPath, spec) != nil {
-			continue
-		}
-		child, err := startGatedChild(ctx, cfg.SelfExecutable, "init-repair-die", specPath, root)
-		if err != nil {
-			continue
-		}
-		killed := child.releaseAndWaitForKill()
-		var durableClaim rootOwnerRecord
-		prefixExact := readRecord(filepath.Join(spec.State, "root.json"), &durableClaim) == nil &&
-			inspectInitializationPrefix(spec, durableClaim.Process)
-		repaired, repairErr := initializationCommandRouter(spec, durableClaim.Process, "recover-repair")
-		if killed && prefixExact && repairErr == nil && repaired == "READY(∅)" && fullInitializationValid(spec) {
-			prefixTakeoverVerified++
-		}
-	}
-	residueStages := []struct {
-		name  string
-		stale bool
-	}{
-		{"takeover-residue-before-unlink", false},
-		{"takeover-residue-after-unlink", false},
-		{"takeover-stale-residue-before-unlink", true},
-		{"takeover-stale-residue-after-unlink", true},
-	}
-	residueSuccessorVerified := 0
-	for _, stage := range residueStages {
-		spec, _, err := prepareInitializationResidueFixture(root.Path)
-		if stage.stale {
-			spec, _, err = prepareInitializationTakeoverResidueFixture(root.Path)
-		}
-		if err != nil {
-			continue
-		}
-		spec.RecoveryBoundary = stage.name
-		specPath := filepath.Join(filepath.Dir(spec.State), "worker-spec.json")
-		if writeDeterministicWorkerSpec(specPath, spec) != nil {
-			continue
-		}
-		child, err := startGatedChild(ctx, cfg.SelfExecutable, "init-repair-die", specPath, root)
-		if err != nil {
-			continue
-		}
-		killed := child.releaseAndWaitForKill()
-		var successorClaim rootOwnerRecord
-		prefixExact := readRecord(filepath.Join(spec.State, "root.json"), &successorClaim) == nil &&
-			(exactInitializationRepairPrefix(spec, successorClaim) ||
-				inspectInitializationPrefix(spec, successorClaim.Process))
-		repaired, repairErr := initializationCommandRouter(spec, successorClaim.Process, "recover-repair")
-		if killed && prefixExact && repairErr == nil && repaired == "READY(∅)" && fullInitializationValid(spec) {
-			residueSuccessorVerified++
-		}
-	}
-	repeatedSuccessorVerified := 0
-	var repeatedFailure string
-	spec, err := prepareInitializationRepairFixture(root.Path, "takeover-publication/"+string(prooffs.AfterRename))
-	if err != nil {
-		repeatedFailure = "prepare"
-	}
-	specPath := filepath.Join(filepath.Dir(spec.State), "worker-spec.json")
-	if repeatedFailure == "" && writeDeterministicWorkerSpec(specPath, spec) != nil {
-		repeatedFailure = "first-spec"
-	}
-	var first *gatedChild
-	if repeatedFailure == "" {
-		first, err = startGatedChild(ctx, cfg.SelfExecutable, "init-repair-die", specPath, root)
-		if err != nil {
-			repeatedFailure = "first-start"
-		}
-	}
-	if repeatedFailure == "" && !first.releaseAndWaitForKill() {
-		repeatedFailure = "first-death"
-	}
-	spec.RecoveryBoundary = "takeover-publication/" + string(prooffs.BeforeRename)
-	if repeatedFailure == "" && writeDeterministicWorkerSpec(specPath, spec) != nil {
-		repeatedFailure = "second-spec"
-	}
-	var second *gatedChild
-	if repeatedFailure == "" {
-		second, err = startGatedChild(ctx, cfg.SelfExecutable, "init-repair-die", specPath, root)
-		if err != nil {
-			repeatedFailure = "second-start"
-		}
-	}
-	if repeatedFailure == "" && !second.releaseAndWaitForKill() {
-		repeatedFailure = "second-death"
-	}
-	var durableClaim rootOwnerRecord
-	if repeatedFailure == "" && readRecord(filepath.Join(spec.State, "root.json"), &durableClaim) != nil {
-		repeatedFailure = "claim-reopen"
-	}
-	if repeatedFailure == "" {
-		if _, inspectErr := inspectInitializationPrefixAuthority(spec, durableClaim); inspectErr != nil {
-			repeatedFailure = "prefix-reopen"
-		}
-	}
-	if repeatedFailure == "" {
-		repaired, repairErr := initializationCommandRouter(spec, durableClaim.Process, "recover-repair")
-		if repairErr != nil {
-			repeatedFailure = "repair"
-		} else if repaired != "READY(∅)" || !fullInitializationValid(spec) {
-			repeatedFailure = "completion-reopen"
-		} else {
-			repeatedSuccessorVerified++
-		}
-	}
-	status := Observed
-	if verified != len(boundaries) || successorVerified != len(successorStages) ||
-		prefixTakeoverVerified != prefixTakeoverTotal ||
-		residueSuccessorVerified != len(residueStages) || repeatedSuccessorVerified != 1 {
-		status = Failed
-	}
-	var repeatedFailures []string
-	if repeatedFailure != "" {
-		repeatedFailures = []string{"repeated-successor/" + repeatedFailure}
-	}
-	add(Scenario{
-		ID: "VAL-025/full-initialization-publication", Requirements: []string{"VAL-025", "VAL-031"}, Status: status,
-		Fixture: "child-killed initial publications, takeover/cleanup boundaries, and every repair-completion successor prefix", Lease: "stable I-X claim and inode-bound compare-transfer",
-		Writes:             []string{"fixtures/<typed-initialization-prefix>/state", "fixtures/<typed-initialization-prefix>/data", "fixtures/<typed-initialization-prefix>/cache"},
-		Observation:        fmt.Sprintf("verified initial publication prefixes=%d/%d, takeover/completion successor-death prefixes=%d/%d, linked-temporary successor death across every exact claimed INIT prefix=%d/%d, interrupted-temporary cleanup successor-death prefixes=%d/%d, and repeated committed-successor-then-linked-successor death=%d/1; every O_TMPFILE/link/rename/sync/reopen boundary preserved either the exact old claim plus an authenticated linked temporary or the exact monotonic successor, and recover-repair reopened the complete state/data/cache graph with released writer generation zero", verified, len(boundaries), successorVerified, len(successorStages), prefixTakeoverVerified, prefixTakeoverTotal, residueSuccessorVerified, len(residueStages), repeatedSuccessorVerified),
-		RejectedAssumption: "a returned publication error or a two-goroutine race is not initializer crash evidence",
-		FailedBoundaries:   repeatedFailures,
-	})
-	substitutions, substitutionTotal, substitutionFailures := runInitializationAuthoritySubstitutionMatrix(root)
-	substitutionStatus := Observed
-	if substitutions != substitutionTotal {
-		substitutionStatus = Failed
-	}
-	add(Scenario{
-		ID: "VAL-025/initialization-authority-substitution", Requirements: []string{"VAL-025", "VAL-031", "VAL-034"}, Status: substitutionStatus,
-		Fixture: "noncooperating same-UID substitution across initialization takeover, residue cleanup, and completion", Lease: "stable I-X",
-		Writes:             []string{"fixtures/<typed-initialization-substitution>/state", "fixtures/<typed-initialization-substitution>/data", "fixtures/<typed-initialization-substitution>/cache"},
-		Observation:        fmt.Sprintf("rejected initialization authority substitutions=%d/%d: extra entries plus byte-identical claim, init-lock, and interrupted-temporary inode replacement across takeover liveness/compare-transfer, residue cleanup, every completion action, and state/data/cache root replacement; no later initialization action ran after first detection", substitutions, substitutionTotal),
-		RejectedAssumption: "cooperative I-X excludes a noncooperating same-UID namespace substitution",
-		FailedBoundaries:   substitutionFailures,
-	})
-}
-
 type fixtureObject struct {
 	Kind          string
 	Mode          fs.FileMode
@@ -6396,7 +5971,7 @@ func expectedTransitionObjects(stage string, r graphRefs, ownerIdentity processI
 	if r.a != "" {
 		addRecord("state:candidates/"+r.a+".json", candidateReference(r.instance, r.a))
 		addRecord("state:receipts/"+r.receiptA+".json", pendingReceiptFor(r.a, receiptDigest(r.receiptAPrevious)))
-		addRecord("state:current.json", stableCurrent(r.instance, r.a, r.receiptA, r.journal))
+		addRecord("state:current.json", baselineCurrent(r))
 	}
 	index := transitionStageIndex(stage)
 	owner := baselineReleasedWriter(r)
@@ -6566,6 +6141,32 @@ func validatedTransitionResidue(
 	return found, found != nil
 }
 
+func findRecoveryTransferResidue(actual map[string]fixtureObject, s, residueDir string) (*transitionResidue, error) {
+	var residue *transitionResidue
+	for key, object := range actual {
+		parts := strings.SplitN(key, ":", 2)
+		if len(parts) != 2 || parts[0] != "state" ||
+			filepath.ToSlash(filepath.Dir(parts[1])) != residueDir ||
+			!strings.HasPrefix(filepath.Base(parts[1]), ".proof-") {
+			continue
+		}
+		if residue != nil || object.Kind != "file" || object.Mode.Perm() != 0600 ||
+			object.Owner != uint32(os.Geteuid()) || object.Links != 1 {
+			return nil, errors.New("recovery transfer residue topology mismatch")
+		}
+		path := filepath.Join(s, filepath.FromSlash(parts[1]))
+		residue = &transitionResidue{
+			key: key, path: path,
+			identity: prooffs.PublicationIdentity{Device: object.Device, Inode: object.Inode},
+			object:   object,
+		}
+	}
+	if residue == nil {
+		return nil, errors.New("recovery transfer residue unavailable")
+	}
+	return residue, nil
+}
+
 func recognizeRecoveryTransferResidue(
 	s, d, external string,
 	r graphRefs,
@@ -6585,27 +6186,9 @@ func recognizeRecoveryTransferResidue(
 	if authority.RecoveryStage == "recovery-journal-transfer" {
 		residueDir = "journals"
 	}
-	var residue *transitionResidue
-	for key, object := range actual {
-		parts := strings.SplitN(key, ":", 2)
-		if len(parts) != 2 || parts[0] != "state" ||
-			filepath.ToSlash(filepath.Dir(parts[1])) != residueDir ||
-			!strings.HasPrefix(filepath.Base(parts[1]), ".proof-") {
-			continue
-		}
-		if residue != nil || object.Kind != "file" || object.Mode.Perm() != 0600 ||
-			object.Owner != uint32(os.Geteuid()) || object.Links != 1 {
-			return recoverableTransitionPrefix{}, errors.New("recovery transfer residue topology mismatch")
-		}
-		path := filepath.Join(s, filepath.FromSlash(parts[1]))
-		residue = &transitionResidue{
-			key: key, path: path,
-			identity: prooffs.PublicationIdentity{Device: object.Device, Inode: object.Inode},
-			object:   object,
-		}
-	}
-	if residue == nil {
-		return recoverableTransitionPrefix{}, errors.New("recovery transfer residue unavailable")
+	residue, err := findRecoveryTransferResidue(actual, s, residueDir)
+	if err != nil {
+		return recoverableTransitionPrefix{}, err
 	}
 	delete(actual, residue.key)
 	var owner writerOwnerRecord
@@ -6705,6 +6288,12 @@ func recognizeTransitionPrefixDetails(
 	r graphRefs,
 	authority *transitionRecoveryAuthority,
 ) (string, *transitionResidue, error) {
+	var identityErr error
+	r, identityErr = retainTransitionCurrent(s, r)
+	if identityErr != nil {
+		return "", nil, identityErr
+	}
+
 	var owner writerOwnerRecord
 	if err := readRecord(filepath.Join(s, "writer-owner.json"), &owner); err != nil {
 		return "", nil, err
@@ -6792,7 +6381,38 @@ func exactTransitionGraphWithOwner(s, d, external, stage string, r graphRefs, ow
 	return fixtureObjectsEqual(actual, expected)
 }
 
+func retainTransitionCurrent(s string, r graphRefs) (graphRefs, error) {
+	r.priorCurrent = baselineCurrent(r)
+	var current currentRecord
+	if err := readRecord(filepath.Join(s, "current.json"), &current); err != nil {
+		if r.a == "" && errors.Is(err, fs.ErrNotExist) {
+			return r, nil
+		}
+		return r, err
+	}
+	if current.OperationID != r.journal {
+		return r, nil
+	}
+	var owner writerOwnerRecord
+	if readRecord(filepath.Join(s, "writer-owner.json"), &owner) != nil ||
+		!validCurrentIdentity(current, r.instance) || current.OperationToken != r.operationToken ||
+		(r.committedCurrent.Schema != 0 && current != r.committedCurrent) ||
+		current.Candidate != receiptDigest(r.b) || current.Receipt != receiptDigest(r.receiptB) ||
+		(owner.Status == "held" && !currentMatchesHeldWriter(current, owner)) ||
+		(owner.Status == "released" && !currentPrecedesReleasedWriter(current, owner)) {
+		return r, errors.New("completed current identity mismatch")
+	}
+	r.committedCurrent = current
+	return r, nil
+}
+
 func recognizeRecoverableTransitionPrefix(s, d, external string, r graphRefs, authority *transitionRecoveryAuthority) (recoverableTransitionPrefix, error) {
+	var identityErr error
+	r, identityErr = retainTransitionCurrent(s, r)
+	if identityErr != nil {
+		return recoverableTransitionPrefix{}, identityErr
+	}
+
 	if authority != nil && authority.RecoveryStage != "" && authority.ExpectResidue {
 		return recognizeRecoveryTransferResidue(s, d, external, r, authority)
 	}
@@ -6882,7 +6502,7 @@ func recognizeRecoverableTransitionPrefix(s, d, external string, r graphRefs, au
 	return recoverableTransitionPrefix{}, errors.New("transition transfer prefix was not exactly recognized")
 }
 
-func cleanupTransitionResidue(prefix recoverableTransitionPrefix, hook func(string) error) error {
+func cleanupTransitionResidue(prefix recoverableTransitionPrefix, hook func(string) error, revalidate func(recoverableTransitionPrefix) error) error {
 	if prefix.residue == nil {
 		return nil
 	}
@@ -6906,22 +6526,36 @@ func cleanupTransitionResidue(prefix recoverableTransitionPrefix, hook func(stri
 	if err != nil || !bytes.Equal(content, prefix.residue.object.Bytes) {
 		return errors.New("transition temporary residue byte mismatch")
 	}
+	if err = revalidate(prefix); err != nil {
+		return err
+	}
 	if err = os.Remove(prefix.residue.path); err != nil {
 		return err
 	}
+	residuePath := prefix.residue.path
+	prefix.residue = nil
 	if err = hit("after-unlink"); err != nil {
 		return err
 	}
-	if err = syncDir(filepath.Dir(prefix.residue.path)); err != nil {
+	if err = revalidate(prefix); err != nil {
+		return err
+	}
+	if err = syncDir(filepath.Dir(residuePath)); err != nil {
 		return err
 	}
 	if err = hit("after-parent-sync"); err != nil {
 		return err
 	}
-	if exists(prefix.residue.path) {
+	if err = revalidate(prefix); err != nil {
+		return err
+	}
+	if exists(residuePath) {
 		return errors.New("transition temporary residue absence reopen mismatch")
 	}
-	return hit("after-absence-reopen")
+	if err = hit("after-absence-reopen"); err != nil {
+		return err
+	}
+	return revalidate(prefix)
 }
 
 func publishReplaceableTransition(dir, name string, value any, stage string, hook func(string) error, capture func(prooffs.PublicationIdentity)) error {
@@ -7109,6 +6743,39 @@ func executeTransition(s, d, external string, r graphRefs, identity processIdent
 	return executeTransitionWithLease(s, d, external, r, identity, ready, hook, lease, false, prooffs.PublicationIdentity{}, nil)
 }
 
+func checkTransitionAuthorityBoundary(s, d, external string, lease *proofLease, r graphRefs, identity processIdentity, ownerIdentity prooffs.PublicationIdentity, stage, position, expectedStage string, hook func(string) error) error {
+	prefix := stage + "/authority-" + position + "/"
+	if hook != nil {
+		if err := hook(prefix + "before-revalidation"); err != nil {
+			return err
+		}
+	}
+	if err := revalidateTransitionAuthority(s, d, external, lease, r, identity, expectedStage, ownerIdentity); err != nil {
+		return err
+	}
+	if hook != nil {
+		if err := hook(prefix + "after-revalidation"); err != nil {
+			return err
+		}
+	}
+	return revalidateTransitionAuthority(s, d, external, lease, r, identity, expectedStage, ownerIdentity)
+}
+
+func publishTransitionOwnerIdentity(dir, name string, value any, stage string, hook func(string) error, ownerIdentity *prooffs.PublicationIdentity) error {
+	var published prooffs.PublicationIdentity
+	var capture func(prooffs.PublicationIdentity)
+	if name == "writer-owner.json" {
+		capture = func(identity prooffs.PublicationIdentity) { published = identity }
+	}
+	if err := publishReplaceableTransition(dir, name, value, stage, hook, capture); err != nil {
+		return err
+	}
+	if capture != nil {
+		*ownerIdentity = published
+	}
+	return nil
+}
+
 func executeTransitionWithLease(s, d, external string, r graphRefs, identity processIdentity, ready func() error, hook func(string) error, provided *proofLease, heldAlready bool, providedOwner prooffs.PublicationIdentity, finalOwner *prooffs.PublicationIdentity, resumeStage ...string) error {
 	lease := provided
 	if lease == nil || len(lease.files) != 2 || len(lease.names) != 2 ||
@@ -7142,21 +6809,7 @@ func executeTransitionWithLease(s, d, external string, r graphRefs, identity pro
 		return err
 	}
 	checkpoint := func(stage, position, expectedStage string) error {
-		prefix := stage + "/authority-" + position + "/"
-		if hook != nil {
-			if err := hook(prefix + "before-revalidation"); err != nil {
-				return err
-			}
-		}
-		if err := revalidateTransitionAuthority(s, d, external, lease, r, identity, expectedStage, ownerIdentity); err != nil {
-			return err
-		}
-		if hook != nil {
-			if err := hook(prefix + "after-revalidation"); err != nil {
-				return err
-			}
-		}
-		return revalidateTransitionAuthority(s, d, external, lease, r, identity, expectedStage, ownerIdentity)
+		return checkTransitionAuthorityBoundary(s, d, external, lease, r, identity, ownerIdentity, stage, position, expectedStage, hook)
 	}
 	currentStage := "transition-base"
 	if heldAlready {
@@ -7186,18 +6839,7 @@ func executeTransitionWithLease(s, d, external string, r graphRefs, identity pro
 	}
 	publish := func(stage, dir, name string, value any) error {
 		return runStage(stage, func() error {
-			var published prooffs.PublicationIdentity
-			var capture func(prooffs.PublicationIdentity)
-			if name == "writer-owner.json" {
-				capture = func(identity prooffs.PublicationIdentity) { published = identity }
-			}
-			if err := publishReplaceableTransition(dir, name, value, stage, hook, capture); err != nil {
-				return err
-			}
-			if capture != nil {
-				ownerIdentity = published
-			}
-			return nil
+			return publishTransitionOwnerIdentity(dir, name, value, stage, hook, &ownerIdentity)
 		})
 	}
 	if !heldAlready {
@@ -7349,6 +6991,27 @@ func convergeTransitionUnderLease(
 	default:
 		return errors.New("writer owner compare-transfer failed")
 	}
+	// Reserve the complete acquire/release generation budget before removing evidence.
+	active := prefix.refs
+	if transitionStageIndex(prefix.stage) >= transitionStageIndex("journal-prepared-publication") {
+		if !prefix.transferPending {
+			nextGeneration, successorOK := generationSuccessor(prefix.owner.Generation)
+			if !successorOK {
+				return errors.New("writer generation exhausted")
+			}
+			if _, releaseOK := generationSuccessor(nextGeneration); !releaseOK {
+				return errors.New("writer release generation exhausted")
+			}
+			active.generation = nextGeneration
+			active.writerToken, err = FreshToken()
+			if err != nil {
+				return err
+			}
+			active.writerPredecessorToken = prefix.owner.Token
+		} else if _, releaseOK := generationSuccessor(active.generation); !releaseOK {
+			return errors.New("writer release generation exhausted")
+		}
+	}
 	if err = hit("recovery-predecessor-authority/before-revalidation"); err != nil {
 		return err
 	}
@@ -7358,7 +7021,9 @@ func convergeTransitionUnderLease(
 	if err = hit("recovery-predecessor-authority/after-revalidation"); err != nil {
 		return err
 	}
-	if err = cleanupTransitionResidue(prefix, hook); err != nil {
+	if err = cleanupTransitionResidue(prefix, hook, func(current recoverableTransitionPrefix) error {
+		return revalidateRecoveryTransferAuthority(s, d, external, lease, current)
+	}); err != nil {
 		return err
 	}
 	prefix.residue = nil
@@ -7394,21 +7059,7 @@ func convergeTransitionUnderLease(
 		}
 		return hit("recovery-uncommitted-owner-release/after-action")
 	}
-	active := prefix.refs
 	if !prefix.transferPending {
-		nextGeneration, successorOK := generationSuccessor(prefix.owner.Generation)
-		if !successorOK {
-			return errors.New("writer generation exhausted")
-		}
-		if _, releaseOK := generationSuccessor(nextGeneration); !releaseOK {
-			return errors.New("writer release generation exhausted")
-		}
-		active.generation = nextGeneration
-		active.writerToken, err = FreshToken()
-		if err != nil {
-			return err
-		}
-		active.writerPredecessorToken = prefix.owner.Token
 		if journal, ok := transitionJournalForStage(prefix.stage, active); ok {
 			if err = publishReplaceableTransition(
 				filepath.Join(s, "journals"), active.journal+".json", journal,
@@ -7429,8 +7080,6 @@ func convergeTransitionUnderLease(
 				return err
 			}
 		}
-	} else if _, releaseOK := generationSuccessor(active.generation); !releaseOK {
-		return errors.New("writer release generation exhausted")
 	}
 	newOwner := heldWriter(
 		active.instance, active.writerToken, active.generation, currentIdentity,
@@ -7456,6 +7105,16 @@ func convergeTransitionUnderLease(
 		s, d, external, active, currentIdentity, nil, hook,
 		lease, true, ownerIdentity, nil, prefix.stage,
 	)
+}
+
+func transitionRecoveryAdmission(prefix recoverableTransitionPrefix, command string) error {
+	if prefix.stage == "writer-owner-released-publication" && prefix.residue == nil {
+		return errors.New("no interrupted operation remains")
+	}
+	if command == "recover-resume" && recoveryCommandForStage(prefix.stage) == "recover-repair" {
+		return errors.New("journal-less interruption requires repair")
+	}
+	return nil
 }
 
 func transitionCommandRouterInjected(
@@ -7492,11 +7151,17 @@ func transitionCommandRouterInjected(
 	if command == "doctor" {
 		return prefix.stage, nil
 	}
+	if err = transitionRecoveryAdmission(prefix, command); err != nil {
+		return "", err
+	}
 	if err = lease.acquireStableLock(s, "writer.lock", fWRLCK); err != nil {
 		return "", err
 	}
 	prefix, err = recognizeRecoverableTransitionPrefix(s, d, external, r, authority)
 	if err != nil {
+		return "", err
+	}
+	if err = transitionRecoveryAdmission(prefix, command); err != nil {
 		return "", err
 	}
 	if prefix.stage == "writer-owner-released-publication" {
@@ -7515,6 +7180,15 @@ func transitionCommandRouterInjected(
 	if len(recoveryHooks) == 1 {
 		hook = recoveryHooks[0]
 	}
+	if command == "recover-repair" {
+		repaired, handled, repairErr := repairJournalLessUnderLease(s, d, external, lease, prefix, hook)
+		if repairErr != nil {
+			return "", repairErr
+		}
+		if handled {
+			return repaired.classification, nil
+		}
+	}
 	if err = convergeTransitionUnderLease(s, d, external, lease, prefix, hook); err != nil {
 		return "", err
 	}
@@ -7531,7 +7205,7 @@ func transitionCommandRouter(s, d, external string, r graphRefs, command string)
 
 func verifyPendingCurrentInterval(s string, r graphRefs) bool {
 	return exactRecordBytes(filepath.Join(s, "receipts", r.receiptB+".json"), transitionPendingReceipt(r)) &&
-		exactRecordBytes(filepath.Join(s, "current.json"), stableCurrent(r.instance, r.a, r.receiptA, r.journal))
+		exactRecordBytes(filepath.Join(s, "current.json"), baselineCurrent(r))
 }
 
 func verifyCompletionPublication(s string, r graphRefs, requireCurrent, requireClean bool) bool {
@@ -7554,9 +7228,10 @@ func verifyCompletionPublication(s string, r graphRefs, requireCurrent, requireC
 		return false
 	}
 	if requireCurrent {
-		current := transitionCurrent(r)
-		if !exactRecordBytes(filepath.Join(s, "current.json"), current) ||
-			current.Schema != 1 || current.Domain != "zerb.current" || current.Status != "stable" ||
+		var current currentRecord
+		if readRecord(filepath.Join(s, "current.json"), &current) != nil || !validCurrentIdentity(current, r.instance) ||
+			current.OperationID != r.journal || current.OperationToken != r.operationToken ||
+			(r.committedCurrent.Schema != 0 && current != r.committedCurrent) ||
 			current.Candidate != receipt.Facts.Candidate || current.Receipt != receipt.Digest {
 			return false
 		}
@@ -7670,11 +7345,16 @@ func prepareExactReapplyFixture(base string, priorReapplies int) (string, string
 		}
 		previousCandidate, refs.receiptA = refs.a, string(next.Digest)
 	}
-	refs.generation = uint64(priorReapplies)*2 + 1
+	refs.priorCurrent = currentRecord{}
+	refs.generation = uint64(priorReapplies)*2 + 3
 	if refs.generation > 1 {
 		if err := writeRecord(filepath.Join(s, "writer-owner.json"), releasedWriter(refs.instance, "", refs.generation-1, refs.generation-2, refs.priorWriterToken)); err != nil {
 			return "", "", "", refs, err
 		}
+	}
+	refs.priorCurrent = baselineCurrent(refs)
+	if err := writeRecord(filepath.Join(s, "current.json"), baselineCurrent(refs)); err != nil {
+		return "", "", "", refs, err
 	}
 	refs.receiptAPrevious = previousCandidate
 	refs.b = refs.a
@@ -7709,7 +7389,7 @@ func transitionVariantRefs(kind string) graphRefs {
 		r.receiptAPrevious = r.a
 		r.receiptA = string(pendingReceiptFor(r.a, receiptDigest(r.a)).Digest)
 		r.receiptB = r.receiptA
-		r.generation = 7
+		r.generation = 9
 		return r
 	default:
 		return freshGraphRefs()
@@ -7746,7 +7426,7 @@ func priorTransitionAuthorityPreserved(s, d, external string, refs graphRefs) bo
 	want := "STABLE(A)"
 	currentPreserved := exactRecordBytes(
 		filepath.Join(s, "current.json"),
-		stableCurrent(refs.instance, refs.a, refs.receiptA, refs.journal),
+		baselineCurrent(refs),
 	)
 	if refs.a == "" {
 		want = "READY(∅)"
@@ -7782,8 +7462,19 @@ func transitionMatrixRecoveryExpected(
 		return recovered == "" && recoveryErr != nil &&
 			priorTransitionAuthorityPreserved(s, d, external, refs)
 	}
+	if durableStage == "writer-owner-released-publication" && !relatedResidue {
+		return recovered == "" && recoveryErr != nil && verifyCompletionPublication(s, refs, true, true)
+	}
 	return recoveryErr == nil &&
 		recoveryConvergedAsExpected(s, d, external, refs, durableStage, recovered)
+}
+
+func recoveryCommandForStage(stage string) string {
+	if transitionStageIndex(stage) < transitionStageIndex("journal-prepared-publication") ||
+		transitionStageIndex(stage) >= transitionStageIndex("cleanup-journal-remove") {
+		return "recover-repair"
+	}
+	return "recover-resume"
 }
 
 type recoveryActionCase struct {
@@ -7907,8 +7598,8 @@ func runHardDeathTransitionMatrix(ctx context.Context, cfg Config, root *prooffs
 			doctorBefore, _, beforeErr := protectedInventory(map[string]string{"state": s, "data": d, "external": external}, inventoryRefs)
 			doctorStage, doctorErr := transitionCommandRouterInjected(s, d, external, refs, "doctor", authority)
 			doctorAfter, _, afterErr := protectedInventory(map[string]string{"state": s, "data": d, "external": external}, inventoryRefs)
-			recovered, recoveryErr := transitionCommandRouterInjected(s, d, external, refs, "recover-resume", authority)
 			durableStage := durableStageForBoundary(boundary, refs)
+			recovered, recoveryErr := transitionCommandRouterInjected(s, d, external, refs, recoveryCommandForStage(durableStage), authority)
 			if baseErr == nil && baseStage == "transition-base" && busyErr != nil &&
 				(errors.Is(busyErr, syscall.EAGAIN) || errors.Is(busyErr, syscall.EACCES)) &&
 				killed && statErr == nil && os.SameFile(writerBefore, writerAfter) && prefixErr == nil && stage == durableStage &&
@@ -7963,12 +7654,12 @@ func runCatchableTransitionMatrix(ctx context.Context, cfg Config, root *prooffs
 			doctorStage, doctorErr := transitionCommandRouterInjected(s, d, external, refs, "doctor", authority)
 			doctorAfter, _, afterErr := protectedInventory(map[string]string{"state": s, "data": d, "external": external}, inventoryRefs)
 			command := "recover-resume"
-			if caseIndex%2 == 1 {
+			durableStage := durableStageForBoundary(boundary, refs)
+			if caseIndex%2 == 1 || recoveryCommandForStage(durableStage) == "recover-repair" {
 				command = "recover-repair"
 			}
 			caseIndex++
 			recovered, recoveryErr := transitionCommandRouterInjected(s, d, external, refs, command, authority)
-			durableStage := durableStageForBoundary(boundary, refs)
 			if busyErr != nil && (errors.Is(busyErr, syscall.EAGAIN) || errors.Is(busyErr, syscall.EACCES)) &&
 				exited && prefixErr == nil && stage == durableStage && beforeErr == nil && afterErr == nil &&
 				doctorErr == nil && doctorStage == durableStage && inventoriesEqual(doctorBefore, doctorAfter) &&
@@ -7984,6 +7675,36 @@ func runCatchableTransitionMatrix(ctx context.Context, cfg Config, root *prooffs
 		}
 	}
 	return verified, failures
+}
+
+func recoveryActionAuthority(refs graphRefs, boundaryName, mode string, childIdentity processIdentity, hasResidue bool, residueIdentity *processIdentity) *transitionRecoveryAuthority {
+	var authority *transitionRecoveryAuthority
+	if mode == "transition-recover-die" {
+		if boundary, ok := transitionBoundaryByName(refs, boundaryName); ok &&
+			transitionBoundaryLeavesResidue(boundary) {
+			authority = &transitionRecoveryAuthority{
+				Boundary: boundary, Identity: childIdentity, ExpectResidue: true,
+			}
+		}
+	}
+	parts := strings.SplitN(boundaryName, "/", 2)
+	if mode == "transition-recover-die" && len(parts) == 2 &&
+		(parts[0] == "recovery-journal-transfer" || parts[0] == "recovery-writer-owner-transfer" ||
+			parts[0] == "recovery-uncommitted-owner-release") &&
+		(parts[1] == string(prooffs.AfterTemp) || parts[1] == string(prooffs.AfterWrite) ||
+			parts[1] == string(prooffs.AfterFileSync) || parts[1] == string(prooffs.BeforeRename)) {
+		authority = &transitionRecoveryAuthority{
+			Boundary: transitionBoundary{Point: parts[1]},
+			Identity: childIdentity, ExpectResidue: true, RecoveryStage: parts[0],
+		}
+	}
+	if hasResidue && strings.HasSuffix(boundaryName, "/before-unlink") && residueIdentity != nil {
+		authority = &transitionRecoveryAuthority{
+			Boundary: transitionBoundary{Point: string(prooffs.AfterTemp)},
+			Identity: *residueIdentity, ExpectResidue: true, RecoveryStage: "recovery-journal-transfer",
+		}
+	}
+	return authority
 }
 
 func runRecoveryActionMatrix(
@@ -8042,40 +7763,15 @@ func runRecoveryActionMatrix(
 			} else {
 				exited = child.releaseAndWaitForFailure()
 			}
-			var authority *transitionRecoveryAuthority
-			if mode == "transition-recover-die" {
-				if boundary, ok := transitionBoundaryByName(refs, testCase.boundary); ok &&
-					transitionBoundaryLeavesResidue(boundary) {
-					authority = &transitionRecoveryAuthority{
-						Boundary: boundary, Identity: child.identity, ExpectResidue: true,
-					}
-				}
-			}
-			parts := strings.SplitN(testCase.boundary, "/", 2)
-			if mode == "transition-recover-die" && len(parts) == 2 &&
-				(parts[0] == "recovery-journal-transfer" || parts[0] == "recovery-writer-owner-transfer" ||
-					parts[0] == "recovery-uncommitted-owner-release") &&
-				(parts[1] == string(prooffs.AfterTemp) || parts[1] == string(prooffs.AfterWrite) ||
-					parts[1] == string(prooffs.AfterFileSync) || parts[1] == string(prooffs.BeforeRename)) {
-				authority = &transitionRecoveryAuthority{
-					Boundary: transitionBoundary{Point: parts[1]},
-					Identity: child.identity, ExpectResidue: true, RecoveryStage: parts[0],
-				}
-			}
-			if testCase.residue && strings.HasSuffix(testCase.boundary, "/before-unlink") && residueIdentity != nil {
-				authority = &transitionRecoveryAuthority{
-					Boundary: transitionBoundary{Point: string(prooffs.AfterTemp)},
-					Identity: *residueIdentity, ExpectResidue: true, RecoveryStage: "recovery-journal-transfer",
-				}
-			}
+			authority := recoveryActionAuthority(refs, testCase.boundary, mode, child.identity, testCase.residue, residueIdentity)
 			prefix, prefixErr := recognizeRecoverableTransitionPrefix(s, d, external, refs, authority)
-			recovered, recoveryErr := transitionCommandRouterInjected(s, d, external, refs, "recover-resume", authority)
+			recovered, recoveryErr := transitionCommandRouterInjected(s, d, external, refs, recoveryCommandForStage(prefix.stage), authority)
 			success := exited && transitionTempResidueCount(s, external) == 0
 			if testCase.wantPrior {
 				wantRecovered := "STABLE(A)"
 				currentPreserved := exactRecordBytes(
 					filepath.Join(s, "current.json"),
-					stableCurrent(refs.instance, refs.a, refs.receiptA, refs.journal),
+					baselineCurrent(refs),
 				)
 				if refs.a == "" {
 					wantRecovered = "READY(∅)"
@@ -8091,8 +7787,7 @@ func runRecoveryActionMatrix(
 				success = success && priorExact && (recoveredPrior || alreadyPrior)
 			} else {
 				success = success && prefixErr == nil && prefix.stage != "" &&
-					recoveryErr == nil && recovered == "STABLE(A)" &&
-					verifyCompletionPublication(s, refs, true, true)
+					transitionMatrixRecoveryExpected(s, d, external, refs, prefix.residue != nil, prefix.stage, recovered, recoveryErr)
 			}
 			if success {
 				verified++
@@ -8198,7 +7893,7 @@ func runRecoveryUnavailableMatrix(ctx context.Context, cfg Config, root *prooffs
 			wantClassification := "TRANSITION(A,B)"
 			currentUnchanged := exactRecordBytes(
 				filepath.Join(s, "current.json"),
-				stableCurrent(refs.instance, refs.a, refs.receiptA, refs.journal),
+				baselineCurrent(refs),
 			)
 			if refs.a == "" {
 				wantClassification = "TRANSITION(∅,B)"
@@ -8449,277 +8144,6 @@ func runAuthoritySubstitutionMatrix(root *prooffs.OwnedRoot) (int, int, []string
 	return verified, total, failures
 }
 
-func runRecoveryAuthoritySubstitutionMatrix(ctx context.Context, cfg Config, root *prooffs.OwnedRoot) (int, int, []string) {
-	verified := 0
-	total := 0
-	var failures []string
-	for _, kind := range []string{"replacing", "bootstrap", "exact-reapply", "multi-generation-exact-reapply"} {
-		sample := transitionVariantRefs(kind)
-		expected := expectedTransitionObjects(
-			"journal-prepared-publication", sample,
-			processIdentity{PID: 999999, Start: 1, PIDNamespace: 1},
-		)
-		var templateObjects []string
-		for object := range expected {
-			if object == "state:admission.lock" || object == "state:writer.lock" || object == "state:writer-owner.json" ||
-				object == "state:current.json" || strings.HasPrefix(object, "state:candidates/") ||
-				strings.HasPrefix(object, "state:receipts/") || strings.HasPrefix(object, "state:journals/") {
-				templateObjects = append(templateObjects, object)
-			}
-		}
-		sort.Strings(templateObjects)
-		for objectIndex, templateObject := range templateObjects {
-			alteredVariants := []bool{false}
-			if templateObject == "state:writer-owner.json" {
-				alteredVariants = append(alteredVariants, true)
-			}
-			for _, ownerAltered := range alteredVariants {
-				total++
-				s, d, external, refs, err := prepareTransitionRecoveryFixture(root.Path, kind, "journal-prepared-publication")
-				if err != nil {
-					failures = append(failures, fmt.Sprintf("recovery-substitution/%s/object-%d/prepare", kind, objectIndex))
-					continue
-				}
-				prefix, err := recognizeRecoverableTransitionPrefix(s, d, external, refs, nil)
-				if err != nil {
-					failures = append(failures, fmt.Sprintf("recovery-substitution/%s/object-%d/recognize", kind, objectIndex))
-					continue
-				}
-				lease, err := acquireStableLease(s,
-					struct {
-						name string
-						typ  int16
-					}{"admission.lock", fWRLCK},
-					struct {
-						name string
-						typ  int16
-					}{"writer.lock", fWRLCK},
-				)
-				if err != nil {
-					failures = append(failures, fmt.Sprintf("recovery-substitution/%s/object-%d/lease", kind, objectIndex))
-					continue
-				}
-				before, beforeErr := actualFixtureObjects(map[string]string{"state": s, "data": d, "external": external})
-				objects := make([]string, 0, len(templateObjects))
-				for object := range expectedTransitionObjects("journal-prepared-publication", refs, prefix.owner.Process) {
-					if object == "state:admission.lock" || object == "state:writer.lock" || object == "state:writer-owner.json" ||
-						object == "state:current.json" || strings.HasPrefix(object, "state:candidates/") ||
-						strings.HasPrefix(object, "state:receipts/") || strings.HasPrefix(object, "state:journals/") {
-						objects = append(objects, object)
-					}
-				}
-				sort.Strings(objects)
-				if beforeErr != nil || objectIndex >= len(objects) {
-					lease.release()
-					failures = append(failures, fmt.Sprintf("recovery-substitution/%s/object-%d/inventory", kind, objectIndex))
-					continue
-				}
-				object := objects[objectIndex]
-				path := filepath.Join(s, filepath.FromSlash(strings.TrimPrefix(object, "state:")))
-				substituted := false
-				var beforeTarget os.FileInfo
-				if object == "state:admission.lock" || object == "state:writer.lock" {
-					beforeTarget, err = os.Lstat(path)
-					if err == nil {
-						err = os.Remove(path)
-					}
-					if err == nil {
-						err = createDurableEmpty(s, filepath.Base(path))
-					}
-					if err == nil {
-						afterTarget, statErr := os.Lstat(path)
-						err = statErr
-						substituted = statErr == nil && !os.SameFile(beforeTarget, afterTarget)
-					}
-				} else if object == "state:writer-owner.json" {
-					var replacement []byte
-					if ownerAltered {
-						altered := prefix.owner
-						altered.Instance = strings.Repeat("a", 32)
-						if altered.Instance == refs.instance {
-							altered.Instance = strings.Repeat("b", 32)
-						}
-						replacement = recordBytes(altered)
-					}
-					err = durableRecordIdentitySubstitution(path, replacement)
-					substituted = err == nil
-				} else {
-					err = durableRecordSubstitution(path)
-					substituted = err == nil
-				}
-				runErr := err
-				if runErr == nil {
-					runErr = convergeTransitionUnderLease(s, d, external, lease, prefix, nil)
-				}
-				lease.release()
-				after, afterErr := actualFixtureObjects(map[string]string{"state": s, "data": d, "external": external})
-				preserved := before != nil && afterErr == nil && fixtureObjectsEqualExcept(before, after, object)
-				if object == "state:writer-owner.json" {
-					bytesChanged := !bytes.Equal(before[object].Bytes, after[object].Bytes)
-					preserved = preserved && bytesChanged == ownerAltered &&
-						(before[object].Device != after[object].Device || before[object].Inode != after[object].Inode)
-				} else if object != "state:admission.lock" && object != "state:writer.lock" {
-					preserved = preserved && !bytes.Equal(before[object].Bytes, after[object].Bytes)
-				}
-				if runErr != nil && strings.Contains(runErr.Error(), "authority substitution") && substituted && preserved {
-					verified++
-				} else {
-					failures = append(failures, "recovery-substitution/"+kind+"/"+object)
-				}
-			}
-		}
-	}
-	if cfg.SelfExecutable != "" {
-		for _, kind := range []string{"replacing", "bootstrap", "exact-reapply", "multi-generation-exact-reapply"} {
-			sample := transitionVariantRefs(kind)
-			targets := []struct {
-				boundary string
-				stage    string
-			}{{"recovery-writer-owner-transfer/after-action", "journal-prepared-publication"}}
-			for _, boundary := range transitionBoundaries(sample) {
-				if boundary.Kind == "authority" &&
-					transitionStageIndex(boundary.Stage) > transitionStageIndex("journal-prepared-publication") {
-					retainedStage := durableStageAfterAction(transitionAuthorityExpectedStage(boundary, sample), sample)
-					targets = append(targets, struct {
-						boundary string
-						stage    string
-					}{boundary.Name, retainedStage})
-				}
-			}
-			for _, target := range targets {
-				recoveryBoundary := target.boundary
-				sampleStage := target.stage
-				var templateObjects []string
-				for object := range expectedTransitionObjects(sampleStage, sample, processIdentity{PID: 1, Start: 1, PIDNamespace: 1}) {
-					if object == "state:admission.lock" || object == "state:writer.lock" || object == "state:writer-owner.json" ||
-						object == "state:current.json" || strings.HasPrefix(object, "state:candidates/") ||
-						strings.HasPrefix(object, "state:receipts/") || strings.HasPrefix(object, "state:journals/") {
-						templateObjects = append(templateObjects, object)
-					}
-				}
-				sort.Strings(templateObjects)
-				for objectIndex, templateObject := range templateObjects {
-					alteredVariants := []bool{false}
-					if templateObject == "state:writer-owner.json" {
-						alteredVariants = append(alteredVariants, true)
-					}
-					for _, ownerAltered := range alteredVariants {
-						total++
-						s, d, external, refs, err := prepareTransitionRecoveryFixture(root.Path, kind, "journal-prepared-publication")
-						if err != nil {
-							failures = append(failures, fmt.Sprintf("recovery-substitution/post/%s/%s/object-%d/prepare", kind, recoveryBoundary, objectIndex))
-							continue
-						}
-						spec := workerSpecFor(s, d, "", external, "", refs)
-						spec.RecoveryBoundary = recoveryBoundary
-						specPath := filepath.Join(filepath.Dir(s), "worker-spec.json")
-						if writeDeterministicWorkerSpec(specPath, spec) != nil {
-							failures = append(failures, fmt.Sprintf("recovery-substitution/post/%s/%s/object-%d/spec", kind, recoveryBoundary, objectIndex))
-							continue
-						}
-						child, startErr := startGatedChild(ctx, cfg.SelfExecutable, "transition-recover-fail", specPath, root)
-						if startErr != nil || !child.releaseAndWaitForFailure() {
-							failures = append(failures, fmt.Sprintf("recovery-substitution/post/%s/%s/object-%d/worker", kind, recoveryBoundary, objectIndex))
-							continue
-						}
-						prefix, recognizeErr := recognizeRecoverableTransitionPrefix(s, d, external, refs, nil)
-						if recognizeErr != nil || prefix.stage != sampleStage {
-							failures = append(failures, fmt.Sprintf("recovery-substitution/post/%s/%s/object-%d/recognize", kind, recoveryBoundary, objectIndex))
-							continue
-						}
-						lease, leaseErr := acquireStableLease(s,
-							struct {
-								name string
-								typ  int16
-							}{"admission.lock", fWRLCK},
-							struct {
-								name string
-								typ  int16
-							}{"writer.lock", fWRLCK},
-						)
-						if leaseErr != nil {
-							failures = append(failures, fmt.Sprintf("recovery-substitution/post/%s/%s/object-%d/lease", kind, recoveryBoundary, objectIndex))
-							continue
-						}
-						before, beforeErr := actualFixtureObjects(map[string]string{"state": s, "data": d, "external": external})
-						var objects []string
-						for object := range expectedTransitionObjects(prefix.stage, refs, prefix.owner.Process) {
-							if object == "state:admission.lock" || object == "state:writer.lock" || object == "state:writer-owner.json" ||
-								object == "state:current.json" || strings.HasPrefix(object, "state:candidates/") ||
-								strings.HasPrefix(object, "state:receipts/") || strings.HasPrefix(object, "state:journals/") {
-								objects = append(objects, object)
-							}
-						}
-						sort.Strings(objects)
-						if beforeErr != nil || objectIndex >= len(objects) {
-							lease.release()
-							failures = append(failures, fmt.Sprintf("recovery-substitution/post/%s/%s/object-%d/inventory", kind, recoveryBoundary, objectIndex))
-							continue
-						}
-						object := objects[objectIndex]
-						path := filepath.Join(s, filepath.FromSlash(strings.TrimPrefix(object, "state:")))
-						substituted := false
-						if object == "state:admission.lock" || object == "state:writer.lock" {
-							beforeTarget, statErr := os.Lstat(path)
-							err = statErr
-							if err == nil {
-								err = os.Remove(path)
-							}
-							if err == nil {
-								err = createDurableEmpty(s, filepath.Base(path))
-							}
-							if err == nil {
-								afterTarget, afterErr := os.Lstat(path)
-								err = afterErr
-								substituted = afterErr == nil && !os.SameFile(beforeTarget, afterTarget)
-							}
-						} else if object == "state:writer-owner.json" {
-							var replacement []byte
-							if ownerAltered {
-								altered := prefix.owner
-								altered.Instance = strings.Repeat("a", 32)
-								if altered.Instance == refs.instance {
-									altered.Instance = strings.Repeat("b", 32)
-								}
-								replacement = recordBytes(altered)
-							}
-							err = durableRecordIdentitySubstitution(path, replacement)
-							substituted = err == nil
-						} else {
-							err = durableRecordSubstitution(path)
-							substituted = err == nil
-						}
-						runErr := err
-						if runErr == nil {
-							if prefix.stage == "writer-owner-released-publication" {
-								runErr = revalidateRecoveryTransferAuthority(s, d, external, lease, prefix)
-							} else {
-								runErr = convergeTransitionUnderLease(s, d, external, lease, prefix, nil)
-							}
-						}
-						lease.release()
-						after, afterErr := actualFixtureObjects(map[string]string{"state": s, "data": d, "external": external})
-						preserved := before != nil && afterErr == nil && fixtureObjectsEqualExcept(before, after, object)
-						if object == "state:writer-owner.json" {
-							bytesChanged := !bytes.Equal(before[object].Bytes, after[object].Bytes)
-							preserved = preserved && bytesChanged == ownerAltered &&
-								(before[object].Device != after[object].Device || before[object].Inode != after[object].Inode)
-						} else if object != "state:admission.lock" && object != "state:writer.lock" {
-							preserved = preserved && !bytes.Equal(before[object].Bytes, after[object].Bytes)
-						}
-						if runErr != nil && strings.Contains(runErr.Error(), "authority substitution") && substituted && preserved {
-							verified++
-						} else {
-							failures = append(failures, "recovery-substitution/post/"+kind+"/"+recoveryBoundary+"/"+object)
-						}
-					}
-				}
-			}
-		}
-	}
-	return verified, total, failures
-}
-
 func runBootstrapClassifierPrefixes(root *prooffs.OwnedRoot) (int, int, []string) {
 	template := freshBootstrapRefs()
 	boundaries := transitionBoundaries(template)
@@ -8810,7 +8234,7 @@ func runAllDeathBoundaries(ctx context.Context, cfg Config, root *prooffs.OwnedR
 	add(Scenario{
 		ID: "VAL-031/all-hard-death-boundaries", Requirements: []string{"VAL-031", "VAL-032", "VAL-033", "VAL-034"}, Status: status,
 		Fixture: "generated concrete persistence boundaries for replacing A-to-B, bootstrap, exact A-to-A, and repeated A-to-A", Lease: "A-X admission classification then same lease appends stable W-X and owner compare-transfer",
-		Command:            "doctor then alternating recover-resume/recover-repair",
+		Command:            "doctor then intent-bound recovery; journal-less prefixes use repair and completed stable prefixes deny both forms",
 		Writes:             []string{"fixtures/<typed-transition-prefix>/state", "fixtures/<typed-transition-prefix>/external", "fixtures/<typed-transition-prefix>/worker-spec.json"},
 		Observation:        fmt.Sprintf("verified executable hard-death=%d/%d failure=%d/%d cancellation=%d/%d authority-object-substitution=%d/%d and bootstrap classifier boundaries=%d/%d; independent generated denominators replacing=%d bootstrap=%d exact-reapply=%d repeated-exact-reapply=%d. Each fresh transition acquires A-X, classifies the exact READY/STABLE admission row, appends W-X to the same retained lease, reclassifies, and only then begins writer compare-transfer. Every durable/external stage has pre-action and post-action checkpoints with injections immediately before and after revalidation of both held lock inodes, the exact expected writer owner, and the complete current/candidate/receipt/journal protected graph; substitutions independently cover admission lock, writer lock, owner, current, each present candidate and receipt, and present journal without advancing beyond the exact checkpoint prefix. Atomic, immutable no-replace, and removal rows inject their real persistence actions; exact owned hard-death temporary residue is recognized read-only and identity-validated before narrow recovery removal", hard, expected, failures, expected, cancellations, expected, substitutions, substitutionTotal, classifierVerified, classifierTotal, replacingTotal, bootstrapTotal, exactTotal, multiGenerationTotal),
 		RejectedAssumption: "logical stage labels, prose-only checkpoints, or catchable errors substitute for injected persistence actions and hard-death recovery",
@@ -9481,6 +8905,7 @@ func runLandlockDenyWorker(target string) error {
 		prSetNoNewPrivs          = 38
 	)
 	attr := landlockRulesetAttr{HandledAccessFS: landlockAccessFSReadFile}
+	// #nosec G103 -- Landlock v1 reads this live, exact eight-byte ruleset attribute; no pointer escapes the synchronous syscall.
 	fd, _, errno := syscall.Syscall(sysLandlockCreateRuleset, uintptr(unsafe.Pointer(&attr)), unsafe.Sizeof(attr), 0)
 	if errno != 0 {
 		return fmt.Errorf("create Landlock ruleset: %w", errno)
@@ -9495,7 +8920,7 @@ func runLandlockDenyWorker(target string) error {
 	file, err := os.Open(target)
 	if err == nil {
 		_ = file.Close()
-		return errors.New("Landlock unexpectedly allowed denied read")
+		return errors.New("landlock unexpectedly allowed denied read")
 	}
 	if !errors.Is(err, syscall.EACCES) && !errors.Is(err, syscall.EPERM) {
 		return fmt.Errorf("unexpected Landlock read result: %w", err)
@@ -9545,7 +8970,7 @@ type boundedGitBuffer struct {
 
 func (buffer *boundedGitBuffer) Write(chunk []byte) (int, error) {
 	if int64(len(chunk)) > buffer.limit-int64(buffer.Len()) {
-		return 0, errors.New("Git output byte ceiling exceeded")
+		return 0, errors.New("git output byte ceiling exceeded")
 	}
 	return buffer.Buffer.Write(chunk)
 }
@@ -10035,8 +9460,9 @@ func runTransitionRecoveryWorker(spec deterministicWorkerSpec, mode string) erro
 			Identity: *spec.ResidueIdentity, ExpectResidue: true, RecoveryStage: "recovery-journal-transfer",
 		}
 	}
+	// Both journal-less and journaled injections admit repair; classification stays under A-X.
 	_, err := transitionCommandRouterInjected(
-		spec.State, spec.Data, spec.External, spec.refs(), "recover-resume", authority, hook,
+		spec.State, spec.Data, spec.External, spec.refs(), "recover-repair", authority, hook,
 	)
 	if err == nil {
 		return errors.New("recovery boundary was not reached")

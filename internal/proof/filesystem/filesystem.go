@@ -704,7 +704,7 @@ func validateTarIntegrity(blob []byte, expectedSHA256 string, provenanceVerified
 			}
 			break
 		}
-		if nextErr != nil && !(hdr != nil && errors.Is(nextErr, tar.ErrInsecurePath)) {
+		if nextErr != nil && (hdr == nil || !errors.Is(nextErr, tar.ErrInsecurePath)) {
 			o.Rejection = "partial-or-corrupt"
 			return frozenArchive{}, o
 		}
@@ -712,32 +712,8 @@ func validateTarIntegrity(blob []byte, expectedSHA256 string, provenanceVerified
 			o.Rejection = "partial-or-corrupt"
 			return frozenArchive{}, o
 		}
-		rawType := frozen[rawOffset+156]
-		switch rawType {
-		case tar.TypeReg, tar.TypeDir:
-		case tar.TypeXHeader, tar.TypeXGlobalHeader, tar.TypeGNULongName, tar.TypeGNULongLink, tar.TypeGNUSparse:
-			o.Rejection = "unsupported-format-or-metadata"
-			return frozenArchive{}, o
-		default:
-			o.Rejection = "link-device-socket-or-unsupported-type"
-			return frozenArchive{}, o
-		}
-		if hdr.Typeflag != rawType {
-			o.Rejection = "link-device-socket-or-unsupported-type"
-			return frozenArchive{}, o
-		}
-		rawName, exactName := exactTarString(frozen[rawOffset : rawOffset+100])
-		rawPrefix, exactPrefix := exactTarString(frozen[rawOffset+345 : rawOffset+500])
-		if rawPrefix != "" {
-			rawName = rawPrefix + "/" + rawName
-		}
-		if !exactName || !exactPrefix || rawName != hdr.Name {
-			o.Rejection = "ambiguous-or-alias-name"
-			return frozenArchive{}, o
-		}
-		rawLink, exactLink := exactTarString(frozen[rawOffset+157 : rawOffset+257])
-		if !exactLink || rawLink != hdr.Linkname {
-			o.Rejection = "unsupported-format-or-metadata"
+		if rejection := validateRawTarHeader(frozen, rawOffset, hdr); rejection != "" {
+			o.Rejection = rejection
 			return frozenArchive{}, o
 		}
 		name, rejection := validateArchiveName(hdr.Name, exact, normalized)
@@ -754,7 +730,8 @@ func validateTarIntegrity(blob []byte, expectedSHA256 string, provenanceVerified
 			o.Rejection = "depth"
 			return frozenArchive{}, o
 		}
-		if hdr.Format != tar.FormatUSTAR || len(hdr.PAXRecords) != 0 || len(hdr.Xattrs) != 0 {
+		// archive/tar derives extended attributes only from PAX records, all forbidden here.
+		if hdr.Format != tar.FormatUSTAR || len(hdr.PAXRecords) != 0 {
 			o.Rejection = "unsupported-format-or-metadata"
 			return frozenArchive{}, o
 		}
@@ -833,6 +810,33 @@ func validateTarIntegrity(blob []byte, expectedSHA256 string, provenanceVerified
 	}
 	o.Prevalidated = true
 	return frozenArchive{bytes: frozen, entries: entries}, o
+}
+
+func validateRawTarHeader(frozen []byte, rawOffset int64, hdr *tar.Header) string {
+	rawType := frozen[rawOffset+156]
+	switch rawType {
+	case tar.TypeReg, tar.TypeDir:
+	case tar.TypeXHeader, tar.TypeXGlobalHeader, tar.TypeGNULongName, tar.TypeGNULongLink, tar.TypeGNUSparse:
+		return "unsupported-format-or-metadata"
+	default:
+		return "link-device-socket-or-unsupported-type"
+	}
+	if hdr.Typeflag != rawType {
+		return "link-device-socket-or-unsupported-type"
+	}
+	rawName, exactName := exactTarString(frozen[rawOffset : rawOffset+100])
+	rawPrefix, exactPrefix := exactTarString(frozen[rawOffset+345 : rawOffset+500])
+	if rawPrefix != "" {
+		rawName = rawPrefix + "/" + rawName
+	}
+	if !exactName || !exactPrefix || rawName != hdr.Name {
+		return "ambiguous-or-alias-name"
+	}
+	rawLink, exactLink := exactTarString(frozen[rawOffset+157 : rawOffset+257])
+	if !exactLink || rawLink != hdr.Linkname {
+		return "unsupported-format-or-metadata"
+	}
+	return ""
 }
 
 // ValidateTarIntegrity proves generic digest-before-parser ordering. It does not

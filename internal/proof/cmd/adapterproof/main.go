@@ -37,6 +37,7 @@ func run() int {
 	fs := flag.NewFlagSet("adapterproof", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	base := fs.String("base", "", "existing canonical disposable btrfs base outside repository and real HOME/XDG")
+	repository := fs.String("repository", "", "canonical repository root to exclude")
 	artifacts := fs.String("artifacts", "", "existing artifact directory beneath base")
 	git := fs.String("git", "", "canonical pinned Git executable")
 	trace := fs.String("trace", "", "canonical pinned closed syscall tracer")
@@ -56,7 +57,10 @@ func run() int {
 	if *slice != "all" && *slice != "lifecycle" && *slice != "adapters" {
 		return fail("invalid slice")
 	}
-	protected, err := proofenv.CaptureProtected("")
+	if *repository == "" {
+		return fail("repository root is required")
+	}
+	protected, err := proofenv.CaptureProtected(*repository)
 	if err != nil {
 		return fail(err.Error())
 	}

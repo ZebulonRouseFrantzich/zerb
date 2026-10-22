@@ -1,7 +1,7 @@
 # ZERB Roadmap
 
-**Status:** Ten Phase 1 review rounds failed; eleventh corrective proof/API work in progress; product not implemented
-**Last updated:** 2026-08-31
+**Status:** Phase 1 qualification outstanding; owner-approved split gate permits reviewed non-release implementation after cloud conformance; product not implemented
+**Last updated:** 2026-10-22
 
 ZERB is a declarative, profile-based developer-environment restoration tool for mutable workstations. It converges declared user-space tools and dotfiles through pinned, isolated native adapters. It is not an operating-system image, backup system, package manager, transactional rollback engine, hermetic build system, or machine snapshot.
 
@@ -20,7 +20,7 @@ Roadmap authority is deliberately split. When summaries differ, use the owner be
 
 [Proof results](proof-results.md) is an append-only redacted evidence ledger. It is never normative authority and cannot create a support claim. The [root README](../../README.md) describes the current branch and development warning.
 
-Phase 0 contracts are provisional and proof-oriented. They authorize only disposable Phase 1 evidence work. Phase 1 may narrow an assumption when real evidence disproves it. Only the approved Phase 1 exit—after owner incorporation, independent plan review, and focused security review—freezes implementation contracts. Product implementation starts only after that gate.
+Phase 0 contracts are provisional and proof-oriented. Phase 1 may narrow an assumption when real evidence disproves it. The owner-approved split gate in [delivery](delivery-plan.md) admits reviewed non-release Phase 2–4 implementation after current source-bound cloud conformance and independent plan/security review, with focused replacement tests and phase reviews. Only the complete real frozen-host Phase 1 matrix, owner incorporation, independent plan/security review and owner freeze approval qualify/freeze contracts. Required runtime protections remain mandatory, with no development fallback runner. Real qualification/freeze precedes local Phase 6 public-entrypoint cutover work; release, real-workstation use and support additionally require final installed-binary acceptance and reviews.
 
 The former specification tree is historical input, not current authority. Git history preserves its exact contents. The active change ID `add-config-remove-command` is `superseded/incomplete; delta never adopted`; its missing work is not target scope.
 
@@ -44,7 +44,7 @@ The former specification tree is historical input, not current authority. Git hi
 
 ## Target MVP outcome
 
-Subject to the Phase 1 freeze, the intended installed product will:
+Subject to Phase 1 qualification/freeze and final installed-binary acceptance, the intended installed product will:
 
 1. Inspect an explicit public environment superproject without ambient source discovery or authentication.
 2. Select exactly an embedded `base + one embedded profile`; reject any gitlink/private selection before authentication, network, candidate creation, manager execution, or mutation, while never fetching unselected gitlinks.
@@ -64,15 +64,17 @@ This is target scope, not a claim about the currently reachable binary. Exact be
 |---|---|---|
 | 0. Authority migration | Roadmap owns provisional contracts; exhaustive hard-cutover disposition recorded | Documentation only |
 | 1. Proof and freeze | Real native Git, manager, lifecycle, filesystem/state, and parser proofs; contract narrowing and reviewed freeze | Disposable fixtures only |
-| 2. Replacement foundations | Protected paths/filesystem, source/profile, execution, toolchain, state/receipt foundations | Test roots only |
+| 2. Replacement foundations | Reviewed provisional foundations after cloud admission; qualification remains separate | Test roots only |
 | 3. Non-public target runner | Exact dispatcher, profile listing, structural plan, doctor, and version exercised through injected services | Protected toolchain/cache/candidate roots only |
-| 4. Public bootstrap/apply | Fresh public bootstrap, eligible exact-candidate reapply, recovery, exec, and shell | Approved user mutation |
+| 4. Public bootstrap/apply | Non-public runner implementation of bootstrap, exact reapply, recovery, exec and shell; provisional until qualification | Disposable approved fixture mutation only |
 | 5. Selected-gitlink exclusion | Confirm selected gitlinks/private sources remain rejected, unselected gitlinks remain zero-access, and no transport/credential mechanism exists | No new transport mutation |
 | 6. Atomic cutover | Old CLI/source packages removed; target binary and full supported matrix accepted | Approved user mutation |
 | Post-MVP | Explicitly owned update/switch/removal, authoring/sync, encryption, hooks, more platforms, stronger execution | Separate future contracts |
 
-Each phase is gated. A later phase cannot compensate for an unproven earlier contract, and no target command is documented as currently working before the atomic cutover.
+Each phase is gated. The approved cloud development gate permits provisional Phase 2–4 work while real Phase 1 qualification is pending; it cannot compensate for missing proof, weaken runtime protections or authorize release. No target command is documented as publicly working before the atomic cutover.
 
 ## Current branch warning
 
-The branch remains pre-alpha. Its reachable binary is the obsolete pre-cutover product while the eleventh Phase 1 correction is performed; no replacement product foundation has started. Do not install or run this branch against a real workstation, home directory, credentials, manager state, or destination before Phase 6 installed-binary acceptance. See the [root branch-status README](../../README.md) and the baseline in [proof results](proof-results.md).
+The [Phase 1 frozen-host handoff](phase1-proof-handoff.md) lists the existing proof inputs and command interfaces. It is an operational checklist, not authority or a successful proof observation.
+
+The branch remains pre-alpha. Its reachable binary is the obsolete pre-cutover product while the eleventh Phase 1 correction and reviewed cloud development gate are completed. The split-gate approval does not itself record a passing cloud report, completed review, started replacement foundation or Phase 1 qualification. Do not install or run this branch against a real workstation, home directory, credentials, manager state, or destination before Phase 6 installed-binary acceptance. See the [root branch-status README](../../README.md) and the baseline in [proof results](proof-results.md).

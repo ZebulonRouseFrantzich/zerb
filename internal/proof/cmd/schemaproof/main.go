@@ -18,6 +18,7 @@ func run() int {
 	fs := flag.NewFlagSet("schemaproof", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	root := fs.String("root", "", "existing canonical disposable btrfs root outside repository and real HOME/XDG")
+	repository := fs.String("repository", "", "canonical repository root to exclude")
 	artifacts := fs.String("artifacts", "", "existing artifact directory beneath root")
 	if err := fs.Parse(os.Args[1:]); err != nil {
 		return 2
@@ -25,7 +26,10 @@ func run() int {
 	if fs.NArg() != 0 {
 		return fail("unexpected operands", 2)
 	}
-	protected, err := proofenv.CaptureProtected("")
+	if *repository == "" {
+		return fail("repository root is required", 1)
+	}
+	protected, err := proofenv.CaptureProtected(*repository)
 	if err != nil {
 		return fail(err.Error(), 1)
 	}

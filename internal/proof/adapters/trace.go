@@ -242,163 +242,11 @@ func parseAdapterTrace(prefix string, policy tracePolicy) (adapterTrace, error) 
 			if isMountControlTrace(record.call) {
 				out.forbiddenAccesses["manager-mount-control-attempt"]++
 			}
-			cwd := cwdByPID[pid]
-			if cwd == "" {
-				cwd = policy.cwd
-				cwdByPID[pid] = cwd
-			}
-			if isProcessTrace(record.call) {
-				out.processEvents++
-			}
-			if record.call == "clone" || record.call == "clone3" || record.call == "fork" || record.call == "vfork" {
-				fields := strings.Fields(record.result)
-				if len(fields) == 0 {
-					out.markUnknown("clone-result")
-				} else if child, childErr := strconv.Atoi(fields[0]); childErr == nil && child > 0 {
-					childPIDs[child] = true
-					cwdByPID[child] = cwd
-					executableByPID[child] = executableByPID[pid]
-				}
-			}
-			if record.call == "chdir" && successful(record.result) {
-				if len(record.paths) != 1 {
-					out.markUnknown("chdir-arity")
-				} else if resolved, ok := resolveAdapterPath(record.line, record.paths[0], cwd); ok {
-					cwd = filepath.Clean(resolved)
-					cwdByPID[pid] = cwd
-				} else {
-					out.markUnknown("chdir-resolution")
-				}
-			}
-			if record.call == "fchdir" && successful(record.result) {
-				open, close := strings.IndexByte(record.line, '<'), strings.IndexByte(record.line, '>')
-				if open < 0 || close <= open || !filepath.IsAbs(record.line[open+1:close]) {
-					out.markUnknown("fchdir-resolution")
-				} else {
-					cwd = filepath.Clean(record.line[open+1 : close])
-					cwdByPID[pid] = cwd
-				}
-			}
-			if record.call == "execve" || record.call == "execveat" {
-				resolved, ok := "", false
-				if record.call == "execveat" && strings.Contains(record.line, "AT_EMPTY_PATH") {
-					resolved, ok = annotatedAdapterFDPath(record.line)
-				} else if len(record.paths) != 0 {
-					resolved, ok = resolveAdapterPath(record.line, record.paths[0], cwd)
-				}
-				if !ok {
-					out.markUnknown("exec-resolution")
-				} else {
-					clean := filepath.Clean(resolved)
-					executableByPID[pid] = clean
-					if !seenExec[clean] {
-						seenExec[clean] = true
-						out.execs = append(out.execs, clean)
-					}
-				}
-			}
-			if isAdapterFileTrace(record.call) {
-				out.fileEvents++
-				for _, candidate := range record.paths {
-					resolved, ok := resolveAdapterPath(record.line, candidate, cwd)
-					if !ok {
-						out.markUnknown("file-resolution")
-						continue
-					}
-					clean := filepath.Clean(resolved)
-					class := classifyRead(clean, policy)
-					if !successful(record.result) && within(clean, "/nonexistent") {
-						class = "denied-synthetic-probe"
-					} else if class == "unexpected-absolute" && policy.allowMiseSystemReads {
-						if miseClass, allowed := classifyMiseSystemRead(clean, record.result, pid, policy); allowed {
-							class = miseClass
-						}
-					}
-					if strings.HasPrefix(class, "mise-platform-") {
-						out.platformObservations++
-						out.platformClasses["path-"+class]++
-					}
-					out.reads[class]++
-					if class == "unexpected-absolute" {
-						outcome := "denied"
-						if successful(record.result) {
-							outcome = "success"
-						}
-						out.unknownClasses["unexpected-read-"+record.call+"-"+diagnosticAdapterPathClass(clean, policy)+"-"+outcome]++
-					}
-					hostFactPath := adapterHostFactPath(clean) || (within(clean, "/proc") || within(clean, "/sys")) && !adapterRuntimeBootstrapPath(clean, policy)
-					if hostFactPath && policy.forbidHostFacts {
-						out.hostFactAccesses++
-					}
-					if forbiddenClass := forbiddenPathClass(clean, policy); forbiddenClass != "" {
-						out.forbiddenAccesses[forbiddenClass]++
-					}
-					if policy.authenticatedArchive != "" && successful(record.result) && (record.call == "open" || record.call == "openat" || record.call == "openat2") && !isAdapterWriteTrace(record.call, record.line) {
-						if clean == policy.authenticatedArchive {
-							out.authenticatedArchiveReads++
-						} else if strings.HasSuffix(clean, ".tar.gz") || strings.HasSuffix(clean, ".tar.xz") || strings.HasSuffix(clean, ".zip") {
-							out.forbiddenAccesses["unauthenticated-archive-input"]++
-						}
-					}
-				}
-			}
-			if isAdapterWriteTrace(record.call, record.line) {
-				writePaths := record.writePaths
-				if len(writePaths) == 0 {
-					if path, ok := annotatedAdapterFDPath(record.line); ok {
-						writePaths = []tracePath{{value: path}}
-					} else if successful(record.result) {
-						out.markUnknown("write-no-path")
-					} else {
-						out.deniedWrites["unresolved-"+record.call]++
-					}
-				}
-				for _, candidate := range writePaths {
-					resolved, ok := resolveAdapterPath(record.line, candidate, cwd)
-					if !ok {
-						if successful(record.result) {
-							out.markUnknown("write-resolution")
-						} else {
-							out.deniedWrites["unresolved-"+record.call]++
-						}
-						continue
-					}
-					clean := filepath.Clean(resolved)
-					writeClass := "outside-" + outsidePathClass(clean, policy)
-					if clean == "/dev/null" {
-						writeClass = "control-device"
-					} else if within(clean, policy.writeRoot) {
-						writeClass = "declared-manager-root"
-					}
-					if !successful(record.result) {
-						out.deniedWrites[writeClass+"-"+record.call]++
-						continue
-					}
-					if !within(clean, policy.writeRoot) && clean != "/dev/null" {
-						out.outsideWrites++
-					}
-					out.writes[writeClass]++
-				}
-			}
-			if isSocketTrace(record.call) {
-				out.socketEvents++
-				if record.call == "connect" || (record.call == "sendto" || record.call == "sendmsg" || record.call == "sendmmsg") && strings.Contains(record.line, "sa_family=") {
-					endpoint, endpointErr := classifyEndpoint(record.line)
-					if endpointErr != nil {
-						out.markUnknown("endpoint")
-					} else if endpoint != "unix" && endpoint != "unspecified" && endpoint != "netlink" {
-						out.networkAttempts++
-					}
-					if endpoint == "unix" && policy.allowMiseSystemReads && successful(record.result) {
-						socketPath, present, pathErr := traceUnixSocketPath(record.line)
-						if pathErr != nil {
-							out.markUnknown("unix-endpoint")
-						} else if present && !within(socketPath, policy.proofRoot) {
-							out.forbiddenAccesses["non-normative-platform-unix-socket"]++
-						}
-					}
-				}
-			}
+			cwd := out.observeProcess(record, pid, policy, cwdByPID, executableByPID, childPIDs, seenExec)
+			out.observeReads(record, pid, cwd, policy)
+			out.observeWrites(record, cwd, policy)
+			out.observeSocket(record, policy)
+
 		}
 	}
 	for _, line := range pending {
@@ -424,6 +272,176 @@ func parseAdapterTrace(prefix string, policy tracePolicy) (adapterTrace, error) 
 		return out, errors.New("trace classification was not closed")
 	}
 	return out, nil
+}
+
+func (out *adapterTrace) observeProcess(record traceRecord, pid int, policy tracePolicy, cwdByPID, executableByPID map[int]string, childPIDs map[int]bool, seenExec map[string]bool) string {
+	cwd := cwdByPID[pid]
+	if cwd == "" {
+		cwd = policy.cwd
+		cwdByPID[pid] = cwd
+	}
+	if isProcessTrace(record.call) {
+		out.processEvents++
+	}
+	if record.call == "clone" || record.call == "clone3" || record.call == "fork" || record.call == "vfork" {
+		fields := strings.Fields(record.result)
+		if len(fields) == 0 {
+			out.markUnknown("clone-result")
+		} else if child, childErr := strconv.Atoi(fields[0]); childErr == nil && child > 0 {
+			childPIDs[child] = true
+			cwdByPID[child] = cwd
+			executableByPID[child] = executableByPID[pid]
+		}
+	}
+	if record.call == "chdir" && successful(record.result) {
+		if len(record.paths) != 1 {
+			out.markUnknown("chdir-arity")
+		} else if resolved, ok := resolveAdapterPath(record.line, record.paths[0], cwd); ok {
+			cwd = filepath.Clean(resolved)
+			cwdByPID[pid] = cwd
+		} else {
+			out.markUnknown("chdir-resolution")
+		}
+	}
+	if record.call == "fchdir" && successful(record.result) {
+		open, close := strings.IndexByte(record.line, '<'), strings.IndexByte(record.line, '>')
+		if open < 0 || close <= open || !filepath.IsAbs(record.line[open+1:close]) {
+			out.markUnknown("fchdir-resolution")
+		} else {
+			cwd = filepath.Clean(record.line[open+1 : close])
+			cwdByPID[pid] = cwd
+		}
+	}
+	if record.call == "execve" || record.call == "execveat" {
+		resolved, ok := "", false
+		if record.call == "execveat" && strings.Contains(record.line, "AT_EMPTY_PATH") {
+			resolved, ok = annotatedAdapterFDPath(record.line)
+		} else if len(record.paths) != 0 {
+			resolved, ok = resolveAdapterPath(record.line, record.paths[0], cwd)
+		}
+		if !ok {
+			out.markUnknown("exec-resolution")
+		} else {
+			clean := filepath.Clean(resolved)
+			executableByPID[pid] = clean
+			if !seenExec[clean] {
+				seenExec[clean] = true
+				out.execs = append(out.execs, clean)
+			}
+		}
+	}
+	return cwd
+}
+
+func (out *adapterTrace) observeReads(record traceRecord, pid int, cwd string, policy tracePolicy) {
+	if isAdapterFileTrace(record.call) {
+		out.fileEvents++
+		for _, candidate := range record.paths {
+			resolved, ok := resolveAdapterPath(record.line, candidate, cwd)
+			if !ok {
+				out.markUnknown("file-resolution")
+				continue
+			}
+			clean := filepath.Clean(resolved)
+			class := classifyRead(clean, policy)
+			if !successful(record.result) && within(clean, "/nonexistent") {
+				class = "denied-synthetic-probe"
+			} else if class == "unexpected-absolute" && policy.allowMiseSystemReads {
+				if miseClass, allowed := classifyMiseSystemRead(clean, record.result, pid, policy); allowed {
+					class = miseClass
+				}
+			}
+			if strings.HasPrefix(class, "mise-platform-") {
+				out.platformObservations++
+				out.platformClasses["path-"+class]++
+			}
+			out.reads[class]++
+			if class == "unexpected-absolute" {
+				outcome := "denied"
+				if successful(record.result) {
+					outcome = "success"
+				}
+				out.unknownClasses["unexpected-read-"+record.call+"-"+diagnosticAdapterPathClass(clean, policy)+"-"+outcome]++
+			}
+			hostFactPath := adapterHostFactPath(clean) || (within(clean, "/proc") || within(clean, "/sys")) && !adapterRuntimeBootstrapPath(clean, policy)
+			if hostFactPath && policy.forbidHostFacts {
+				out.hostFactAccesses++
+			}
+			if forbiddenClass := forbiddenPathClass(clean, policy); forbiddenClass != "" {
+				out.forbiddenAccesses[forbiddenClass]++
+			}
+			if policy.authenticatedArchive != "" && successful(record.result) && (record.call == "open" || record.call == "openat" || record.call == "openat2") && !isAdapterWriteTrace(record.call, record.line) {
+				if clean == policy.authenticatedArchive {
+					out.authenticatedArchiveReads++
+				} else if strings.HasSuffix(clean, ".tar.gz") || strings.HasSuffix(clean, ".tar.xz") || strings.HasSuffix(clean, ".zip") {
+					out.forbiddenAccesses["unauthenticated-archive-input"]++
+				}
+			}
+		}
+	}
+}
+
+func (out *adapterTrace) observeWrites(record traceRecord, cwd string, policy tracePolicy) {
+	if isAdapterWriteTrace(record.call, record.line) {
+		writePaths := record.writePaths
+		if len(writePaths) == 0 {
+			if path, ok := annotatedAdapterFDPath(record.line); ok {
+				writePaths = []tracePath{{value: path}}
+			} else if successful(record.result) {
+				out.markUnknown("write-no-path")
+			} else {
+				out.deniedWrites["unresolved-"+record.call]++
+			}
+		}
+		for _, candidate := range writePaths {
+			resolved, ok := resolveAdapterPath(record.line, candidate, cwd)
+			if !ok {
+				if successful(record.result) {
+					out.markUnknown("write-resolution")
+				} else {
+					out.deniedWrites["unresolved-"+record.call]++
+				}
+				continue
+			}
+			clean := filepath.Clean(resolved)
+			writeClass := "outside-" + outsidePathClass(clean, policy)
+			if clean == "/dev/null" {
+				writeClass = "control-device"
+			} else if within(clean, policy.writeRoot) {
+				writeClass = "declared-manager-root"
+			}
+			if !successful(record.result) {
+				out.deniedWrites[writeClass+"-"+record.call]++
+				continue
+			}
+			if !within(clean, policy.writeRoot) && clean != "/dev/null" {
+				out.outsideWrites++
+			}
+			out.writes[writeClass]++
+		}
+	}
+}
+
+func (out *adapterTrace) observeSocket(record traceRecord, policy tracePolicy) {
+	if isSocketTrace(record.call) {
+		out.socketEvents++
+		if record.call == "connect" || (record.call == "sendto" || record.call == "sendmsg" || record.call == "sendmmsg") && strings.Contains(record.line, "sa_family=") {
+			endpoint, endpointErr := classifyEndpoint(record.line)
+			if endpointErr != nil {
+				out.markUnknown("endpoint")
+			} else if endpoint != "unix" && endpoint != "unspecified" && endpoint != "netlink" {
+				out.networkAttempts++
+			}
+			if endpoint == "unix" && policy.allowMiseSystemReads && successful(record.result) {
+				socketPath, present, pathErr := traceUnixSocketPath(record.line)
+				if pathErr != nil {
+					out.markUnknown("unix-endpoint")
+				} else if present && !within(socketPath, policy.proofRoot) {
+					out.forbiddenAccesses["non-normative-platform-unix-socket"]++
+				}
+			}
+		}
+	}
 }
 
 func traceCallName(line string) string {
