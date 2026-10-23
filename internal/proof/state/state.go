@@ -1215,7 +1215,7 @@ func receiptFactsFor(candidate string, previous receiptDigest) receiptCompleted 
 		Git:  byID("git"), Mise: byID("mise"), Chezmoi: byID("chezmoi"),
 		Parser: candidateRecord.Parser, Policy: candidateRecord.Policy,
 		Platform: receiptPlatformObservation{Distribution: "Fedora Linux 44", Kernel: utsField(uts.Release), Architecture: runtime.GOARCH, Filesystem: "btrfs"},
-		Tools:    []receiptToolObservation{{ID: "node", Requested: "24.4.1", Installed: "24.4.1", Integrity: "sha256:" + recordDigest("node-installed")}},
+		Tools:    []receiptToolObservation{{ID: "node", Requested: "24.4.1", Installed: "24.4.1", Integrity: candidateRecord.Tools[0].Locks[0].Value}},
 		Targets:  append([]string(nil), candidateRecord.Targets...), Preconditions: []receiptDestinationObservation{precondition}, Results: []receiptDestinationObservation{result},
 		Phases:     receiptPhases(),
 		Dimensions: receiptDimensions{InputsPinned: true, ArtifactIntegrity: true, ArtifactAvailable: true, HostCompatible: true, ConvergenceVerified: true},

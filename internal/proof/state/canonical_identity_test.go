@@ -22,6 +22,21 @@ func TestCandidateFixtureNativeObjectsAndEmptyFiles(t *testing.T) {
 	}
 }
 
+// ARCH-026: this synthetic fixture binds the archive subject, not an invented installed-tree digest.
+func TestReceiptIntegrityUsesAuthoredArchiveSubject(t *testing.T) {
+	candidate := candidateTemplate("proof-next")
+	digest := string(candidateDigestFor("proof-next"))
+	facts := receiptFacts(digest)
+	if len(facts.Tools) != 1 || facts.Tools[0].Integrity != candidate.Tools[0].Locks[0].Value ||
+		!validCompletedReceipt(facts, digest, "") {
+		t.Fatal("synthetic receipt did not bind the authored archive checksum")
+	}
+	facts.Tools[0].Integrity = "sha256:" + recordDigest("node-installed")
+	if validCompletedReceipt(facts, digest, "") {
+		t.Fatal("synthetic receipt admitted a different integrity subject")
+	}
+}
+
 // PC-050/ARCH-024: receipt facts sort as digest inputs; journals retain execution prefixes.
 func TestReceiptPhasesSortedWithoutReorderingJournalPrefixes(t *testing.T) {
 	r := graphRefs{instance: "proof", journal: "operation", operationToken: "operation-token", writerToken: "writer-token", b: string(candidateDigestFor("proof-next"))}
