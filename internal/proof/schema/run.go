@@ -87,6 +87,7 @@ func parserCases() ([]Scenario, []DiagnosticObservation) {
 		component bool
 		reject    bool
 	}{
+		{"zerb-reserved-base-id", []byte("schema=1\n[base]\npath='profiles/base'\n[[profiles]]\nid='base'\nkind='embedded'\npath='profiles/selected'\n"), false, true},
 		{"zerb-valid", valid, false, false}, {"zerb-schema-mismatch", []byte("schema=2\n[base]\npath=\"profiles/base\"\n"), false, true}, {"zerb-unknown", append(append([]byte(nil), valid...), []byte("extra=true\n")...), false, true}, {"zerb-unknown-table", append(append([]byte(nil), valid...), []byte("[unknown]\nx=1\n")...), false, true}, {"zerb-duplicate-key", []byte("schema=1\nschema=1\n[base]\npath=\"profiles/base\"\n"), false, true}, {"zerb-duplicate-table", []byte("schema=1\n[base]\npath=\"profiles/base\"\n[base]\npath=\"profiles/base\"\n"), false, true}, {"zerb-dotted-alias", []byte("schema=1\nbase.path=\"profiles/base\"\n"), false, true}, {"zerb-malformed", []byte("schema = [\n"), false, true}, {"zerb-invalid-utf8", []byte{0xff}, false, true}, {"zerb-duplicate-id", []byte("schema=1\n[base]\npath=\"b\"\n[[profiles]]\nid=\"x\"\nkind=\"embedded\"\npath=\"x\"\n[[profiles]]\nid=\"x\"\nkind=\"embedded\"\npath=\"y\"\n"), false, true}, {"zerb-invalid-kind", []byte("schema=1\n[base]\npath=\"b\"\n[[profiles]]\nid=\"x\"\nkind=\"private\"\npath=\"x\"\n"), false, true}, {"zerb-traversal", []byte("schema=1\n[base]\npath=\"../b\"\n"), false, true}, {"profile-valid", []byte("schema=1\nlabel=\"Personal\"\n"), true, false}, {"profile-unknown", []byte("schema=1\ntools=[]\n"), true, true}, {"profile-nested", []byte("schema=1\n[provider]\nx=1\n"), true, true}, {"profile-schema", []byte("schema=2\n"), true, true},
 	}
 	var out []Scenario
@@ -639,6 +640,21 @@ func compositionCases() []Scenario {
 		out = append(out, Scenario{Name: "canonical-complete-preimage", Status: "failed", RequirementIDs: []string{"VAL-016", "VAL-034", "PC-043", "PC-050"}, Expected: "complete closed candidate encodes", Observed: err.Error(), RejectedAssumption: "A map-free but incomplete candidate preimage satisfies PC-050."})
 		return out
 	}
+	earlierSelected := cloneComponent(selected)
+	earlierSelected.ID = "aaa"
+	earlier, earlierDigest, earlierErr := Compose(source, base, earlierSelected, executables, policy)
+	reversed := cloneCandidate(earlier)
+	reversed.Components = reverseCopy(reversed.Components)
+	_, reversedDigest, reversedErr := DigestCandidate(reversed)
+	earlierBytes, earlierBytesErr := EncodeCandidate(earlier)
+	reversedBytes, reversedBytesErr := EncodeCandidate(reversed)
+	ordered := len(earlier.Components) == 2 && earlier.Components[0].ID == "aaa" && earlier.Components[1].ID == "base"
+	out = append(out, Scenario{Name: "component-membership-before-base", Status: boolStatus(earlierErr == nil && reversedErr == nil && earlierBytesErr == nil && reversedBytesErr == nil && ordered && earlierDigest == reversedDigest && bytes.Equal(earlierBytes, reversedBytes)), RequirementIDs: []string{"VAL-016", "PC-040", "PC-043", "PC-050", "ARCH-003"}, Expected: "distinct base and selected identities remain valid in either arrival order even when selected sorts first", Observed: fmt.Sprintf("accepted=%t ordered=%t digest_equal=%t bytes_equal=%t", earlierErr == nil, ordered, earlierDigest == reversedDigest, bytes.Equal(earlierBytes, reversedBytes)), RejectedAssumption: "The reserved base identity must sort before every valid selected profile."})
+	duplicateBase := cloneCandidate(candidate)
+	duplicateBase.ProfileID = "base"
+	duplicateBase.Components[1].ID = "base"
+	_, duplicateBaseDigest, duplicateBaseErr := DigestCandidate(duplicateBase)
+	out = append(out, Scenario{Name: "candidate-reserved-base-selection", Status: boolStatus(duplicateBaseErr != nil && duplicateBaseDigest == ""), RequirementIDs: []string{"VAL-016", "PC-040", "PC-043", "ARCH-003"}, Expected: "reserved base cannot become a selected profile or a second base component", Observed: fmt.Sprintf("rejected=%t digest_absent=%t", duplicateBaseErr != nil, duplicateBaseDigest == ""), RejectedAssumption: "Two distinct paths with the base ID form one base and one selected component."})
 
 	shuffledBase := base
 	shuffledBase.Files = reverseCopy(shuffledBase.Files)

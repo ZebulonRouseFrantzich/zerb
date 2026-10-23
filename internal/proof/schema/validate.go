@@ -54,7 +54,7 @@ func DecodeZerb(data []byte) (ZerbManifest, *DiagnosticObservation, error) {
 	paths := make([]string, 0, len(out.Profiles)+1)
 	paths = append(paths, out.Base.Path)
 	for _, p := range out.Profiles {
-		if !profileIDRE.MatchString(p.ID) {
+		if !profileIDRE.MatchString(p.ID) || p.ID == "base" {
 			return out, diagnostic("zerb.toml", validationError{"invalid profile id"}), validationError{"invalid profile id"}
 		}
 		if p.Kind != "embedded" && p.Kind != "gitlink" {
@@ -372,13 +372,15 @@ func DigestCandidate(candidate CandidatePreimage) (CandidatePreimage, string, er
 	if err := validateCanonicalSource(candidate.Source); err != nil {
 		return CandidatePreimage{}, "", err
 	}
-	if !profileIDRE.MatchString(candidate.ProfileID) || len(candidate.Components) != 2 {
+	if !profileIDRE.MatchString(candidate.ProfileID) || candidate.ProfileID == "base" || len(candidate.Components) != 2 {
 		return CandidatePreimage{}, "", validationError{"invalid selected profile or component count"}
 	}
 	sort.Slice(candidate.Components, func(i, j int) bool {
 		return candidate.Components[i].ID < candidate.Components[j].ID
 	})
-	if candidate.Components[0].ID != "base" || candidate.Components[1].ID != candidate.ProfileID {
+	first, second := candidate.Components[0].ID, candidate.Components[1].ID
+	matches := first == "base" && second == candidate.ProfileID || first == candidate.ProfileID && second == "base"
+	if !matches {
 		return CandidatePreimage{}, "", validationError{"component identity does not match selected profile"}
 	}
 	if len(candidate.Tools) > MaxTools || len(candidate.HomeSources) > MaxHomeSources*2 || len(candidate.Targets) > MaxTargets*2 {
