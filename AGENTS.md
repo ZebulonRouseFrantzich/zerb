@@ -24,7 +24,7 @@ Every implementation and review claim must cite applicable requirement IDs. Reso
 - Static analysis: `go vet ./...`
 - Lint: `golangci-lint run`
 - Replacement import gate: `go run ./tools/importcheck`
-- Current foundation race gate: `go test -race -count=1 ./internal/paths ./internal/safefs ./internal/profile ./internal/receipt ./tools/importcheck`
+- Current foundation race gate: `go test -race -count=1 ./internal/paths ./internal/safefs ./internal/profile ./internal/receipt ./internal/toolchain ./tools/importcheck`
 - Local parser pin: `python3 scripts/check_parser_pin.py --go /absolute/path/to/pinned/go`
 - Patched parser upstream race gate: `go -C third_party/go-toml test -race -count=1 ./...`
 - Release-shaped build: `go build -trimpath -o bin/zerb ./cmd/zerb`
