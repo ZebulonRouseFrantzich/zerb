@@ -124,9 +124,9 @@ func TestCandidateExistingPublicFixtureEncoding(t *testing.T) {
 	if err != nil || len(encoded) == 0 {
 		t.Fatalf("existing public synthetic fixture failed: %v", err)
 	}
-	// This complete hardcoded synthetic preimage was reviewed as non-sensitive.
-	const previous = "sha256:52ec40825dda96e0d7d736b91f8a1e359d1715b039e1dd34a333a56904d1c7ee"
-	if digest != previous {
+	// The complete public synthetic preimage was re-reviewed after RootTree adopted native Git object syntax.
+	const expected = "sha256:17633c75f1abaf8b8198b8e59d809a04a7fa6821d223fa2f0ebccd9a6cef691d"
+	if digest != expected {
 		t.Fatal("existing public fixture encoding changed")
 	}
 }

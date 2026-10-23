@@ -80,6 +80,25 @@ PC-042 allocation evidence must exercise the approved conservative reservation, 
 
 Independent `profile.ValidateTemplate` conformance uses Go 1.24's per-call `text/template/parse` storage, with no input-dependent decoder pool. Its reservation is `65,536 + 3D + 1,024A`, where `D` is source bytes and `A` is lexical action count, covering the source string, aggregate text-node copies, AST/list growth and workspace. Both maximum byte/action limits reserve 7,405,568 bytes. Before native parsing, fixed-state preflight enforces valid UTF-8, 1 MiB, 4,096 actions and conditional nesting 32, including native `else if` desugaring. A separate AST pass allows only literal text and direct literal-boolean conditionals. Native ASCII whitespace and trim markers are preserved; comments and all unlisted actions reject. A fixed internal parser name and fixed returned error prevent authored diagnostic metadata from escaping. Validation performs no rendering, execution, source acquisition or TOML decode. Local conformance does not qualify the chezmoi adapter or resolve the separate TOML retention finding.
 
+### Canonicalization validation and reservation traceability
+
+The owner-approved PC-022/050 decisions require one empty-array encoding, native root-tree identity separate from materialized content, and a content-only versioned component-tree preimage. The following table traces existing requirements; it is not a claim that the production encoders or reservation schedule are implemented:
+
+| Boundary | Required validation / charge | Owner |
+|---|---|---|
+| Source | Canonical public URI at most 2,048 ASCII bytes; exact shared source-ID encoding; native commit/root object syntax and format agreement | PC-020/022/042; authenticated membership remains source-owned |
+| Composition | One distinct base and selected ID; bounded canonical component-relative paths; complete unique file inventories with admitted modes/hash forms | PC-040/042/043/050, ARCH-003/030 |
+| Declarations | At most one exact authored Node declaration with its exact lock; no duplicate identity, home source or target; at most 4,096 aggregate home sources and targets respectively | PC-042/043 |
+| Managed identities | Existing closed artifact versions, byte identities, parser pin and policy; canonical absolute executable paths, not a new logical-path cap or the proof's arbitrary version cap | ARCH-006/010/013/014/021/030 |
+| Canonical form | UTF-8 validity before encoding; explicit identity-key sorting and duplicate rejection; empty `[]`; no caller mutation, including nested backing storage | PC-050, ARCH-030 |
+| Retained model | Complete retained input model, string/collection backing and every internal copied model; one budget for the full invocation | PC-042 |
+| Workspace | Every source/tree/candidate or receipt encoding pass, sorting/copy workspace, worst-case escaped JSON, buffer growth and returned output | PC-042 |
+| History / overflow | Input-dependent pooled or reused storage remains charged; checked addition/multiplication before allocation; no budget reset between passes or post-construction payload substitute | PC-042 |
+
+Permanent encoder checks must cover exact reviewed bytes/digest vectors, permutations, duplicate collisions, nil/empty equivalence, invalid UTF-8, string/count/path limits, reservation boundaries and overflow, success/failure caller preservation and retained-history behavior. False independent receipt dimensions alone do not grant or deny completion authority: ARCH-024/026 state/current validation owns the applicable observed success relation. Receipt phase facts sort lexically; journal completed phases retain their exact execution prefix.
+
+The production schedule remains pending. Go 1.24's `encoding/json.Marshal` and `Encoder.Encode` share a pooled encoding buffer whose reset retains earlier input-dependent backing storage. A current-payload-only schedule, a bounded output writer or a new `Encoder` value does not account for that history. This finding does not authorize excluding it, changing PC-050's required encoder, patching the toolchain or weakening PC-042. Existing disposable proof string-cost checks are not complete reservation evidence. The exact destination-observation wire conventions and subject of tool-observation integrity also need owning-contract closure before the general completed-receipt encoder can be implemented; synthetic fixture comparisons are not that contract.
+
 ## Process environment, lifecycle, and adapters
 
 | ID | Requirements proved | Scenario and required evidence |
