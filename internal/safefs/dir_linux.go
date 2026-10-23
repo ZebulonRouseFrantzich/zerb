@@ -183,20 +183,25 @@ func observeFD(fd int) (Identity, error) {
 	return id, nil
 }
 
+const identityMask = unix.STATX_TYPE | unix.STATX_MODE | unix.STATX_UID | unix.STATX_INO | unix.STATX_NLINK | unix.STATX_SIZE | unix.STATX_MNT_ID
+
 func observeAt(fd int, name string) (Identity, error) {
 	flags := unix.AT_SYMLINK_NOFOLLOW | unix.AT_NO_AUTOMOUNT
 	if name == "" {
 		flags |= unix.AT_EMPTY_PATH
 	}
-	const mask = unix.STATX_TYPE | unix.STATX_MODE | unix.STATX_UID | unix.STATX_INO | unix.STATX_NLINK | unix.STATX_SIZE | unix.STATX_MNT_ID
 	var st unix.Statx_t
-	if err := unix.Statx(fd, name, flags, mask, &st); err != nil {
+	if err := unix.Statx(fd, name, flags, identityMask, &st); err != nil {
 		if err == unix.ENOENT && name != "" {
 			return Identity{}, unix.ENOENT
 		}
 		return Identity{}, errDirectory
 	}
-	if st.Mask&mask != mask || st.Mnt_id == 0 || st.Size > math.MaxInt64 {
+	return identityFromStatx(st)
+}
+
+func identityFromStatx(st unix.Statx_t) (Identity, error) {
+	if st.Mask&identityMask != identityMask || st.Mnt_id == 0 || st.Size > math.MaxInt64 {
 		return Identity{}, errDirectory
 	}
 	return Identity{Device: unix.Mkdev(st.Dev_major, st.Dev_minor), Inode: st.Ino, Owner: st.Uid,
