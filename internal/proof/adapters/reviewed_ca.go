@@ -39,7 +39,7 @@ func parseReviewedCAPool(bundle []byte) (*x509.CertPool, error) {
 			if err != nil {
 				return nil, err
 			}
-			ordinary, err = x509.ParseCertificate(block.Bytes)
+			ordinary, err = parseReviewedCertificate(block.Bytes)
 			if err != nil || !bytes.HasPrefix(rest, []byte("\n")) {
 				return nil, errors.New("fixed CA bundle contains an invalid ordinary certificate")
 			}
@@ -111,7 +111,7 @@ func parseReviewedTrust(input []byte) (*x509.Certificate, reviewedPurpose, revie
 	if err != nil || certificateDER.Class != asn1.ClassUniversal || certificateDER.Tag != asn1.TagSequence || !certificateDER.IsCompound {
 		return nil, 0, 0, invalid
 	}
-	certificate, err := x509.ParseCertificate(certificateDER.FullBytes)
+	certificate, err := parseReviewedCertificate(certificateDER.FullBytes)
 	if err != nil {
 		return nil, 0, 0, invalid
 	}
