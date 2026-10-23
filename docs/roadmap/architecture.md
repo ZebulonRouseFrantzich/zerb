@@ -369,6 +369,10 @@ A protected receipt records only required non-secret facts: canonical source and
 
 Receipts report independent dimensions—inputs pinned, artifact integrity established, artifact currently available, host compatible, and convergence verified. They describe pinned inputs and observed convergence on a mutable host, never a reproducible build or atomic rollback.
 
+The approved `DestinationObservation` wire conventions are exact: `Kind` is `absent`, `file` or `directory`. `Exists=false` requires `Kind="absent"`, empty `ContentHash` and zero `Mode`, `Owner`, `Device`, `Inode` and `Links`. An existing file or directory carries the actual post-authorization owner/device/inode/link observations. `Mode` is Unix permission and special bits (`stat.Mode & 07777`), not full type bits or Go's `FileMode` representation; `Kind` separately carries the type. A file has the SHA256 token for its exact observed bytes; a directory has an empty hash, with no invented directory-content digest. Symlinks and unsupported types remain rejected. Preconditions and results each contain exactly one actual observation per candidate target, sorted by target, including directory targets; an empty target inventory has `[]` in all three collections. Ancestor validation remains independently mandatory and is not replaced by these observations.
+
+`ToolObservation.Integrity` denotes the checksum of the authenticated authored archive, equal to the candidate's exact artifact lock. Populate that observation only after actual archive authentication and the complete independent installed-tree verification required by ARCH-013/021: entry set, modes, file hashes, permitted semantic symlink transformations, npm wrapper and executable identity. The archive checksum alone proves none of those checks; no separate installed-tree digest or preimage is introduced. State validates the exact candidate/tool/current relation before stable publication. A pure receipt digest validates representation but cannot authenticate the archive, inspect an installation, prove candidate/current correspondence or grant completion authority. The independent dimension booleans remain facts, not implicit substitutes for one another; encoding a false dimension does not complete a receipt.
+
 ### ARCH-027 — Command admission and forward recovery
 
 PC-011 parsing precedes root access; after parsing, semantic root/state/candidate/executable/destination validation occurs only under the compatible ARCH-031 lease and after synchronization-inode/root revalidation. PC-016 is the exhaustive state-by-command table. No implementation may infer admission from a pre-lease snapshot, validate then acquire, drop a lease before publication or launch binding, or upgrade a shared lease.
@@ -688,6 +692,24 @@ func ReceiptDigest(Completed) (Digest, []byte, error)
 ```
 
 The schema-1 candidate policy arrays are exact after lexical sorting: object modes `directory`, `executable`, `file`; declarations `home`, `mise.lock`, `mise.toml`, `profile.toml`; template actions `if-false`, `if-true`, `literal-text`; process classes `bash-shell`, `chezmoi-static`, `git-public`, `mise-core-node`; and policy IDs `zerb.chezmoi-static.v2`, `zerb.destination-recheck.v1`, `zerb.execenv.v4`, `zerb.git-public.v3`, `zerb.lifecycle.v6`, `zerb.mise-core-node.v3`. The final ID owns the exact ARCH-013/019/021 immutable archive, eleven platform-class, raw-install, semantic-symlink, frozen npm-wrapper, and manager-seccomp rules. Any missing, additional, reordered-after-canonicalization, or version-changed value changes or fails the candidate.
+
+PC-022 owns the native `Source.Commit`/`RootTree` syntax and source-service relation; PC-050 owns the distinct materialized `Component.TreeDigest` preimage and empty-array encoding. Canonical identity uses these collection keys, compared by normalized UTF-8 bytes; no arrival order or reserved-base position is authority:
+
+| Collection | Sort / identity key | Validation owner |
+|---|---|---|
+| Components | `ID` | Exactly one `base` and one selected ID, distinct component paths; PC-040/043, ARCH-003 |
+| Component files | `Path` | Unique canonical paths, admitted modes and content-hash forms; PC-040/042/050 |
+| Tools and tool observations | `ID` | Unique identities and existing closed declaration bounds; PC-042/043, ARCH-026 |
+| Tool locks | `Name` | Exact authored lock inventory, no duplicate names; PC-042/043 |
+| Executables | `ID` | Exact retained managed identities, no duplicate IDs; ARCH-006/010/013/014/021 |
+| Home sources and targets | Complete string | Unique canonical logical paths and aggregate PC-042 bounds |
+| Policy arrays | Complete string | Exact closed arrays above, without duplicates |
+| Receipt preconditions and results | `Target` | Unique target identities; live facts belong to ARCH-021/025/026, not candidate identity |
+| Receipt phase facts | Complete string | Distinct completed phase names, lexical receipt encoding under PC-050 |
+
+Required identity collisions reject even if all other fields match. A pure canonicalizer validates owned value syntax and encodes facts; it cannot authenticate acquisition, observe a destination, establish cross-record current authority or complete a receipt. Such authority remains with the source/toolchain/state operation owners. Invalid UTF-8 rejects before JSON can replace malformed input. Physical executable paths are canonical absolute identities, distinct from PC-040's component-relative logical paths; do not silently apply a new field cap or reinterpret the authored Node version bound as an adapter-version bound.
+
+Receipt phase facts are sorted for identity; the journal's `CompletedPhases` remains the exact execution-prefix sequence owned by ARCH-024/025. Sorting receipt facts must never reorder mutation actions or journal progress.
 
 ```go
 package profile

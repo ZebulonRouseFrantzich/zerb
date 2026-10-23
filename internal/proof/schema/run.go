@@ -524,7 +524,7 @@ func candidateWithStringCount(target int) (CandidatePreimage, bool) {
 	if diff < 0 {
 		return CandidatePreimage{}, false
 	}
-	maxSingles := MaxHomeSources*2 - len(candidate.HomeSources)
+	maxSingles := MaxHomeSources - len(candidate.HomeSources)
 	maxFiles := MaxComponentFiles*2 - len(candidate.Components[0].Files) - len(candidate.Components[1].Files)
 	singles := diff
 	if singles > maxSingles {
@@ -570,11 +570,15 @@ func candidateWithAllocatedBytes(target int) (CandidatePreimage, bool) {
 		}
 		lengths = append(lengths, remainder)
 	}
-	if len(lengths)+len(candidate.HomeSources) > MaxHomeSources*2 {
+	if len(lengths) > MaxHomeSources-len(candidate.HomeSources)+MaxTargets-len(candidate.Targets) {
 		return CandidatePreimage{}, false
 	}
 	for i, length := range lengths {
-		candidate.HomeSources = append(candidate.HomeSources, pathOfSize(length, i+10000))
+		if len(candidate.HomeSources) < MaxHomeSources {
+			candidate.HomeSources = append(candidate.HomeSources, pathOfSize(length, i+10000))
+		} else {
+			candidate.Targets = append(candidate.Targets, pathOfSize(length, i+10000))
+		}
 	}
 	_, got := candidateCost(candidate)
 	return candidate, got == target
@@ -711,7 +715,7 @@ func compositionCases() []Scenario {
 			c.Source.SourceID, _ = CanonicalSourceID(c.Source.URI)
 		}},
 		{"source-commit", false, func(c *CandidatePreimage) { c.Source.Commit = strings.Repeat("d", 40) }},
-		{"source-root-tree", false, func(c *CandidatePreimage) { c.Source.RootTree = proofDigest("d") }},
+		{"source-root-tree", false, func(c *CandidatePreimage) { c.Source.RootTree = strings.Repeat("d", 40) }},
 		{"profile-id", false, func(c *CandidatePreimage) {
 			c.ProfileID = "work"
 			c.Components[1].ID = "work"
@@ -801,7 +805,7 @@ func compositionCases() []Scenario {
 func proofSource() CanonicalSource {
 	uri := "https://example.com/environment.git"
 	sourceID, _ := CanonicalSourceID(uri)
-	return CanonicalSource{URI: uri, SourceID: sourceID, Commit: strings.Repeat("c", 40), RootTree: proofDigest("a")}
+	return CanonicalSource{URI: uri, SourceID: sourceID, Commit: strings.Repeat("c", 40), RootTree: strings.Repeat("a", 40)}
 }
 
 func proofComponents() (Component, Component) {

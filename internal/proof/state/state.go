@@ -1075,7 +1075,8 @@ func candidateTemplate(profile string) candidateReferenceRecord {
 		sum := sha256.Sum256([]byte(label))
 		return "sha256:" + hex.EncodeToString(sum[:])
 	}
-	source := receiptSource{URI: sourceid.KnownVectorURI, SourceID: sourceid.KnownVectorDigest, Commit: digest("commit"), RootTree: digest("root-tree")}
+	// Synthetic native SHA-1 object syntax; this fixture does not prove commit/tree membership.
+	source := receiptSource{URI: sourceid.KnownVectorURI, SourceID: sourceid.KnownVectorDigest, Commit: strings.Repeat("c", 40), RootTree: strings.Repeat("a", 40)}
 	components := []receiptComponent{
 		{ID: "base", Path: "profiles/base", TreeDigest: digest("base-tree"), Files: []receiptFile{{Path: "home/managed/file", Mode: "file", Hash: digest("managed-file")}}},
 		{ID: profile, Path: "profiles/" + profile, TreeDigest: digest(profile + "-tree"), Files: []receiptFile{}},
@@ -1107,6 +1108,12 @@ func candidateReference(_ string, candidate string) candidateReferenceRecord {
 }
 
 var mutationPhases = []string{string(phaseToolInstall), string(phaseHomeApply)}
+
+func receiptPhases() []string {
+	phases := append([]string{}, mutationPhases...)
+	sort.Strings(phases)
+	return phases
+}
 
 func liveSelfReceiptExecutable() (receiptExecutable, error) {
 	fd, err := syscall.Open("/proc/self/exe", syscall.O_RDONLY|syscall.O_CLOEXEC, 0)
@@ -1208,9 +1215,9 @@ func receiptFactsFor(candidate string, previous receiptDigest) receiptCompleted 
 		Git:  byID("git"), Mise: byID("mise"), Chezmoi: byID("chezmoi"),
 		Parser: candidateRecord.Parser, Policy: candidateRecord.Policy,
 		Platform: receiptPlatformObservation{Distribution: "Fedora Linux 44", Kernel: utsField(uts.Release), Architecture: runtime.GOARCH, Filesystem: "btrfs"},
-		Tools:    []receiptToolObservation{{ID: "node", Requested: "24.4.1", Installed: "24.4.1", Integrity: "sha256:" + recordDigest("node-installed")}},
+		Tools:    []receiptToolObservation{{ID: "node", Requested: "24.4.1", Installed: "24.4.1", Integrity: candidateRecord.Tools[0].Locks[0].Value}},
 		Targets:  append([]string(nil), candidateRecord.Targets...), Preconditions: []receiptDestinationObservation{precondition}, Results: []receiptDestinationObservation{result},
-		Phases:     append([]string(nil), mutationPhases...),
+		Phases:     receiptPhases(),
 		Dimensions: receiptDimensions{InputsPinned: true, ArtifactIntegrity: true, ArtifactAvailable: true, HostCompatible: true, ConvergenceVerified: true},
 	}
 }
@@ -1327,7 +1334,7 @@ func transitionJournalRecord(r graphRefs, state, oldPhase string, completed []st
 		WriterGeneration: generation, WriterToken: writerToken, WriterPreviousToken: r.writerPredecessorToken,
 		Previous: receiptDigest(r.a), PreviousReceipt: receiptDigest(r.receiptA), Candidate: receiptDigest(r.b),
 		Phase: exactPhase(state, oldPhase), Preconditions: append([]receiptDestinationObservation(nil), preconditions...),
-		Results: append([]receiptDestinationObservation(nil), results...), CompletedPhases: exactCompletedPhases(completed),
+		Results: append([]receiptDestinationObservation{}, results...), CompletedPhases: exactCompletedPhases(completed),
 	}
 }
 
@@ -1858,7 +1865,7 @@ func validCompletedReceipt(facts receiptCompleted, candidate string, previous re
 		facts.Platform.Architecture != "" && facts.Platform.Filesystem != "" &&
 		slicesEqual(facts.Tools, want.Tools) && slicesEqual(facts.Targets, candidateRecord.Targets) &&
 		slicesEqual(facts.Preconditions, want.Preconditions) && slicesEqual(facts.Results, want.Results) &&
-		slicesEqual(facts.Phases, mutationPhases) && facts.Dimensions == want.Dimensions
+		slicesEqual(facts.Phases, receiptPhases()) && facts.Dimensions == want.Dimensions
 }
 
 func strictlySorted(values []string) bool {
@@ -7246,7 +7253,7 @@ func verifyCompletionPublication(s string, r graphRefs, requireCurrent, requireC
 	return candidate.Schema == 1 && candidate.Domain == "zerb.candidate" &&
 		receipt.Schema == 1 && receipt.Domain == "zerb.receipt" &&
 		receipt.Facts.Schema == 1 && receipt.Facts.Domain == "zerb.completed" &&
-		slicesEqual(receipt.Facts.Phases, mutationPhases)
+		slicesEqual(receipt.Facts.Phases, receiptPhases())
 }
 
 func syncFixtureTree(root string) error {
