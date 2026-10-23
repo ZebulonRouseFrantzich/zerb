@@ -609,7 +609,7 @@ func parseCAPool(bundle []byte) (*x509.CertPool, error) {
 		if !bytes.Equal(bytes.TrimSpace(remaining[:len(remaining)-len(rest)]), bytes.TrimSpace(pem.EncodeToMemory(block))) {
 			return nil, errors.New("fixed CA bundle contains non-canonical PEM")
 		}
-		certificate, err := x509.ParseCertificate(block.Bytes)
+		certificate, err := parseReviewedCertificate(block.Bytes)
 		if err != nil {
 			return nil, errors.New("fixed CA bundle contains an invalid certificate")
 		}

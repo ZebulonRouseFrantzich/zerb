@@ -25,7 +25,7 @@ Keep full reports, exact source/tree/tool hashes, local paths and check outputs 
 
 ## Host and inputs
 
-The fixed-CA proof harness still needs the nested certificate-envelope rejection parity discovered during the production `toolchain.FixedCA` increment. Its exact bundle digest remains enforced, but the proof parser delegates certificate structure to Go 1.24, which can ignore extra nested sequence fields. Production permanent tests now reject those fields independently. Resolve and review the proof-harness parity gap before using its fixed-CA rows for real-host qualification; a passing cloud proof suite does not establish that missing property (ARCH-030, VAL-017/021/022).
+The fixed-CA proof harness and production `toolchain.FixedCA` independently reject the nested certificate-envelope tails that Go 1.24 can ignore. Targeted regressions exercise ordinary, AUX-only trusted and plain-PEM proof parsing while preserving exact digest admission and the reviewed bundle. This closes the local parser-parity gap only; a passing cloud suite does not establish real-host acquisition, child CA-file identity or complete fixed-CA qualification (ARCH-030, VAL-017/021/022).
 
 Before a run, verify these inputs without changing access, credentials or host policy:
 
