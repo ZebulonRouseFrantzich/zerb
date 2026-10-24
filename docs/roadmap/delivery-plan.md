@@ -145,6 +145,8 @@ The owner approved PC-050 empty-array normalization and content-only component-t
 
 The subsequent bounded `safefs.Lock` increment implements the existing descriptor-owned OFD seam, using the separately approved writable numeric-FD reopen while preserving the full root and proc trust checks. It provides no initialization/owner publication, state lease, role-overlap, recovery or durability authority. Direct local kernel evidence and refusal paths remain separate from skipped exported-path positives and the frozen-host matrix. Public routing, phase admission and release/support gates remain unchanged.
 
+The following bounded `Dir.PublishNoReplace` increment implements only same-parent anonymous-file staging and atomic descriptor-owned no-replace publication, with file/parent synchronization, exact reopen verification and explicit post-attempt uncertainty. It leaves existing targets untouched and grants no initialized state, role-overlap, lease or recovery authority. No named partial state/data staging or new proc trust exception is admitted; host-dependent success remains separately qualified.
+
 ### Work
 
 1. Enforce the exact ARCH-030 one-way DAG and forbidden old-package seam for every package introduced in this phase. Phase 2 completes only `paths`, `safefs`, `profile`, `receipt`, `execenv`, `source`, `toolchain`, `state`, and test-only `testenv`; it does not create compile-only `mise`, `home`, `plan`, `recovery`, `app`, or `host` scaffolds. The DAG gate scans production and `_test.go`, rejects imports of every full old package tree including `internal/testutil`, and permits `internal/testenv` only from `_test.go`. No bridge, alias, re-export, registry, fallback, production `testenv` import, or old CLI route is permitted.
