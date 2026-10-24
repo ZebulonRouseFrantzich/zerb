@@ -375,6 +375,7 @@ func DigestCandidate(candidate CandidatePreimage) (CandidatePreimage, string, er
 	if !profileIDRE.MatchString(candidate.ProfileID) || candidate.ProfileID == "base" || len(candidate.Components) != 2 {
 		return CandidatePreimage{}, "", validationError{"invalid selected profile or component count"}
 	}
+	candidate.Components = append([]CanonicalComponent(nil), candidate.Components...)
 	sort.Slice(candidate.Components, func(i, j int) bool {
 		return candidate.Components[i].ID < candidate.Components[j].ID
 	})
@@ -383,9 +384,10 @@ func DigestCandidate(candidate CandidatePreimage) (CandidatePreimage, string, er
 	if !matches {
 		return CandidatePreimage{}, "", validationError{"component identity does not match selected profile"}
 	}
-	if len(candidate.Tools) > MaxTools || len(candidate.HomeSources) > MaxHomeSources*2 || len(candidate.Targets) > MaxTargets*2 {
+	if len(candidate.Tools) > MaxTools || len(candidate.HomeSources) > MaxHomeSources || len(candidate.Targets) > MaxTargets {
 		return CandidatePreimage{}, "", validationError{"candidate declaration count bound exceeded"}
 	}
+	candidate.Tools = append([]CanonicalTool{}, candidate.Tools...)
 	for i := range candidate.Components {
 		component := &candidate.Components[i]
 		if err := validatePath(component.Path); err != nil || !validDigest(component.TreeDigest) {
@@ -462,8 +464,9 @@ func DigestCandidate(candidate CandidatePreimage) (CandidatePreimage, string, er
 
 func validateCanonicalSource(source CanonicalSource) error {
 	expected, err := CanonicalSourceID(source.URI)
+	// Native object-ID syntax does not establish acquisition support or commit/tree membership.
 	if err != nil || source.SourceID != expected || (len(source.Commit) != 40 && len(source.Commit) != 64) ||
-		!objectIDRE.MatchString(source.Commit) || !validDigest(source.RootTree) {
+		!objectIDRE.MatchString(source.Commit) || len(source.RootTree) != len(source.Commit) || !objectIDRE.MatchString(source.RootTree) {
 		return validationError{"invalid canonical source identity"}
 	}
 	return nil
@@ -474,6 +477,7 @@ func proofParser() CanonicalParser {
 }
 
 func canonicalExecutables(executables *[]CanonicalExecutable) error {
+	*executables = append([]CanonicalExecutable{}, (*executables)...)
 	sort.Slice(*executables, func(i, j int) bool { return (*executables)[i].ID < (*executables)[j].ID })
 	want := []string{"bash", "chezmoi", "git", "mise"}
 	ids := make([]string, len(*executables))
@@ -507,6 +511,7 @@ func canonicalPolicy(policy *CanonicalPolicy) error {
 		{&policy.PolicyIDs, []string{"zerb.chezmoi-static.v2", "zerb.destination-recheck.v1", "zerb.execenv.v4", "zerb.git-public.v3", "zerb.lifecycle.v6", "zerb.mise-core-node.v3"}},
 	}
 	for _, check := range checks {
+		*check.values = append([]string{}, (*check.values)...)
 		sort.Strings(*check.values)
 		if !equalStrings(*check.values, check.want) {
 			return validationError{"candidate policy allowlist is not the closed Phase 1 set"}
@@ -516,6 +521,7 @@ func canonicalPolicy(policy *CanonicalPolicy) error {
 }
 
 func canonicalStrings(values *[]string, validate func(string) error) error {
+	*values = append([]string{}, (*values)...)
 	sort.Strings(*values)
 	if duplicate(*values) {
 		return validationError{"duplicate canonical string"}
@@ -622,7 +628,7 @@ func candidateCost(candidate CandidatePreimage) (int, int) {
 }
 
 func sortedFiles(in []CanonicalFile) []CanonicalFile {
-	out := append([]CanonicalFile(nil), in...)
+	out := append([]CanonicalFile{}, in...)
 	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
 	return out
 }
