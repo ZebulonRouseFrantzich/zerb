@@ -236,8 +236,24 @@ func lockAt(parent edge, name string, create bool) (_ *lockState, err error) {
 			return nil, errDirectory
 		}
 	}
+	if s.syncFile() != nil {
+		return nil, errDirectory
+	}
 	s.identity = s.pin.before.identity
 	return s, nil
+}
+
+// Every opener synchronizes the same inode, including a creator's contender.
+func (s *lockState) syncFile() error {
+	if s.validate() != nil {
+		return s.refuse()
+	}
+	syncErr := unix.Fsync(s.fd)
+	post := s.validate()
+	if syncErr != nil || post != nil {
+		return s.refuse()
+	}
+	return nil
 }
 
 func (s *lockState) validateAbsolute() error {

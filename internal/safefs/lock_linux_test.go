@@ -95,6 +95,89 @@ func TestLockCreationAndCollision(t *testing.T) {
 	}
 }
 
+// ARCH-016/017/031: both creators and existing-inode openers need file sync.
+func TestLockSyncSameInode(t *testing.T) {
+	for _, existing := range []bool{false, true} {
+		root, parent := localFixture(t)
+		want := ""
+		if existing {
+			want = "existing lock content"
+			if err := os.WriteFile(filepath.Join(root, "entry"), []byte(want), 0o600); err != nil {
+				t.Fatal("cannot create disposable existing lock")
+			}
+		}
+		state, err := lockAt(parent, "entry", !existing)
+		if err != nil {
+			t.Fatal("synchronized lock open failed")
+		}
+		t.Cleanup(func() {
+			if err := state.closeResources(); err != nil {
+				t.Error("synchronized lock cleanup failed")
+			}
+		})
+		before := state.pin.before
+		if err := state.syncFile(); err != nil {
+			t.Fatal("same-inode file synchronization failed")
+		}
+		opened, openErr := observeFile(state.fd, "")
+		linked, linkErr := observeFile(parent.fd, "entry")
+		if openErr != nil || linkErr != nil || opened != before || linked != before || state.validate() != nil {
+			t.Fatal("file synchronization changed the lock observation or identity")
+		}
+		data, err := os.ReadFile(filepath.Join(root, "entry"))
+		if err != nil || string(data) != want {
+			t.Fatal("file synchronization changed lock contents")
+		}
+	}
+}
+
+func TestLockSyncFailureClosesResources(t *testing.T) {
+	_, parent := localFixture(t)
+	state, err := lockAt(parent, "entry", true)
+	if err != nil {
+		t.Fatal("cannot create disposable lock")
+	}
+	t.Cleanup(func() {
+		if err := state.closeResources(); err != nil {
+			t.Error("failed synchronization cleanup failed")
+		}
+	})
+	pathfd, err := unix.FcntlInt(uintptr(state.pin.fd), unix.F_DUPFD_CLOEXEC, 0)
+	if err != nil {
+		t.Fatal("cannot duplicate metadata-only lock descriptor")
+	}
+	if err := unix.Close(state.fd); err != nil {
+		if closeErr := unix.Close(pathfd); closeErr != nil {
+			t.Error("metadata-only descriptor cleanup failed")
+		}
+		t.Fatal("cannot replace disposable writable descriptor")
+	}
+	state.fd = pathfd
+	// Matching statx observations admit the descriptor; real fsync(O_PATH)
+	// fails with EBADF, exercising the syscall failure without a test hook.
+	if err := state.validate(); err != nil {
+		t.Fatal("metadata-only synchronization failure fixture is invalid")
+	}
+	fds := []int{state.fd, state.pin.fd, state.proc.self.fd}
+	for _, entry := range state.proc.chain {
+		fds = append(fds, entry.fd)
+	}
+	if err := state.syncFile(); err == nil || err.Error() != errDirectory.Error() || errors.Is(err, unix.EAGAIN) {
+		t.Fatal("failed file synchronization did not return fixed refusal")
+	}
+	if !state.closed || state.identity != (Identity{}) || state.mode != 0 {
+		t.Fatal("failed file synchronization retained lock authority")
+	}
+	for _, fd := range fds {
+		if _, err := unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0); !errors.Is(err, unix.EBADF) {
+			t.Fatal("failed file synchronization leaked an owned descriptor")
+		}
+	}
+	if _, err := observeFD(parent.fd); err != nil {
+		t.Fatal("failed file synchronization closed the borrowed parent")
+	}
+}
+
 func TestLockUnsafeObjectsBeforeReopen(t *testing.T) {
 	for _, kind := range []string{"symlink", "fifo", "socket", "directory", "hardlink", "read-only", "group-read", "group-write"} {
 		t.Run(kind, func(t *testing.T) {
