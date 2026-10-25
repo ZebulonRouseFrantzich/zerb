@@ -162,6 +162,23 @@ Every retained root fixture records the complete directory-entry set and file by
 | Supported relation plus cache miss | Durable predicate above holds; owned cache/marker is absent or poisoned | Same durable truth/admission; recreate only the validated per-instance cache when that command permits |
 
 
+### Protected-role reservation and topology matrix
+
+These ARCH-016/017/020/030/031 and VAL-024/025/027 requirements govern the owner-approved bounded Roles increment. Runtime rows remain unexercised until actual observations are recorded; source/geometry fixtures do not qualify kernel topology or a host.
+
+| Area | Required evidence |
+|---|---|
+| Layout and identity | Every named parent/child and transitive cache/stage relation; repeated operational peers; all forbidden equality/containment/alias directions; metadata authority never inferred from role, path, mapped UID or instance spelling. |
+| Read-only absent roots | All absent/empty combinations and multiple missing/shared prefixes; exact prospective coordinates; zero OpenRoles creation; only ENOENT is absence; symlink/type/owner/mode/overflow/unsupported observation refusal. |
+| Explicit prefix binding | Exactly next private-mkdir-provenance edge, unchanged old prefix, atomic shared advance; refuse existing-open, unexpected appearance, skipped/wrong component, completed-base rebind and partial commit. No Validate adoption. |
+| Bootstrap routing | No-write state/data absent-or-empty eligibility around exact state-only I-X preparation; FOREIGN/recognized evidence/doctor write nothing; data/cache and claims wait for I-X. This increment does not execute initialization. |
+| Kernel grammar | Exact byte/line/path/component/record/tag/role/cone/FD bounds and overflow lookahead; escapes, unsupported tags, duplicate IDs, root/parent/cycle/stack/disconnected ambiguity, derived-coordinate arithmetic and no partial results. |
+| Real metadata identity | Fixed proc paths, current syscall TID under thread lock, proc/NSFS/link/type/inode checks, retained namespace lifetime, actual-root/MountID/parent-transition/fstype association; Btrfs statx device is not superblock device. |
+| Complete footprints | Endpoint and interior binds, hidden original ancestors, self-alias and cross-domain alias, permitted same-route parent/child, second alias route, independent and nested tmpfs, projected absent-root aliases, contradictory identity/coordinate observations. |
+| Change and uncertainty | Snapshot/proc/root/thread/namespace/retained-edge changes, restoration spanning a check, unrelated versus relevant stacks, operational refusal for unsupported regions; no inode CAS, invisible-cycle or general filesystem support claim. |
+| Lifetime and failure | Caller-close independence, value copies, Add/Validate/Close races, CLOEXEC, opening/allocation/cleanup failure, namespace FD reuse, candidate-only transactional rejection versus poisoned retained evidence, commit only after cleanup success, no named cleanup or membership forgetting. |
+| Integration limits | No cross-namespace mapped-manager or absent/file-destination acceptance inferred. Actual Btrfs/bind/chroot/restricted-proc/namespace and exported positive paths remain required real-host rows. |
+
 ### Protected replacement failure matrix
 
 This is **planned, unexercised coverage** for the [ARCH-020 replacement proposal](architecture.md#staged-replacement-and-operation-record-contract), cross-referencing VAL-027 and VAL-030. The owner-approved staged API and metadata-only record are specified by ARCH-020/030. The first bounded implementation may test the primitive, strict codec and pure prefix recognition only; this is not production state admission or maintenance execution. Every runtime row below remains planned until actual observations are recorded.
