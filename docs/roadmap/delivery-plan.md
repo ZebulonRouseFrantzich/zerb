@@ -147,7 +147,7 @@ The subsequent bounded `safefs.Lock` increment implements the existing descripto
 
 The following bounded `Dir.PublishNoReplace` increment implements only same-parent anonymous-file staging and atomic descriptor-owned no-replace publication, with file/parent synchronization, exact reopen verification and explicit post-attempt uncertainty. It leaves existing targets untouched and grants no initialized state, role-overlap, lease or recovery authority. No named partial state/data staging or new proc trust exception is admitted; host-dependent success remains separately qualified.
 
-The contract-first [protected replacement proposal](architecture.md#protected-regular-file-replacement-proposal) and [failure matrix](validation.md#protected-replacement-failure-matrix) are documentation for owner review only. `Dir.Replace` is still unimplemented. Before coding, resolve the explicit API/witness decision, predecessor binding and all admitted crash-residue relations in their owning contracts; the current namespace and ARCH-030 signature stay unchanged until approval. Then obtain current merged-source cloud admission and perform focused implementation/security review. This slice performs no initialization, state mutation or host qualification.
+The owner-approved [staged replacement contract](architecture.md#staged-replacement-and-operation-record-contract) and [failure matrix](validation.md#protected-replacement-failure-matrix) admit only the bounded descriptor primitive, private metadata codec and pure prefix recognizer after independent authority/security review. Production initialization, maintenance execution and state integration remain separate; the exact source-bound cloud report and focused tests do not promote host qualification.
 
 ### Work
 
