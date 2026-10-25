@@ -138,7 +138,7 @@ func (p *procAccess) reopen(pin *pinnedFile) (_ *os.File, err error) {
 		return nil, errDirectory
 	}
 	// Only this generated owned-FD magic link may cross out of procfs.
-	fd, err := unix.Openat(p.chain[3].fd, strconv.Itoa(pin.fd), unix.O_RDONLY|unix.O_CLOEXEC, 0)
+	fd, err := unix.Openat(p.chain[3].fd, strconv.Itoa(pin.fd), unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NONBLOCK, 0)
 	if err != nil {
 		return nil, errDirectory
 	}
