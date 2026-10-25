@@ -34,9 +34,10 @@ type Identity struct {
 var errDirectory = errors.New("unsafe directory operation")
 
 type edge struct {
-	fd   int
-	name string
-	id   Identity
+	fd    int
+	name  string
+	id    Identity
+	mkdir bool
 }
 
 // A shared state keeps ordinary Go value copies from double-closing reused FDs.
@@ -46,6 +47,7 @@ type dirState struct {
 	owner    uint32
 	identity Identity
 	closed   bool
+	mkdir    bool
 }
 
 type Dir struct{ state *dirState }
@@ -138,7 +140,7 @@ func (d *Dir) OpenDir(name string, create bool) (_ *Dir, err error) {
 		return nil, err
 	}
 	owned = append(owned, child)
-	return &Dir{state: &dirState{chain: owned, owner: s.owner, identity: child.id}}, nil
+	return &Dir{state: &dirState{chain: owned, owner: s.owner, identity: child.id, mkdir: child.mkdir}}, nil
 }
 
 // Identity is a captured observation, not a fresh authorization or revalidation.
@@ -324,7 +326,11 @@ func createChild(parent int, name string, owner uint32) (edge, error) {
 	if err != nil || id.Owner != owner || id.Mode != unix.S_IFDIR|0o700 {
 		return edge{}, errDirectory
 	}
-	return openObserved(parent, name, id)
+	child, err := openObserved(parent, name, id)
+	if err == nil {
+		child.mkdir = true
+	}
+	return child, err
 }
 
 func duplicateChain(chain []edge) (_ []edge, err error) {
