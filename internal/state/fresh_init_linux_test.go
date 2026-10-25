@@ -21,13 +21,26 @@ import (
 
 func freshTestRoots(t *testing.T) paths.Roots {
 	t.Helper()
+	return freshTestLayout(t, [3]string{"state", "data", "cache"}, true, [2]os.FileMode{})
+}
+
+// Paths are exact synthetic XDG bases; product setup follows exported admission.
+func freshTestLayout(t *testing.T, bases [3]string, existingBases bool, empty [2]os.FileMode) paths.Roots {
+	t.Helper()
 	base := t.TempDir()
-	for _, name := range []string{"home", "state", "data", "cache"} {
-		if err := os.Mkdir(filepath.Join(base, name), 0o700); err != nil {
-			t.Fatal(err)
+	home := filepath.Join(base, "home")
+	if err := os.Mkdir(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for i := range bases {
+		bases[i] = filepath.Join(base, bases[i])
+		if existingBases {
+			if err := os.MkdirAll(bases[i], 0o700); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
-	input, err := paths.NewInput(filepath.Join(base, "home"), []string{"XDG_STATE_HOME=" + filepath.Join(base, "state"), "XDG_DATA_HOME=" + filepath.Join(base, "data"), "XDG_CACHE_HOME=" + filepath.Join(base, "cache")})
+	input, err := paths.NewInput(home, []string{"XDG_STATE_HOME=" + bases[0], "XDG_DATA_HOME=" + bases[1], "XDG_CACHE_HOME=" + bases[2]})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,6 +57,19 @@ func freshTestRoots(t *testing.T) paths.Roots {
 	}
 	if err = roles.Close(); err != nil {
 		t.Fatal(err)
+	}
+	for i, name := range []string{roots.State(), roots.Data()} {
+		if empty[i] != 0 {
+			if err := os.Mkdir(name, empty[i]); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chmod(name, empty[i]); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := freshTestRoot(t, name).Names(0); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 	return roots
 }
