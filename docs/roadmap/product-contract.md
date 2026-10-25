@@ -179,6 +179,8 @@ Mutation and recovery keep `A-X+W-X` for the whole operation, including every re
 ARCH-020 replacement-record evidence does not grant ordinary command admission. Read-only commands preserve residue; exact repair alone may use its narrowly scoped, independently validated pre-owner maintenance admission under the same intent lease and stable exclusive locks. No command gains target replay, unknown-residue cleanup or a shared-to-exclusive lease upgrade.
 An exact initializing overlay remains INIT; an initialized graph plus an exact replacement record is a named BAD-repair relation until retirement. Unsupported/mismatched evidence remains non-mutating BAD. Here pre-owner A-X+W-X means verified exclusive kernel locks, not a claim to the full ARCH-023 published writer conjunction. Live final-root completion retains its original I-X plus target A-X or A-X+W-X through record retirement before handoff; restart of an initialized graph instead requires A-X+W-X.
 
+For absent-root initialization, ARCH-020's no-write bootstrap-eligibility predicate is minimum lease routing: state/data must each be descriptor-safe absent-or-empty before exact state-only preparation needed to obtain I-X. No durable record is parsed and no foreign/nonempty/evidence-bearing root is modified. Role prefix binding supplies no command, initialization or recovery authority.
+
 **Scenarios.**
 
 - Invalid argv always follows PC-011 before root classification; a malformed digest returns `2` even if a corrupt root exists, while a well-formed command reaches the root/state row before missing-approval handling.
