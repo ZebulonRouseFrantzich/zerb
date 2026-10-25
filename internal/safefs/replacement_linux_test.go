@@ -499,17 +499,23 @@ func TestReplacementParentSyncAndCloseErrorsAreTerminal(t *testing.T) {
 	if err := s.closeResources(); err != nil {
 		t.Fatal("failed cleanup was retried")
 	}
-	if err := unix.Dup3(parent.fd, broken, unix.O_CLOEXEC); err != nil {
+	reused, err := unix.FcntlInt(uintptr(parent.fd), unix.F_DUPFD_CLOEXEC, broken)
+	if err != nil {
 		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := unix.Close(reused); err != nil {
+			t.Error(err)
+		}
+	})
+	if reused != broken {
+		t.Fatal("could not exercise selected freed descriptor without clobbering")
 	}
 	if err := s.closeResources(); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := unix.FcntlInt(uintptr(broken), unix.F_GETFD, 0); err != nil {
 		t.Fatal("repeated cleanup closed a reused descriptor number")
-	}
-	if err := unix.Close(broken); err != nil {
-		t.Fatal(err)
 	}
 }
 
