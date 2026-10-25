@@ -54,6 +54,10 @@ Missing permission or facility is a blocker. Do not opportunistically install to
 | Directory sync/close | `TestSyncPositiveAndConcurrentCloseOnAdmissibleTopology` |
 | No-replace publication/close | `TestPublicationPositiveAndConcurrentCloseOnAdmissibleTopology` |
 | Staged replacement lifetime | `TestReplacementInvalidAndPublicBoundary` |
+| Protected-role reservations/topology | `TestPublicRolesOnAdmissibleTopology` |
+| Retained file/exclusive directory lifetime | `TestPublicFileAndCreateDirOnAdmissibleTopology` |
+
+- [ ] Run the bounded private state integration family with `go test -race -count=1 -run '^TestFreshInitialize' ./internal/state` in the disposable environment. Record every intent, mode refusal, existing-evidence, boundary-failure, cancellation, contention and substitution subcase separately. The Cloud run skips these filesystem cases before product mutation; pure graph tests and successful current-process metadata capture do not substitute for them. State roots that cannot satisfy the existing replacement-witness parent requirement of exact `0700` refuse before writes; they are not chmodded or reclassified.
 
 - [ ] Review the current mise harness write set: [mise_namespace.go](../../internal/proof/adapters/mise_namespace.go) uses `os.MkdirTemp("/tmp", "zerb-mise-private-")`, applies `0711`, then mounts its private workspace there. TMPDIR does not redirect this write. Approve that exact disposable mountpoint/write/cleanup scope, or stop for source/contract review. It does not relax safefs' writable-parent policy or mean every write is below ADAPTER_BASE.
 
@@ -85,6 +89,6 @@ python3 -B scripts/cloud_conformance.py --inventory-only --output "$REPORT"
 - [ ] Real storage-error/power-loss durability and installed Phase 6 verticals require separately approved disposable experiment/acceptance plans. Process SIGKILL is not power-loss evidence.
 - [ ] Complete real positive and dependent negative rows, independent plan/security review, all finding-driven reruns and owner freeze approval before qualification. Host readiness remains unproved until actual verified observations exist.
 
-## Pending protected-role decisions
+## Protected-root and initialization status
 
-Source review found three prerequisites for the next implementation: ARCH-020's blanket containment prohibition conflicts with ARCH-016's nested layout; absent-root reservation/materialization lifetime is unspecified; and complete bind ancestry needs an approved observation mechanism beyond ordinary statx comparisons. The proposed direction is an explicit parent/peer matrix, read-only reservations refreshed only under admitted creation authority, and a narrowly validated kernel topology reader. These are **pending owner decisions**, not adopted contracts. Mountinfo alone is not a proof; exact reconstruction, identity correspondence, bounds and revalidation need independent review before code. This checklist neither selects that algorithm nor permits new proc/mount access.
+The owner approved the explicit parent/peer matrix, read-only missing-root reservations with explicit successful-creation binding, and bounded descriptor-correlated kernel topology. Those contracts and their provisional implementation are now present. ARCH-017/020/024/030 additionally own the approved retained-file and exclusive-directory capabilities, fixed current-process observation and bounded private CLEAN-to-READY producer. None of these source changes establishes executed public-path, mount/bind, initialization/handoff or storage qualification. Mountinfo alone remains insufficient; follow the complete owning contracts and record actual results. This checklist grants no host, namespace, mount, repair, takeover or cleanup authority.
