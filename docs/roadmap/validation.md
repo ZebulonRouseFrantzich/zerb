@@ -196,6 +196,35 @@ The owner-approved ARCH-017/020/024/030/031 FreshInit subset is a complete priva
 | All-error ownership | Failure/cancellation at every logical boundary returns the one Release-only acquisition with every still-owned resource; caller replaces its prior handle before handling error. Every errored acquisition closes/unlocks without filesystem writes or witness cleanup; preserve evidence, report primary plus cleanup errors, and never strand exclusion. Reject reuse of every session-minted identity, including retired replacement IDs. |
 | Evidence limits | Genuine exported-API disposable integration tests run only on policy-admissible absolute topology and explicitly skip before mutation otherwise. No forged opaque Dir, unsafe exported factory, reflection/linkname, owner exception, namespace workaround or production interface invented solely for tests. Actual pure production recognizers and private kernel helpers prove only their own layers. Fedora/Btrfs/bind/storage/crash/handoff positives remain required and unexercised until suitable approved facilities run them. |
 
+### TreeStage lifecycle failure matrix
+
+Planned, unexercised ARCH-020/030 and VAL-027 coverage for the [TreeStage proposal](architecture.md#treestage-lifecycle-proposal--implementation-not-yet-authorized). Preparing this matrix does not approve its pending lifetime/mode/resource decisions, implement an API or qualify a host. Future rows record actual boundary, capability state, relevant entry/byte/identity observations, returned identity/error and descriptor ownership. Hooks must surround real primitives; helper success or skipped positives cannot establish public-path/storage qualification.
+
+| Row | Required future observation |
+|---|---|
+| Admission | Nil/closed parent, invalid/dot/aliased names, wrong mode and unsupported observations refuse before mutation; success retains exact owner/mode/mount and full ancestors. |
+| Creation collision | Existing empty/nonempty directory, regular file, symlink, hardlink, FIFO/socket/device and raced `EEXIST` stay untouched, never adopted or repaired. |
+| Creation uncertainty | Errors before/after mkdir, initial pin and descriptor cleanup preserve possible residue with no inferred absence or unowned close. Restrictive umask uses an isolated subprocess. |
+| Lifetime | Value copies, parent/root close, FD reuse/exhaustion and close-on-exec preserve one explicit lifetime without double-close or retries of released numbers. |
+| Descendant barrier | Deep retained directory operations overlap terminal actions: atomically stop new admission before draining/revoking on success and failure, without lock-order deadlock or starvation by new entrants. No mutation after successful terminal action. Root-only mutex/caller convention is insufficient. |
+| Descendant errors | Operational/validation/uncertain-publication errors poison the shared stage and drain/revoke all views; parameter-only or closed-view refusal before filesystem work does not poison it. No error restores mutation authority. |
+| Escaping capabilities | Enumerate every existing/subsequently merged `Dir` method. Refuse or prove full gate participation for retained files, locks, replacement and nested stages. |
+| Successful promotion | Empty/nested populated trees preserve complete entry/type/mode/byte inventory; real bottom-up sync, no-replace rename, parent sync and reopen occur in order. No source authenticity follows. |
+| Destination collision | All existing target types, identical-content wrong inodes and concurrent publishers remain untouched; at most one stage succeeds. No overwrite, merging, adoption or retry. |
+| Unsupported promotion | Unsupported rename flags/filesystem and cross-device refusal return no success identity or ordinary-rename/copy/delete fallback. |
+| Stage displacement | Wrong inode, including identical bytes, name/owner/mode/link/mount/ancestor changes and displaced operands refuse at observed boundaries. Preserve unproven names; acknowledge ordinary-rename displacement limits. |
+| Content changes | New/missing/duplicate entries, changed bytes/size/type or changed inventory observations across sync/rename/reopen refuse success; no root-only verification. |
+| Unsafe inventory | Links/special files, unsafe metadata, nested mounts and aliases never authorize outside-sentinel access or removal of unknown entries. |
+| Resource boundaries | Entry/depth/raw-name/path/tracking/descriptor/per-file/aggregate-payload/hash-work bounds, one-over and overflow refuse before the next unreserved action/allocation. Cumulative build admission and all terminal passes are covered; final-only checks are insufficient. Concrete numeric schedule remains pending. |
+| Pre-rename failures | Partial I/O, file/directory sync, enumeration, validation and close errors prevent success and preserve residue; no automatic adoption/restart cleanup. |
+| Rename uncertainty | Inject around real rename, parent sync, reopen and final close. Every post-attempt error returns zero identity/uncertainty without deletion, rollback, retry or absence claim. |
+| Active cleanup | Complete safe bounded inventory under the live stage-root capability precedes checked postorder removal, parent sync and absence verification. Newly appearing/mismatched entries are not adopted; no per-entry authorship/creation ledger is inferred. Retain outside sentinels. |
+| Partial cleanup | Mid-removal/sync/close error preserves the remainder while admitting prior removals may have occurred; repeated cleanup cannot resume poisoned mutation. |
+| Terminal calls | `Root` uses one precreated borrowed view and is nil after view close or consumption. Invalid publication arguments refuse before effects without consuming an active stage; repeated/terminal publication returns zero/error without named I/O. Published/removed cleanup never deletes installed content; preserve-only cleanup closes resources without named deletion and retains fixed failure. |
+| Crash prefixes | Kill/reap isolated subprocesses after creation/write/sync/rename/parent-sync/reopen. Remnants, hashes or dead PIDs never alone authorize cleanup; no witness/recovery executor is implied. |
+| Roles | Close transient membership before rename/removal under surviving reservation/lease; register the final role afresh without rebinding old members. |
+| Host limits | Exported topology/concurrency tests skip explicitly if unavailable. Kernel helper/process-death checks do not qualify Btrfs power loss, mount attacks, production recovery or installed/frozen-host acceptance. |
+
 ### Protected replacement failure matrix
 
 This is **planned, unexercised coverage** for the [ARCH-020 replacement proposal](architecture.md#staged-replacement-and-operation-record-contract), cross-referencing VAL-027 and VAL-030. The owner-approved staged API and metadata-only record are specified by ARCH-020/030. The first bounded implementation may test the primitive, strict codec and pure prefix recognition only; this is not production state admission or maintenance execution. Every runtime row below remains planned until actual observations are recorded.
