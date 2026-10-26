@@ -1,11 +1,13 @@
-# TreeStage representation fit candidate
+# TreeStage representation and reservation accounting
 
-This is the concrete, provisional representation review for ARCH-020/030's
-TreeStage proposal and VAL-027's 22-row planned matrix. It implements no tree
-primitive and proves no filesystem, allocation, concurrency, host or durability
-property. The test-only layout checks sizes and arithmetic on Go 1.24; runtime
-admission and every failure-matrix row remain future work. The owning lifecycle
-and limits remain in `architecture.md`, not this note.
+This records the representation reviewed before ARCH-020/030 TreeStage
+implementation, followed by the concrete reservation refinements. The initial
+test-only checkpoint was preserved before primitive code; layout tests now bind
+production types and arithmetic on pinned Go 1.24. Runtime test observations
+belong in the evidence ledger, separately from this capacity argument. Neither
+layout arithmetic nor a focused test establishes host, durability, complete
+failure-matrix or Phase 2 acceptance. The owning lifecycle and unchanged limits
+remain in `architecture.md`, not this note.
 
 ## Concrete storage
 
@@ -39,24 +41,28 @@ content ceilings. This conservative choice leaves a constant 30.75 MiB for
 additional result/helper reservations. It is explicit availability behavior:
 whole-file reads can refuse below the file-size limit even on an empty stage.
 
-Each inventory entry contains `fileStamp` (identity, mtime, ctime), a `[32]byte`
-SHA256, `pathOffset uint32`, `pathLength uint16`, `depth uint8`, `kind uint8`,
-`parent uint32`, and `flags uint32`. Paths live in the arena, never in retained
-substrings of caller data. Per admitted entry, reserve four such records, four
-`uint32` sort indices, four traversal records (`listingStamp`, `next uint32`,
-`parent uint32`), and four `uint64` admission/bookkeeping cells. On linux/amd64
-these consume 912 bytes, below 2,048 bytes. The unused portion is reserved
-headroom, not permission to add an unclassified allocation. Sorting permutes
-indices in place with bounded stack, without copying names or entries.
+Each production inventory entry contains `fileStamp` (identity, mtime, ctime),
+a `[32]byte` SHA256, `pathOffset uint32`, `pathLength uint16`, `depth uint8` and
+`parent uint32`. Type comes from the retained mode; no redundant kind/flag is
+stored. Paths live in arenas, never retained caller substrings. Four 128-byte
+records plus four `uint32` sort indices consume 528 bytes per admitted entry,
+below the unchanged 2,048-byte reservation. The initial preimplementation
+prototype used 912 bytes including planned per-entry traversal/bookkeeping;
+those unused arrays were removed when implementation used one fixed 65-frame
+cursor instead. Its 176-byte frames occupy 11,440 bytes, separately asserted
+within the fixed 64-KiB control allowance. Production metadata/path arrays total
+75,759,616 bytes; the conservative reservation remains larger. Unused headroom
+does not exempt any allocation from accounting. Sorting permutes indices in
+place with bounded stack, without copying names or entries.
 
-Inventory slots have exclusive owners: cumulative builder ledger, complete
-preterminal snapshot, after-sync comparison, and final reopen comparison. A
-cleanup uses the same slots for complete prevalidation and checked postorder
-progress. They coexist at their maxima; passing a phase does not excuse a fifth
-snapshot. Concurrent builder operations serialize ledger edits under the gate;
-they do not each clone the ledger. Operation results and temporary helper data
-are separately reserved as `R`. No output may retain an arena after its slot is
-reused: a returned `Names`/read result receives its own charged copy.
+Each admitted operation exclusively owns one of four temporary inventory/path
+slots. Terminal work starts only after all operations drain, then uses three
+slots for complete preterminal, after-sync and final reopen inventories; cleanup
+reuses slots for full prevalidation and postorder progress. No fifth snapshot
+is allowed. Cumulative entry/path/payload admission counters serialize under the
+gate; no creation ledger supplies cleanup authority. Operation results and
+helper data are separately reserved as `R`. Outputs cannot retain an arena after
+its slot is reused: returned names/read bytes have independent charged copies.
 
 ## Descriptor ownership and depth
 
@@ -184,7 +190,7 @@ exactly once. Their aggregate decoded bytes cannot exceed the raw snapshot:
 fields are disjoint raw spans and escape decoding only shortens them. Rows use `uint32` offset/length spans into this owned byte arena, with byte-span
 comparison/decoding; they do not convert arena slices to allocating Go strings.
 No unsafe byte/string alias is needed. No per-line `string(data)` copy
-or split-field allocation may survive. Use a fixed 74-span field array while
+or split-field allocation may survive. Use a fixed 74-slice field array while
 parsing, and validate raw line/record/optional-field limits before decoding.
 The complete arena is charged even if mostly empty. Initial and final snapshots
 are exact-capacity arrays with a separately charged one-byte overflow probe;
@@ -210,21 +216,21 @@ The 1-MiB auxiliary reservation has the following fixed occupants (amd64):
 16,384 graph colors (16,384 bytes), a 16,384-element `uint32` graph trail
 (65,536), a 16,384-element relevant-row bitmap stored as bytes (16,384), a
 16,384-element sorted mountpoint index for duplicate/seen checks (65,536), 256
-coordinate records with device/inode/kind and physical offset/length (8,192),
+coordinate records with coordinate device, actual object device, inode/kind and
+physical offset/length (10,240),
 two 256-element `uint32` sorted coordinate/object indices (2,048), 1,024
 16-byte cones (16,384), 128 16-byte footprint range records (2,048), three
 64-element `topologyPath` arrays using 96-byte slots (18,432: one current and
 two retained borrowed path arrays across both `Roles.Add` passes), 256 mount-pin
 path headers using 96-byte slots (24,576),
 three 64-element candidate/added/retired role-control arrays (each conservatively
-96 bytes per element, 18,432 total), 64 affected indices (256), 74 field spans
-(592), three 12,289-byte path comparison/assembly buffers (36,867), tight copied
+96 bytes per element, 18,432 total), 64 affected indices (256), 74 raw field slices
+(1,776), three 12,289-byte path comparison/assembly buffers (36,867), tight copied
 role targets of at most 4,096 bytes for 64 entries (262,144), and 131,072 bytes
 for fixed topology/namespace/proc/File wrappers, numeric formatting, sorting
 stack, close-control state and alignment, plus 8,192 bytes for the at-most-64
 participating stage-gate tickets/roster. The test computes the complete sum; it
-is below 1 MiB;
-the remainder is reserved slack. Chain edge/name storage itself is charged
+is 696,307 bytes, below 1 MiB; the remainder is reserved slack. Chain edge/name storage itself is charged
 through `512F`, never this slack. Existing target copies belonging to ordinary
 caller roles are conservatively covered too; nothing is declared externally
 owned to avoid accounting. Cleanup iterates known-owned arrays without creating
@@ -241,20 +247,33 @@ allow another `64*4,096 = 262,144` bytes for these retained targets, including
 old/candidate coexistence within the at-most-64 registration capacity (any
 additional replacement copy is separately reserved before allocation). Thus
 full stage + topology + 64 retained targets totals `131,989,504 bytes = 125.875
-MiB`, leaving `2,228,224 bytes = 2.125 MiB`. The slab target slots cover
-transient working copies only and are distinct from these retained strings. The topology pass reserves all
+MiB`, leaving `2,228,224 bytes = 2.125 MiB`. Exact-capacity role metadata arrays
+also outlive Add: each set keeps an independent R ticket for
+`96*capacity + 16` bytes (array plus ticket), at most 6,160 bytes for 64 entries.
+One such full set brings the worked total to 131,995,664 bytes
+(125.880874633789 MiB), leaving 2,222,064 bytes (2.119125366211 MiB).
+This is a worked simultaneous layout, not an exemption for more role sets:
+every additional retained array and target adds to the same stage workspace
+counter, and admission refuses when the complete sum cannot fit 128 MiB.
+Regression tests retain several independent metadata lifetimes until refusal,
+then verify closure restores the prior reservations. The owning role set keeps
+metadata routing/roster information even independently of entry gates. Old
+array/target references are cleared before their tickets are released; new
+persistent tickets transfer exact bytes from the already charged operation.
+The slab target slots cover transient working copies only and are distinct
+from retained strings and metadata. The topology pass reserves all
 28.375 MiB before its first allocation/open and does not call the current
 unreserved map/append implementation internally. Its reserved operation slot
 and FD/scratch capacity also have to fit; bytes alone do not grant admission.
 A large preexisting role context can refuse under 256 descriptors even though
 ordinary Roles admits 4,096; no host limit or alias check is weakened.
 
-This closes a conservative **layout** accounting candidate, conditional on the
-new private bounded topology path being implemented exactly and reviewed.
-Unmodified helpers are not fit evidence. A larger stage allocation, more than
-four path inventories, an exemption for stage-origin topology work or weaker
-validation would require a new decision; none is assumed here. The independent
-reviewer and lead must accept this design before tree primitives begin. Byte-span
+The independent review and focused layout tests closed the initial design gate
+before tree primitives began. Production implementation and fresh security
+review must preserve this exact accounting; unmodified generic helpers are not
+fit evidence. A larger stage allocation, more than four path inventories, an
+exemption for stage-origin topology work or weaker validation would require a
+new decision; none is assumed here. Byte-span
 adapters must later be equivalence-tested against the owning topology grammar,
 including optional tags, duplicate handling and all existing alias checks;
 matching storage sizes alone does not prove those predicates.

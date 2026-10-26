@@ -162,6 +162,9 @@ type Lock struct{ state *lockState }
 
 // OpenLock opens one stable synchronization inode, optionally creating it.
 func (d *Dir) OpenLock(name string, create bool) (_ *Lock, err error) {
+	if d != nil && d.state != nil && d.state.gate != nil {
+		return nil, errDirectory
+	}
 	if d == nil || d.state == nil || !validName(name) {
 		return nil, errDirectory
 	}

@@ -34,6 +34,7 @@ type topology struct {
 	objects      map[topologyObject]topologyCoordinate
 	cones        int
 	frontendFDs  int
+	fdLimit      int
 	closed       bool
 }
 
@@ -51,7 +52,11 @@ func (t *topology) room(n int) bool {
 	for _, p := range t.pins {
 		count += len(p.chain)
 	}
-	return n >= 0 && count <= topologyMaxFDs-n
+	limit := t.fdLimit
+	if limit == 0 {
+		limit = topologyMaxFDs
+	}
+	return n >= 0 && count <= limit-n
 }
 
 func openTopology(expected *namespacePin) (_ *topology, err error) {
@@ -72,12 +77,20 @@ func openTopology(expected *namespacePin) (_ *topology, err error) {
 }
 
 func openTopologyMetadata(expected *namespacePin) (_ *topology, err error) {
-	t := &topology{self: edge{fd: -1}, nsLink: edge{fd: -1}, pid: strconv.Itoa(unix.Getpid()), tid: strconv.Itoa(unix.Gettid())}
+	return openTopologyMetadataWith(expected, 0, topologyMaxFDs, (*topology).readMountinfo)
+}
+
+// The stage reader supplies its already-reserved byte and descriptor limits.
+func openTopologyMetadataWith(expected *namespacePin, frontend, limit int, read func(*topology) ([]byte, error)) (_ *topology, err error) {
+	t := &topology{self: edge{fd: -1}, nsLink: edge{fd: -1}, pid: strconv.Itoa(unix.Getpid()), tid: strconv.Itoa(unix.Gettid()), frontendFDs: frontend, fdLimit: limit}
 	defer func() {
 		if err != nil {
 			err = errors.Join(err, t.close())
 		}
 	}()
+	if !t.room(11) {
+		return nil, errDirectory
+	}
 	fd, e := unix.Open("/", unix.O_PATH|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
 	if e != nil {
 		return nil, errDirectory
@@ -128,7 +141,7 @@ func openTopologyMetadata(expected *namespacePin) (_ *topology, err error) {
 	if t.validate() != nil {
 		return nil, errDirectory
 	}
-	t.snapshot, e = t.readMountinfo()
+	t.snapshot, e = read(t)
 	if e != nil {
 		return nil, e
 	}

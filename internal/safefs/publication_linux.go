@@ -17,9 +17,20 @@ func (d *Dir) PublishNoReplace(name string, data []byte, mode uint32) (id Identi
 	if d == nil || d.state == nil || !validName(name) || !validPublicationMode(mode) || !validReadLimit(int64(len(data))) {
 		return Identity{}, errDirectory
 	}
+	if d.state.gate != nil {
+		return d.treePublishFile(name, data, mode)
+	}
+	return d.publishFile(name, data, mode)
+}
+
+func (d *Dir) publishFile(name string, data []byte, mode uint32) (id Identity, err error) {
 	s := d.state
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return publishFileLocked(s, name, data, mode)
+}
+
+func publishFileLocked(s *dirState, name string, data []byte, mode uint32) (id Identity, err error) {
 	if publicationChain(s) != nil {
 		return Identity{}, errDirectory
 	}
@@ -43,6 +54,9 @@ func (d *Dir) PublishNoReplace(name string, data []byte, mode uint32) (id Identi
 		}
 	}()
 	p, err = openPublication(s.chain[len(s.chain)-1], mode)
+	if p != nil {
+		p.gate = s.gate
+	}
 	post := publicationChain(s)
 	if err != nil || post != nil {
 		return Identity{}, errDirectory
@@ -76,6 +90,9 @@ func (d *Dir) PublishNoReplace(name string, data []byte, mode uint32) (id Identi
 }
 
 func publicationChain(s *dirState) error {
+	if s.gate != nil && !s.gate.live() {
+		return errDirectory
+	}
 	if s.closed || validateChain(s.chain, s.owner) != nil || s.chain[len(s.chain)-1].id.Owner != s.owner {
 		return errDirectory
 	}
@@ -87,6 +104,7 @@ func validPublicationMode(mode uint32) bool {
 }
 
 type publication struct {
+	gate   *stageState
 	parent edge
 	fd     int
 	stamp  fileStamp
@@ -218,6 +236,9 @@ func (p *publication) compare(data []byte) error {
 		}
 		if want == 0 {
 			want = 1
+		}
+		if p.gate != nil && p.gate.readCharge(uint64(want)) != nil {
+			return errDirectory
 		}
 		n, readErr := unix.Pread(p.fd, buffer[:want], int64(offset))
 		post := p.validate()

@@ -40,15 +40,20 @@ type roleEntry struct {
 	chain   []edge
 	missing []string
 	owner   uint32
+	gate    *stageState
+	ticket  *stageTicket
 }
 
 type rolesState struct {
-	mu        sync.Mutex
-	entries   []roleEntry
-	namespace *namespacePin
-	home      string
-	poisoned  bool
-	closed    bool
+	mu             sync.Mutex
+	entries        []roleEntry
+	namespace      *namespacePin
+	home           string
+	poisoned       bool
+	closed         bool
+	generation     uint64
+	metadataGate   *stageState
+	metadataTicket *stageTicket
 }
 
 // Roles value copies share one descriptor-owned lifetime.
@@ -120,13 +125,16 @@ func OpenRoles(roots paths.Roots, owner uint32) (_ *Roles, err error) {
 }
 
 // Validate never adopts an appeared prefix or forgets a registered directory.
-func (r *Roles) Validate() error {
+func (r *Roles) validateWithoutStage() error {
 	if r == nil || r.state == nil {
 		return errRoles
 	}
 	s := r.state
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if !s.stageFreeLocked() {
+		return errRoles
+	}
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	return s.validateLocked()
@@ -160,13 +168,22 @@ func (s *rolesState) validateLocked() error {
 }
 
 // Add binds one privately-created prefix edge, or retains an operational Dir.
-func (r *Roles) Add(role Role, dir *Dir) (err error) {
+func (r *Roles) addWithoutStage(role Role, dir *Dir) (err error) {
 	if r == nil || r.state == nil {
 		return errRoles
 	}
 	s := r.state
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if !s.stageFreeLocked() {
+		return errRoles
+	}
+	if s.generation == ^uint64(0) {
+		return errRoles
+	}
+	if dir != nil && dir.state != nil && dir.state.gate != nil {
+		return errRoles
+	}
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	if s.closed || s.poisoned {
@@ -269,6 +286,7 @@ func (r *Roles) Add(role Role, dir *Dir) (err error) {
 		return errRoles
 	}
 	s.entries = candidate
+	s.generation++
 	committed = true
 	return nil
 }
@@ -278,6 +296,18 @@ func (s *rolesState) rejectLocked() error {
 		return errRoles
 	}
 	return errRoles
+}
+
+func (s *rolesState) stageFreeLocked() bool {
+	if s.metadataGate != nil {
+		return false
+	}
+	for _, entry := range s.entries {
+		if entry.gate != nil {
+			return false
+		}
+	}
+	return true
 }
 
 // Close clears ownership before close and never closes caller Dirs.
@@ -298,16 +328,31 @@ func (s *rolesState) closeLocked() error {
 		return nil
 	}
 	s.closed = true
+	if s.generation != ^uint64(0) {
+		s.generation++
+	}
 	entries, namespace := s.entries, s.namespace
+	metadataGate, metadataTicket := s.metadataGate, s.metadataTicket
 	s.entries, s.namespace = nil, nil
+	s.metadataGate, s.metadataTicket = nil, nil
 	var failed bool
-	for _, entry := range entries {
+	for i, entry := range entries {
+		entries[i].chain = nil
 		if closeChain(entry.chain) != nil {
 			failed = true
 		}
 	}
 	if namespace != nil && namespace.close() != nil {
 		failed = true
+	}
+	for i, entry := range entries {
+		entries[i] = roleEntry{}
+		if entry.gate != nil {
+			entry.gate.release(entry.ticket, failed)
+		}
+	}
+	if metadataGate != nil {
+		metadataGate.release(metadataTicket, failed)
 	}
 	if failed {
 		return errRoles

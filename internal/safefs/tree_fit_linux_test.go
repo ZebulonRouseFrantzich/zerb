@@ -8,80 +8,28 @@ import (
 	"unsafe"
 )
 
-// Provisional representation only: no filesystem or allocation enforcement proof.
-type treeFitEntry struct {
-	stamp      fileStamp
-	digest     [32]byte
-	pathOffset uint32
-	pathLength uint16
-	depth      uint8
-	kind       uint8
-	parent     uint32
-	flags      uint32
-}
+// Production layout checks are reservation evidence, not Go heap or host proof.
+type treeFitEntry = treeEntry
+type treeFitPerEntry = treeEntryWork
+type treeFitViewTicket = stageTicket
+type treeFitDirState = dirState
+type treeFitRoleEntry = roleEntry
 
-type treeFitTraversal struct {
-	stamp        listingStamp
-	next, parent uint32
-}
-
-type treeFitPerEntry struct {
-	inventory   [4]treeFitEntry
-	order       [4]uint32
-	traversal   [4]treeFitTraversal
-	bookkeeping [4]uint64
-}
-
-type treeFitViewTicket struct {
-	bytes uint64
-	fds   uint32
-	flags uint32
-}
-
-type treeFitDirState struct {
-	dirState
-	gate   *uint64 // Placeholder for the intended shared stage pointer.
-	ticket *treeFitViewTicket
-}
-
-type treeFitRoleEntry struct {
-	roleEntry
-	gate   *uint64
-	ticket *treeFitViewTicket
-}
-
-type treeFitTopologyID struct {
-	id    uint64
-	index uint32
-}
-
-type treeFitSpan struct{ start, length uint32 }
-
-type treeFitTopologyRow struct {
-	id, parent, device uint64
-	root, point, kind  treeFitSpan
-}
-
-type treeFitTopologyCoordinate struct {
-	device, inode       uint64
-	kind, physicalStart uint32
-	physicalLength      uint16
-}
-
-type treeFitTopologyCone struct {
-	coordinate, path, next, flags uint32
-}
+type treeFitTopologyID = treeMountID
+type treeFitTopologyRow = treeMount
+type treeFitTopologyCoordinate = treeCoordinate
+type treeFitTopologyCone = treeCone
 
 func TestTreeFitTopologyLayout(t *testing.T) {
 	if unsafe.Sizeof(treeFitTopologyRow{}) > 72 || unsafe.Sizeof(treeFitTopologyID{}) > 16 ||
-		unsafe.Sizeof(treeFitTopologyCoordinate{}) > 32 || unsafe.Sizeof(treeFitTopologyCone{}) > 16 ||
+		unsafe.Sizeof(treeFitTopologyCoordinate{}) > 40 || unsafe.Sizeof(treeFitTopologyCone{}) > 16 ||
 		unsafe.Sizeof(topologyPath{}) > 96 {
 		t.Fatal("topology record exceeds its conservative slot")
 	}
 	// Includes retained borrowed paths from both Add topology passes and one
 	// current paths array; retained coordinate/namespace strings use arenas.
-	aux := uint64(16384 + 4*16384 + 16384 + 4*16384 + 256*32 + 2*256*4 + 1024*16 + 128*16 +
-		3*64*96 + 256*96 + 3*64*96 + 64*4 + 74*8 + 3*12289 + 64*4096 + 131072 + 8192)
+	aux := uint64(16384 + 4*16384 + 16384 + 4*16384 + 256*40 + 2*256*4 + 1024*16 + 128*16 +
+		3*64*96 + 256*96 + 3*64*96 + 64*4 + 74*24 + 3*12289 + 64*4096 + 131072 + 8192)
 	if aux > 1<<20 {
 		t.Fatalf("topology auxiliary storage = %d", aux)
 	}
@@ -132,6 +80,9 @@ func TestTreeFitLayoutAndSimultaneousMaxima(t *testing.T) {
 	if unsafe.Sizeof(treeFitPerEntry{}) > 2048 {
 		t.Fatalf("per-entry metadata exceeds reservation: %d", unsafe.Sizeof(treeFitPerEntry{}))
 	}
+	if unsafe.Sizeof(treeWalkFrame{})*(treeMaxDepth+1) > 64<<10 {
+		t.Fatal("bounded traversal exceeds fixed control area")
+	}
 	// Fixed path arenas coexist with all four metadata/sort/traversal snapshots.
 	actual := uint64(unsafe.Sizeof(treeFitPerEntry{}))*16384 + 4*(16<<20)
 	reserved := uint64(2048*16384 + 4*(16<<20))
@@ -152,13 +103,17 @@ func TestTreeFitLayoutAndSimultaneousMaxima(t *testing.T) {
 		{"above", 32243713, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, ok := treeFitReservation(16384, 16<<20, 256, 128<<10, tc.r)
+			model, ok := treeFitReservation(16384, 16<<20, 256, 128<<10, tc.r)
 			if ok != tc.ok {
 				t.Fatalf("result bytes %d: admitted %v", tc.r, ok)
 			}
+			actual, admitted := treeWorkspace(256, 128<<10, tc.r)
+			if admitted != ok || (ok && actual != model) {
+				t.Fatal("production reservation diverges from contract arithmetic")
+			}
 		})
 	}
-	t.Logf("entry=%d traversal=%d combined=%d actual arrays=%d", unsafe.Sizeof(treeFitEntry{}), unsafe.Sizeof(treeFitTraversal{}), unsafe.Sizeof(treeFitPerEntry{}), actual)
+	t.Logf("entry=%d combined=%d frame=%d actual arrays=%d", unsafe.Sizeof(treeFitEntry{}), unsafe.Sizeof(treeFitPerEntry{}), unsafe.Sizeof(treeWalkFrame{}), actual)
 }
 
 func TestTreeFitArithmeticAndDescriptorPeaks(t *testing.T) {

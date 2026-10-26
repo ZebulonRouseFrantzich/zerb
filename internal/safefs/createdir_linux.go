@@ -17,6 +17,9 @@ func (d *Dir) CreateDir(name string) (*Dir, error) {
 	if d == nil || d.state == nil || !validName(name) {
 		return nil, errDirectory
 	}
+	if d.state.gate != nil {
+		return d.treeOpenDir(name, true, true)
+	}
 	s := d.state
 	s.mu.Lock()
 	defer s.mu.Unlock()
