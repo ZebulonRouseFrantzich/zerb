@@ -102,6 +102,62 @@ ZERB acquires exact Phase 1 implementation-qualified mise and chezmoi artifacts 
 
 Acquisition is ZERB-controlled input processing, not candidate trust. A cache hit remains untrusted until reauthenticated and rehashed. An upstream version or artifact change requires renewed executable identity and affected proof evidence.
 
+#### Chezmoi-first archive preparation
+
+The owner approved the first bounded materializer target as the existing
+`packages.x86_64-linux.chezmoi-zerb` source/build recipe in `flake.nix` and
+`flake.lock`: fork commit `ef897f7418ba0bd5423a5bf1563d45f05d9c6ea5`,
+version `v2.70.5-zerb.1`, `CGO_ENABLED=0`, and the unchanged locked vendor,
+compiler/build inputs and linker settings. This preserves the source/build
+recipe; it does not establish an executable identity until actual output is
+authenticated and compared with retained reviewed evidence. Mise remains a
+separate, deferred artifact; same-version upstream binaries are not substitutes
+for either retained build.
+
+The planned project-produced envelope is
+`zerb-chezmoi-v2.70.5-zerb.1-linux-x86_64.ustar`. Its name is not authority or
+evidence that bytes exist. The selected format is uncompressed canonical USTAR,
+with explicit parent directories and only the independently reviewed manifest's
+exact path/type/mode/size/content set. Directories and the executable have
+`0700`; ordinary notice/resource files have `0600`. There is no link, extension,
+sparse/legacy type, root stripping, mode repair, concatenated archive or trailing
+data. Freeze one raw-header/numeric/padding representation and the two zero-block
+EOF in the reviewed artifact recipe. Do not grow a generic archive compatibility
+surface. The expected runtime paths are `bin` and `bin/chezmoi`; the complete
+runtime/notice inventory, including the pinned license, must be authenticated
+before fixing the entry set. `CGO_ENABLED=0` alone does not prove closure or
+relocatability.
+
+A frozen, independently reviewed offline manifest is the provenance authority.
+It binds the authenticated source/vendor inputs, exact derivation/toolchain and
+build settings, resulting executable and complete runtime/notice inventory,
+canonical envelope identity and reproducibility evidence. A producer-generated
+hash, source pin, successful local build or caller-supplied provenance bytes
+cannot authenticate themselves. This direction adds no online signing authority,
+key, new package or exported API. Actual production manifest encoding and byte
+values remain gated on the authenticated evidence, not invented defaults. If
+retained executable identity is unavailable or differs, preserve the evidence
+and resolve that candidate relation before coding depends on it.
+
+Use a private owned byte snapshot selected by that authority. Bound size before
+copying, then verify the complete owned snapshot before any archive parser sees
+it. Trusted private extraction/publication may borrow read-only payload slices;
+no mutable alias escapes to callers. Keep incoming buffers, the owned snapshot,
+metadata, scratch and all simultaneously retained storage in the materializer's
+fit argument, separately from the unchanged ARCH-020 stage reservation. Existing
+synchronous byte-slice publication is preferred; no streaming or descriptor API
+is admitted merely by this direction.
+
+Authenticated actual build output, full runtime/notice inventory and a passing
+concrete resource-fit proof precede dependent production coding. A missing build
+environment, executable hash or inventory is a stopped gate, not permission to
+fabricate an artifact, relax bounds or substitute a host/toolchain. Preparation
+does not authorize installing Nix, changing its trust/configuration, invoking a
+manager or altering the owner's host. See the non-normative
+[build/evidence handoff](archive-materialization-proposal.md#build-and-evidence-handoff).
+Network acquisition, manager execution, state/CLI integration, automatic
+promotion and all host/release/support qualification remain outside this slice.
+
 ### ARCH-013 — Mise adapter isolation
 
 Mise owns its native declaration/backend/install semantics. ZERB owns the implementation-qualified exact-version, exact-authored-lock, and declaration allowlists, verified binary, deterministic `base + selected` staging, isolation environment, invocation ordering, failure journaling, and observation of requested versus installed versions.
