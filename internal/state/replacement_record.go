@@ -1,5 +1,5 @@
-// Package state owns durable state contracts. This increment only recognizes
-// metadata values; it does not admit a state graph or execute maintenance.
+// Package state owns durable state authority and its bounded initialization
+// contracts. Replacement metadata alone never authorizes maintenance.
 package state
 
 import (
