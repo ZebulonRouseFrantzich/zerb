@@ -618,6 +618,19 @@ Fresh writer publication is `released`, generation zero, empty token, zero proce
 
 `currentRecord.Instance` equals the initialized owner pair. Its instance, operation ID, operation token and writer token are each exactly 32 lowercase hexadecimal characters; operation ID, operation token and writer token are pairwise distinct. Its operation ID/token and positive uint64 writer generation/token bind the exact journal and active writer at stable commit; initialization, writer and operation tokens remain distinct. These fields are mandatory even when candidate and receipt bytes equal the prior current relation. Candidate and receipt digests do not encode completion identity. Missing, malformed, mismatched or unsupported current identity fails closed; there is no compatibility decoder or migration. After commit, cleanup and any recovery compare-transfer preserve the exact committed current bytes, including its completed writer/operation identity; a later recovery writer does not become the committing writer.
 
+The bounded private current-record codec validates only this exact scalar/wire
+shape, before any filesystem or graph integration. Its maximum canonical JSON
+length is 464 bytes: 174 fixed syntax/key/domain/status/schema bytes, four
+32-byte identities, two 71-byte digest tokens and at most 20 generation digits.
+Reject empty/over-bound input before decoding; validate scalars before encoding;
+require strict decoding, EOF and byte equality with canonical re-encoding.
+Maximum uint64 and even positive writer generations remain valid scalar values;
+do not infer a parity rule or additional instance/operation inequality here.
+Malformed input returns no partial identity. A decoded record alone grants no
+lease, owner/journal correspondence, publication or receipt-completion authority;
+those complete graph relations remain required at their existing state-owned
+boundaries. The 464-byte derived encoding bound is not a Go allocation/RSS cap.
+
 Completion identity cross-validation uses these closed relations after ordinary instance/schema/graph validation. Here `C` is current and `W` is the writer owner; a journal's predecessor generation is its writer generation minus one.
 
 | Compared record | Required completed-current relation |

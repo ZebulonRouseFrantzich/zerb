@@ -157,6 +157,15 @@ The owner approved the independent [TreeStage lifecycle/resource contract](archi
 
 The owner approved the [chezmoi-first canonical USTAR/offline-manifest direction](architecture.md#chezmoi-first-archive-preparation), with mise deferred. Preparation may close the exact recipe, evidence checklist and resource worksheet; authenticated actual build output, complete runtime/notice inventory and concrete fit must pass before dependent materializer production coding. No placeholder Service, caller-digest trust shortcut, new streaming API or substitute same-version executable is admitted. An unavailable Nix/compiler/build-output environment stops that gate without package or host-security changes. The [VAL-028 preparation matrix](validation.md#chezmoi-archive-preparation-gate) remains unexercised until actual observations exist; it grants no Phase 2, host or installed acceptance.
 
+Independently of that stopped artifact gate, the owner approved the private
+ARCH-024 current-record scalar codec. Its bounded exact encoding retains the
+completed writer/operation identity and adds no filesystem publication,
+owner/journal/receipt graph authority, lease, Store/router or recovery method.
+Focused canonical/rejection/ownership/race/fuzz checks and independent security
+review precede source-bound conformance. Existing initialization validators,
+archive build/inventory/fit prerequisites and host/public-cutover gates remain
+unchanged; a valid private current value is not evidence of a completed receipt.
+
 ### Work
 
 1. Enforce the exact ARCH-030 one-way DAG and forbidden old-package seam for every package introduced in this phase. Phase 2 completes only `paths`, `safefs`, `profile`, `receipt`, `execenv`, `source`, `toolchain`, `state`, and test-only `testenv`; it does not create compile-only `mise`, `home`, `plan`, `recovery`, `app`, or `host` scaffolds. The DAG gate scans production and `_test.go`, rejects imports of every full old package tree including `internal/testutil`, and permits `internal/testenv` only from `_test.go`. No bridge, alias, re-export, registry, fallback, production `testenv` import, or old CLI route is permitted.

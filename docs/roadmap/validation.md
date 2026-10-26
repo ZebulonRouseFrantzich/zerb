@@ -276,6 +276,29 @@ Local descriptor tests, injected failures and process-death visibility do not es
 
 ## Durable state, receipts, and recovery
 
+### Private current-record codec
+
+The bounded ARCH-024 scalar increment is a subset of VAL-026/031/032's record
+requirements, not evidence of state classification, durable commit, lease or
+recovery behavior. Independently count the exact ASCII JSON shape and check Go
+golden vectors at positive generation boundaries through uint64 maximum: the
+maximum encoding is 464 bytes. Reject over-bound bytes before decode and invalid
+scalars before encode. Preserve field order and mandatory completed-operation
+and writer identity even when candidate/receipt digests are reused.
+
+Exercise duplicate/unknown/missing/null fields, case/escaped aliases, unsupported
+schema/domain/status, reordered/noncanonical/multiple values, numeric overflow
+and zero generation, malformed fixed-width identities/digests and the specified
+pairwise token collisions. Scalar checks must not invent instance inequality or
+generation parity. Rejection returns zero record/nil encoding with a fixed
+redacted error and no caller mutation. Verify input/output ownership and shared
+read-only concurrent use under race testing; fuzz byte acceptance against exact
+canonical re-encoding. Existing owner-pair, held/released-writer and journal
+correspondence, filename/digest/receipt validation, initialization/recovery and
+all filesystem/host acceptance remain separate mandatory integration work.
+The [focused observation](proof-results.md#state-current-record-codec-2026-10-26)
+records this value-only evidence separately from those integration requirements.
+
 | ID | Requirements proved | Scenario and required evidence |
 |---|---|---|
 | VAL-030 | PC-016, PC-060, PC-061; ARCH-017, ARCH-023, ARCH-024, ARCH-031 | Prove the stable close-on-exec `admission.lock` shared/exclusive and `writer.lock` exclusive open-file-description primitives on each candidate filesystem; neither inode is replaced, unlinked, or inherited. Exercise shared compatibility, exclusive exclusion, fixed lock order, simultaneous writers, two stale reclaimers, durable live/stale/reused PID-plus-start-plus-namespace identities, malformed/missing/substituted synchronization and owner paths, and non-cooperating pathname changes. For each writer acquire, stale compare-transfer, and release, inject failure before/after temporary create/write/file-sync, prior owner inode/schema/generation/token/process comparison, stable lock-inode revalidation, atomic rename, parent sync, reopen/new-inode/full-byte verification, authority revalidation, released publication, writer unlock, and admission unlock. Race visible record/path A→B substitution, restoration attempts spanning a required boundary, inode replacement, token reuse/substitution, generation substitution/overflow, predecessor mismatch, and process death at every boundary. Do not claim detection of an indistinguishable same-UID A→B→A cycle fully restored between checks; do prove it grants no ZERB authority and that any substitution present at a boundary stops advancement. Exactly one kernel-lock holder may publish; tokens are fresh, generations strictly advance, journals bind the active generation/token, release is durably published before unlock, no synchronization or owner path is unlinked, age alone proves nothing, and a loser or unverified owner advances no candidate/journal/receipt/current/external mutation. |
