@@ -44,6 +44,10 @@ func validSourceHost(u *url.URL) bool {
 	if host == "" || strings.HasSuffix(host, ".") || strings.ContainsRune(host, ':') && !strings.HasPrefix(u.Host, "[") {
 		return false
 	}
+	// net/url tolerates these raw host bytes, but URI reg-name syntax does not.
+	if !strings.HasPrefix(u.Host, "[") && strings.ContainsAny(host, "[]<>\"") {
+		return false
+	}
 	for i := range len(host) {
 		if host[i] >= 'A' && host[i] <= 'Z' || host[i] < 0x21 || host[i] >= 0x7f {
 			return false
