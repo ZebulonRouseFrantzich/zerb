@@ -21,6 +21,9 @@ func (d *Dir) ReadFile(name string, limit int64) ([]byte, Identity, error) {
 	if d == nil || d.state == nil || !validName(name) || !validReadLimit(limit) {
 		return nil, Identity{}, errDirectory
 	}
+	if d.state.gate != nil {
+		return d.treeReadFile(name, limit)
+	}
 	s := d.state
 	s.mu.Lock()
 	defer s.mu.Unlock()

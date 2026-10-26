@@ -9,6 +9,9 @@ func (d *Dir) Sync() error {
 	if d == nil || d.state == nil {
 		return errDirectory
 	}
+	if d.state.gate != nil {
+		return d.treeSync()
+	}
 	s := d.state
 	s.mu.Lock()
 	defer s.mu.Unlock()

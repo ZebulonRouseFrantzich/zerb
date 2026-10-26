@@ -48,6 +48,8 @@ type dirState struct {
 	identity Identity
 	closed   bool
 	mkdir    bool
+	gate     *stageState
+	ticket   *stageTicket
 }
 
 type Dir struct{ state *dirState }
@@ -114,6 +116,9 @@ func (d *Dir) OpenDir(name string, create bool) (_ *Dir, err error) {
 	if d == nil || d.state == nil || !validName(name) {
 		return nil, errDirectory
 	}
+	if d.state.gate != nil {
+		return d.treeOpenDir(name, create, false)
+	}
 	s := d.state
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -170,7 +175,12 @@ func (d *Dir) Close() error {
 	s.closed = true
 	chain := s.chain
 	s.chain, s.identity = nil, Identity{}
-	return closeChain(chain)
+	err := closeChain(chain)
+	if s.gate != nil {
+		s.gate.release(s.ticket, err != nil)
+		s.ticket = nil
+	}
+	return err
 }
 
 func validName(name string) bool {

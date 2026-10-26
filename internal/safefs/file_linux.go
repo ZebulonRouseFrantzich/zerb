@@ -36,6 +36,9 @@ func (d *Dir) PinFile(name string, limit int64) (*File, []byte, error) {
 	if d == nil || d.state == nil || !validName(name) || !validReadLimit(limit) {
 		return nil, nil, errDirectory
 	}
+	if d.state.gate != nil {
+		return nil, nil, errDirectory
+	}
 	ds := d.state
 	ds.mu.Lock()
 	defer ds.mu.Unlock()

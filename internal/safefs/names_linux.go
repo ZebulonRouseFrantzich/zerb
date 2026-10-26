@@ -17,6 +17,9 @@ func (d *Dir) Names(limit int) ([]string, error) {
 	if d == nil || d.state == nil || !validListingLimit(limit) {
 		return nil, errDirectory
 	}
+	if d.state.gate != nil {
+		return d.treeNames(limit)
+	}
 	s := d.state
 	s.mu.Lock()
 	defer s.mu.Unlock()

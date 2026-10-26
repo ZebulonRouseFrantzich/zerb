@@ -59,6 +59,9 @@ func (d *Dir) StageReplacement(target, temporary string, data []byte, mode uint3
 		!validPublicationMode(mode) || !validReadLimit(int64(len(data))) || previous == (Identity{}) {
 		return nil, errDirectory
 	}
+	if d.state.gate != nil {
+		return nil, errDirectory
+	}
 	ds := d.state
 	ds.mu.Lock()
 	defer ds.mu.Unlock()
