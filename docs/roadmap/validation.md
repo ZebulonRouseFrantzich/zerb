@@ -198,7 +198,7 @@ The owner-approved ARCH-017/020/024/030/031 FreshInit subset is a complete priva
 
 ### TreeStage lifecycle failure matrix
 
-Planned, unexercised ARCH-020/030 and VAL-027 coverage for the [TreeStage proposal](architecture.md#treestage-lifecycle-and-resource-contract). The owner approved the lifecycle/mode/resource contract and bounded implementation after representation fit; the matrix alone implements no API and qualifies no host. Future rows record actual boundary, capability state, relevant entry/byte/identity observations, returned identity/error and descriptor ownership. Hooks must surround real primitives; helper success or skipped positives cannot establish public-path/storage qualification.
+Required ARCH-020/030 and VAL-027 coverage for the [TreeStage contract](architecture.md#treestage-lifecycle-and-resource-contract). The owner approved bounded implementation after representation fit. The [focused observation record](proof-results.md#safefs-tree-staging-reservations-2026-10-26) distinguishes exercised local cases, raw fixture prefixes and skipped/unexercised public/storage rows; it does not close this complete matrix or qualify a host. Each future observation records actual boundary, capability state, relevant entry/byte/identity facts, returned identity/error and descriptor ownership. Hooks must surround real primitives; helper success or skipped positives cannot establish public-path/storage qualification.
 
 | Row | Required future observation |
 |---|---|
