@@ -196,6 +196,25 @@ The owner-approved ARCH-017/020/024/030/031 FreshInit subset is a complete priva
 | All-error ownership | Failure/cancellation at every logical boundary returns the one Release-only acquisition with every still-owned resource; caller replaces its prior handle before handling error. Every errored acquisition closes/unlocks without filesystem writes or witness cleanup; preserve evidence, report primary plus cleanup errors, and never strand exclusion. Reject reuse of every session-minted identity, including retired replacement IDs. |
 | Evidence limits | Genuine exported-API disposable integration tests run only on policy-admissible absolute topology and explicitly skip before mutation otherwise. No forged opaque Dir, unsafe exported factory, reflection/linkname, owner exception, namespace workaround or production interface invented solely for tests. Actual pure production recognizers and private kernel helpers prove only their own layers. Fedora/Btrfs/bind/storage/crash/handoff positives remain required and unexercised until suitable approved facilities run them. |
 
+### Chezmoi archive preparation gate
+
+This is the approved ARCH-012/021/030 chezmoi-first direction's bounded VAL-028
+gate, not an executed artifact, passing fit result or support claim. It keeps
+mise and the separately permissive Node installation proof out of this grammar.
+The matrix must record actual bytes, authority and boundary observations before
+dependent production materialization code is admitted.
+
+| Gate | Required evidence and refusal |
+|---|---|
+| Locked build | Authenticate the unchanged flake source/vendor/derivation/toolchain and build settings; actual output identity must match retained reviewed evidence. Missing/different identity stops rather than silently replacing the candidate. No source pin or version query alone suffices. |
+| Offline provenance | Independent review binds actual executable, complete runtime/notice inventory, archive hashes and reproducibility evidence in frozen production authority. Producer self-assertions, arbitrary expected digests and test recipes never enter that authority. |
+| Exact layout | Authenticate every runtime/notice path/type/mode/size/hash, including the pinned license; expected `bin/chezmoi` is not a complete inventory merely because the build declares CGO disabled. Inspect actual ELF/loader facts without executing untrusted output. |
+| Canonical USTAR | Fix exact header/numeric/padding/EOF bytes; reject compressed, extended, sparse/legacy, linked/special, ambiguous, extra/missing/duplicate, concatenated or trailing forms. Only the frozen exact set and owner-restrictive mode mapping is admitted; no stripping or repair. |
+| Authentication order | Complete immutable owned-snapshot size/hash and provenance checks before parser entry or staging. Wrong provenance cannot be bypassed by a correct hash. Input mutation and escaped aliases cannot alter authenticated parse bytes. |
+| Concrete fit | Measure actual entries/paths/depth/payload and archive size; enumerate incoming/snapshot copies, index/path capacities, scratch, file views, descriptor/proc/role lifetimes and every read pass. Preserve all ARCH-020 ceilings and classify separate materializer backing storage. A symbolic formula or absent inventory cannot pass. |
+| Implementation admission | Resolve independent security/design findings and pass all evidence gates before dependent coding. Subsequent implementation requires permanent adversarial/failure/race tests, applicable source-bound checks and independent code review; no placeholder services. |
+| Qualification | Keep current positive-path skips, full crash/storage/mount/proc and frozen-host/installed gaps open. A build or local fixture does not qualify actual manager execution or Phase 2. |
+
 ### TreeStage lifecycle failure matrix
 
 Required ARCH-020/030 and VAL-027 coverage for the [TreeStage contract](architecture.md#treestage-lifecycle-and-resource-contract). The owner approved bounded implementation after representation fit. The [focused observation record](proof-results.md#safefs-tree-staging-reservations-2026-10-26) distinguishes exercised local cases, raw fixture prefixes and skipped/unexercised public/storage rows; it does not close this complete matrix or qualify a host. Each future observation records actual boundary, capability state, relevant entry/byte/identity facts, returned identity/error and descriptor ownership. Hooks must surround real primitives; helper success or skipped positives cannot establish public-path/storage qualification.
