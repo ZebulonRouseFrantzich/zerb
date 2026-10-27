@@ -174,6 +174,16 @@ func TestReplacementKernelSubprocess(t *testing.T) {
 			t.Fatal("restrictive umask was repaired or admitted")
 		}
 	case "resources":
+		// A sparse descriptor table must not erase the exhaustion control.
+		highFD, err := unix.FcntlInt(uintptr(parent.fd), unix.F_DUPFD_CLOEXEC, parent.fd+64)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() {
+			if err := unix.Close(highFD); err != nil {
+				t.Error("sparse descriptor cleanup failed")
+			}
+		})
 		var original unix.Rlimit
 		if err := unix.Getrlimit(unix.RLIMIT_NOFILE, &original); err != nil {
 			t.Fatal(err)
@@ -184,7 +194,9 @@ func TestReplacementKernelSubprocess(t *testing.T) {
 			}
 		})
 		failed, succeeded := false, false
-		for slots := range 18 {
+		// Keep the intermediate cleanup matrix, with explicit zero-capacity and
+		// original-limit controls: maxFD alone says nothing about lower holes.
+		for row := range 20 {
 			chain, err := duplicateChain([]edge{parent})
 			if err != nil {
 				t.Fatal(err)
@@ -204,13 +216,26 @@ func TestReplacementKernelSubprocess(t *testing.T) {
 				}
 			}
 			limit := original
-			limit.Cur = uint64(maxFD + slots)
+			switch row {
+			case 0:
+				limit.Cur = 0
+			case 19:
+				// The unmodified inherited limit is the successful control.
+			default:
+				limit.Cur = min(original.Cur, uint64(maxFD+row-1))
+			}
 			if err := unix.Setrlimit(unix.RLIMIT_NOFILE, &limit); err != nil {
 				t.Fatal(err)
 			}
 			s, stageErr := replacementAt(chain, "target", ".temporary", []byte("complete"), 0o600, previous.identity)
 			if err := unix.Setrlimit(unix.RLIMIT_NOFILE, &original); err != nil {
 				t.Fatal(err)
+			}
+			if row == 0 && stageErr == nil {
+				t.Fatal("zero descriptor capacity did not refuse staging")
+			}
+			if row == 19 && stageErr != nil {
+				t.Fatal("original descriptor capacity did not permit staging")
 			}
 			if stageErr != nil {
 				failed = true
