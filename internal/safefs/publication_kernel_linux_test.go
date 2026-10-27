@@ -19,6 +19,33 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// Keep the real limit active throughout the test, then restore it before Go's
+// coverage finalization writes its own files in this disposable child.
+func limitTestFileSize(t *testing.T, size uint64) {
+	t.Helper()
+	var original unix.Rlimit
+	if err := unix.Getrlimit(unix.RLIMIT_FSIZE, &original); err != nil {
+		t.Fatal(err)
+	}
+	ignored := signal.Ignored(syscall.SIGXFSZ)
+	limit := original
+	limit.Cur = size
+	if err := unix.Setrlimit(unix.RLIMIT_FSIZE, &limit); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := unix.Setrlimit(unix.RLIMIT_FSIZE, &original); err != nil {
+			t.Error("file-size limit restoration failed")
+		}
+		if ignored {
+			signal.Ignore(syscall.SIGXFSZ)
+		} else {
+			signal.Reset(syscall.SIGXFSZ)
+		}
+	})
+	signal.Ignore(syscall.SIGXFSZ)
+}
+
 // ARCH-020/030, VAL-027: process settings change only in disposable children.
 func TestPublicationKernelSubprocess(t *testing.T) {
 	mode := os.Getenv("ZERB_SAFEFS_PUBLICATION_HELPER")
@@ -67,15 +94,7 @@ func TestPublicationKernelSubprocess(t *testing.T) {
 	switch mode {
 	case "partial-write":
 		p := publicationFixture(t, parent, nil, 0)
-		var limit unix.Rlimit
-		if err := unix.Getrlimit(unix.RLIMIT_FSIZE, &limit); err != nil {
-			t.Fatal(err)
-		}
-		limit.Cur = 8
-		if err := unix.Setrlimit(unix.RLIMIT_FSIZE, &limit); err != nil {
-			t.Fatal(err)
-		}
-		signal.Ignore(syscall.SIGXFSZ)
+		limitTestFileSize(t, 8)
 		data := []byte("a complete payload must never be linked after a partial write")
 		requirePublicationPhaseRefusal(t, p.write(data))
 		got := make([]byte, len(data))
@@ -96,6 +115,8 @@ func TestPublicationKernelSubprocess(t *testing.T) {
 			t.Fatal("partial write left named residue")
 		}
 	case "umask":
+		original := unix.Umask(0o777)
+		defer unix.Umask(original)
 		for _, test := range []struct {
 			mask int
 			mode uint32

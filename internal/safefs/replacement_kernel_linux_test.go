@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"os/signal"
 	"path/filepath"
 	"strconv"
 	"syscall"
@@ -142,15 +141,7 @@ func TestReplacementKernelSubprocess(t *testing.T) {
 	}
 	switch mode {
 	case "partial-write":
-		var limit unix.Rlimit
-		if err := unix.Getrlimit(unix.RLIMIT_FSIZE, &limit); err != nil {
-			t.Fatal(err)
-		}
-		limit.Cur = 8
-		if err := unix.Setrlimit(unix.RLIMIT_FSIZE, &limit); err != nil {
-			t.Fatal(err)
-		}
-		signal.Ignore(syscall.SIGXFSZ)
+		limitTestFileSize(t, 8)
 		// Retain the anonymous inode to independently observe the kernel partial IO.
 		p, err := openPublication(parent, 0o600)
 		if err != nil {
@@ -172,7 +163,8 @@ func TestReplacementKernelSubprocess(t *testing.T) {
 			t.Fatal("partial staging write returned a capability")
 		}
 	case "umask":
-		unix.Umask(0o777)
+		original := unix.Umask(0o777)
+		defer unix.Umask(original)
 		chain, err := duplicateChain([]edge{parent})
 		if err != nil {
 			t.Fatal(err)
@@ -186,6 +178,11 @@ func TestReplacementKernelSubprocess(t *testing.T) {
 		if err := unix.Getrlimit(unix.RLIMIT_NOFILE, &original); err != nil {
 			t.Fatal(err)
 		}
+		t.Cleanup(func() {
+			if err := unix.Setrlimit(unix.RLIMIT_NOFILE, &original); err != nil {
+				t.Error("descriptor limit restoration failed")
+			}
+		})
 		failed, succeeded := false, false
 		for slots := range 18 {
 			chain, err := duplicateChain([]edge{parent})
