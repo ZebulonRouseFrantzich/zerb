@@ -66,7 +66,8 @@ func committedJournalMatches(current *currentRecord, writer *writerOwner, journa
 	same := journal.WriterGeneration == writer.Generation && journal.WriterToken == writer.Token &&
 		journal.WriterPreviousToken == writer.PreviousToken
 	ahead := journal.WriterGeneration > writer.Generation && journal.WriterGeneration-writer.Generation == 1 &&
-		journal.WriterPreviousToken == writer.Token && journal.WriterToken != writer.Token
+		journal.WriterPreviousToken == writer.Token && journal.WriterToken != writer.Token &&
+		journal.WriterToken != writer.Instance && journal.WriterToken != writer.PreviousToken
 	if !same && !ahead {
 		return false
 	}
