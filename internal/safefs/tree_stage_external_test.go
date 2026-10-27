@@ -89,6 +89,10 @@ func TestTreeStagePublicLifecycle(t *testing.T) {
 	if _, err := borrowed.PublishNoReplace("payload", data, 0o600); err != nil {
 		t.Fatal("staged file publication failed")
 	}
+	read, identity, err := borrowed.ReadFile("payload", int64(len(data)))
+	if err != nil || !bytes.Equal(read, data) || len(read) != cap(read) || identity.Size != int64(len(data)) {
+		t.Fatal("observed staged read failed")
+	}
 	child, err := borrowed.CreateDir("nested")
 	if err != nil {
 		t.Fatal("staged directory creation failed")

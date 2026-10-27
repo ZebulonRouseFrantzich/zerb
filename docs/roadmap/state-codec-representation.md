@@ -122,11 +122,19 @@ input-dependent pool or allocated input-bearing error is admitted. Strict gramma
 plus complete semantic checks replaces materialized re-encoding only for these
 approved large codecs. The standard encoder/canonicalizers remain test oracles.
 
-Future protected-file integration must replace growth-based reads with exact-size
-reads under unchanged public signatures/identity checks and explicitly transfer
-the newly owned buffer to a private consuming decoder. A borrowed decoder still
-copies and preserves its input. This design alone does not establish the complete
-Store/filesystem invocation reservation.
+Future protected-file integration follows ARCH-020's owner-approved observed-count
+read protocol: first bounded measurement without whole-result allocation, then
+exact-capacity allocation/reread of that observed count through the same pinned
+identity. Charge every required pass and revalidation, fixed scratch, retained
+file/proc/ancestor capability and result. PinFile additionally performs its
+post-construction content revalidation. This preserves the ban on eager
+metadata-size allocation; the earlier exact-size-read sketch did not override it.
+
+A future production file-to-codec caller must explicitly transfer its newly owned
+buffer to a private consuming decoder; borrowed entry points keep copying and
+preserving their input. No unused consuming variant or filesystem caller is added
+merely to anticipate that integration. This design alone does not establish the
+complete Store/filesystem invocation reservation.
 
 ## Differential acceptance and evidence
 

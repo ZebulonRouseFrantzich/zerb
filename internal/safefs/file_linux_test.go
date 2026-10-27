@@ -409,7 +409,7 @@ func TestFileReadBoundaries(t *testing.T) {
 					t.Error(err)
 				}
 			}()
-			if data == nil || !bytes.Equal(data, want) || s.revalidate() != nil {
+			if data == nil || !bytes.Equal(data, want) || len(data) != cap(data) || s.revalidate() != nil {
 				t.Fatal("exact bounded read or hash failed")
 			}
 			if test.size > 0 {

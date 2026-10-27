@@ -33,7 +33,7 @@ func TestReadFileContentsAndLimits(t *testing.T) {
 			t.Fatal(err)
 		}
 		data, id, err := readFile(parent, test.name, test.limit)
-		if err != nil || string(data) != test.content || !safeFile(id, parent.id.Owner, test.limit) || id.Size != int64(len(data)) {
+		if err != nil || string(data) != test.content || len(data) != cap(data) || !safeFile(id, parent.id.Owner, test.limit) || id.Size != int64(len(data)) {
 			t.Fatal("bounded ordinary read failed")
 		}
 	}
