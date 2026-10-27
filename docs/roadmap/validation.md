@@ -276,6 +276,29 @@ Local descriptor tests, injected failures and process-death visibility do not es
 
 ## Durable state, receipts, and recovery
 
+### Private existing initialized observation
+
+ARCH-016/018/019/020/024/031's narrow descriptor-owned helper is exercised
+without a Store, classifier or operation-admission claim. Graph tests require
+the exact eight state entries, empty controls, initialized canonical root,
+general held/released writer facts and matching data/cache owners; reject
+missing/extra/duplicate/permuted inventory, crossed instances/domains and bounded
+malformed records with zero facts. Include arbitrary valid generations, caller
+ownership, concurrent use and byte fuzzing. These pure checks do not validate
+physical topology or establish current completion.
+
+Genuine disposable physical tests initialize through the existing producer and
+reopen through exported safefs admission. Check all typed-intent A-S/A-X modes,
+reader compatibility/writer exclusion before semantic reads, retained inode
+identity, full-file/role revalidation, byte-identical substitutions, canceled
+and failed construction frontiers, copied/concurrent Close and no leaked
+admission OFD. Cache siblings remain untouched; missing cache refuses only the
+complete physical observation, without BAD classification, writes or cleanup.
+Unsupported absolute topology skips before product mutation at the executed
+test/subtest boundary; a skipped parent leaves its enclosed matrix unexercised.
+Existing full graph/repair/crash/storage/mount/proc
+and frozen-host gates are not closed by helper success.
+
 ### Private current-record codec
 
 The bounded ARCH-024 scalar increment is a subset of VAL-026/031/032's record
