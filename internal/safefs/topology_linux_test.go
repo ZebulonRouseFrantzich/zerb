@@ -406,7 +406,13 @@ func TestTopologyFinalInteriorObservation(t *testing.T) {
 	if !bytes.Equal(top.snapshot, fresh) {
 		t.Skip("mount metadata changed during observation")
 	}
-	if err := unix.Fchmod(fd, 0755); err != nil {
+	originalMode := id.Mode & 0o7777
+	defer func() {
+		if err := unix.Fchmod(fd, originalMode); err != nil {
+			t.Error("interior mode restoration failed")
+		}
+	}()
+	if err := unix.Fchmod(fd, originalMode^0o040); err != nil {
 		t.Fatal(err)
 	}
 	if top.finishObservation(fresh) == nil {
