@@ -131,6 +131,15 @@ The fixed-CA subset of VAL-017/021/022 uses the exact ARCH-030 bundle, not only 
 
 For arbitrary user payloads, deliberately detached descendants are outside the orchestration guarantee only if PC-015 documents the limit. VAL-017 and VAL-018 must still prove ZERB manager credentials, internal state paths, unapproved descriptors, ambient executable lookup, and provider/host-fact channels are not supplied to them.
 
+The approved ARCH-010 timing matrix additionally proves one monotonic 750 ms
+grace window shared across leader exit and descendant cleanup; repeated
+cancellation/signals cannot renew it. Exercise graceful exit, ignored termination,
+leader-first exit with surviving descendants, requests near the deadline,
+POSIX/context arbitration and mandatory reaping/descriptor-relative cgroup
+emptiness/exact-zero guard status after forced termination. Do not count a
+post-kill verification wait as a renewed graceful window or promise a 750 ms
+end-to-end return. Real kernel/cgroup/PTY and frozen-host positives remain required.
+
 ## Protected roots, filesystem, archives, and destinations
 
 | ID | Requirements proved | Scenario and required evidence |
@@ -275,6 +284,27 @@ At each applicable boundary below, inject operational error, catchable cancellat
 Local descriptor tests, injected failures and process-death visibility do not establish stable-storage/power-loss or frozen-host behavior. The seven earlier positive exported-path/cloud-topology gaps and the new public Roles positive row remain open (eight total), along with actual mount/bind/restricted-proc rows and real filesystem qualification. Complete Roles admission also refuses this cloud's ambiguous kernel-root representation; raw proc/NSFS capture does not close that gap. This matrix promotes no support or Phase 2 status.
 
 ## Durable state, receipts, and recovery
+
+### Approved operation progress and completion checks
+
+For ARCH-024/025/026, check every cell and rejection around the explicit journal
+prefix table; journal execution order never becomes receipt sorting order.
+Results must cover all targets from prepared onward and describe actual latest
+observations, not future applied content. Test prepared observations equal to
+preconditions, changed intermediate observations, no target observations omitted
+when targets exist, and verified empty/no-op surfaces. A missing checkpoint may
+follow an already-occurred effect; recovery matrix evidence must distinguish that
+interval from a completed phase and must not claim action absence or replay
+completed work. Exercise each of the four required completion dimensions false,
+all their combinations, either availability value, and exact complete receipt
+phase facts. Preserve digest/current crosschecks when varying availability; no
+post-publication rewriting of current or immutable receipts is admitted.
+
+The private production predicates check only value-level progress, target
+coverage and necessary completion facts. They confer no observation freshness,
+source/candidate identity, installed integrity, liveness, lease, graph, mutation,
+publication or current authority. Strict codecs and complete graph resource
+admission remain separate required work.
 
 ### Private existing initialized observation
 
