@@ -140,3 +140,48 @@ func TestProofPrecommitControlWriterTokenExclusions(t *testing.T) {
 		})
 	}
 }
+
+// ARCH-024/027/031: the journal-ahead interval cannot advance committed
+// current beyond the independently retained writer-owner publication.
+func TestProofPrecommitControlRetainedWriterAfterCommit(t *testing.T) {
+	for _, futureCurrent := range []bool{false, true} {
+		name, want := "retained-current-journal-ahead", "CLEANUP(B)"
+		if futureCurrent {
+			name, want = "future-current-journal-ahead", "BAD corrupt"
+		}
+		t.Run(name, func(t *testing.T) {
+			s, d, refs := makeGraph(t.TempDir(), "CLEANUP(B)")
+			assertProofClassificationPreserves(t, s, d, "CLEANUP(B)")
+			var current currentRecord
+			var writer writerOwnerRecord
+			var journal journalRecord
+			for _, record := range []struct {
+				name  string
+				value any
+			}{
+				{"current.json", &current}, {"writer-owner.json", &writer}, {filepath.Join("journals", refs.journal+".json"), &journal},
+			} {
+				if err := readRecord(filepath.Join(s, record.name), record.value); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if current.WriterGeneration != 3 || current.WriterGeneration != writer.Generation || journal.WriterGeneration != writer.Generation ||
+				current.WriterToken != writer.Token || journal.WriterToken != writer.Token ||
+				current.OperationID != journal.OperationID || current.OperationToken != journal.OperationToken || current.Candidate != journal.Candidate {
+				t.Fatal("cleanup fixture did not retain the committed writer/operation relation")
+			}
+			journal.WriterGeneration++
+			journal.WriterPreviousToken = writer.Token
+			var err error
+			journal.WriterToken, err = FreshToken()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if futureCurrent {
+				current.WriterGeneration, current.WriterToken = journal.WriterGeneration, journal.WriterToken
+			}
+			proofPrecommitWrite(t, s, refs, current, writer, journal)
+			assertProofClassificationPreserves(t, s, d, want)
+		})
+	}
+}

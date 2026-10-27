@@ -1642,7 +1642,8 @@ func exactCurrent(s, d string, uid int) string {
 	if beforeCommit {
 		return exactPriorTransition(s, root.Instance, journal, nextReceipt, nextReceiptExists)
 	}
-	if !committedOperation || current.Candidate != journal.Candidate || current.Receipt != nextReceipt.Digest ||
+	if !committedOperation || !currentMatchesHeldWriter(current, writer) ||
+		current.Candidate != journal.Candidate || current.Receipt != nextReceipt.Digest ||
 		currentReceipt.Facts.Previous != journal.Previous ||
 		(journal.Phase != phasePending && journal.Phase != phaseCleanup) {
 		return ""

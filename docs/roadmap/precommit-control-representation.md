@@ -45,7 +45,7 @@ operation ID and token each differ from their corresponding retained prior
 Current field. This is not the completed-current predicate and does not infer
 new authority from candidate/receipt digest reuse. No historical registry exists.
 
-Recompute canonical candidate digests and authenticate pending-facts digests.
+Recompute canonical candidate digests and verify pending-facts digests.
 Check RA's own necessary completed phases/four dimensions and full static match
 to A; its own Previous stays historical. Check B target coverage and exact
 journal execution prefix at every accepted phase. Distinct pending RB requires
