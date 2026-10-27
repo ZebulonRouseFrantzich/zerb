@@ -196,6 +196,15 @@ predecode/canonicalization reservation and round-trip fit remain separate; no
 arbitrary wire cap or whole-graph accumulation envelope is introduced. Phase 2
 acceptance, actual artifact inventory and frozen-host qualification remain open.
 
+The separately reviewed process increment adds only private opened-executable
+fingerprints and updates the actual lifecycle proof candidate to the approved
+single graceful window. It includes cumulative forced termination before waiting,
+complete post-kill cleanup/guard verification and explicit cleanup-failure status
+precedence. The full production Runner/Dispatch, per-class environment assembly,
+cgroup admission, full retained invocation matrix and host qualification remain
+outstanding. Foundation conformance now explicitly races the new execenv package;
+this coverage strengthening does not create process execution authority.
+
 ### Work
 
 1. Enforce the exact ARCH-030 one-way DAG and forbidden old-package seam for every package introduced in this phase. Phase 2 completes only `paths`, `safefs`, `profile`, `receipt`, `execenv`, `source`, `toolchain`, `state`, and test-only `testenv`; it does not create compile-only `mise`, `home`, `plan`, `recovery`, `app`, or `host` scaffolds. The DAG gate scans production and `_test.go`, rejects imports of every full old package tree including `internal/testutil`, and permits `internal/testenv` only from `_test.go`. No bridge, alias, re-export, registry, fallback, production `testenv` import, or old CLI route is permitted.
