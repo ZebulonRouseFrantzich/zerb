@@ -69,8 +69,8 @@ func TestReceiptPhasesSortedWithoutReorderingJournalPrefixes(t *testing.T) {
 		t.Fatal("journal admitted lexically sorted phases instead of execution order")
 	}
 	prepared := transitionJournalRecord(r, "prepared", "", nil, 1, r.writerToken)
-	if !validJournalPrefix(prepared) || !bytes.Contains(recordBytes(prepared), []byte(`"results":[]`)) ||
+	if !validJournalPrefix(prepared) || !slicesEqual(prepared.Results, prepared.Preconditions) ||
 		!bytes.Contains(recordBytes(prepared), []byte(`"completed_phases":[]`)) {
-		t.Fatal("prepared journal did not encode empty included collections as arrays")
+		t.Fatal("prepared journal lost latest observations or empty execution prefix")
 	}
 }

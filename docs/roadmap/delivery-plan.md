@@ -187,6 +187,15 @@ security review plus exact-source conformance precede its stacked draft PR.
 Positive absolute-path checks may remain unexercised in Cloud; all existing host,
 archive and installed acceptance gates remain unchanged.
 
+The owner subsequently approved the exact journal checkpoint/observation and
+four-dimension completion rules in ARCH-025/026 and the single-window provisional
+process policy in ARCH-010. The private state value predicates and proof-fixture
+parity implement the ARCH-025/026 value rules without a graph classifier, lease, journal codec,
+mutation executor or completion/publication authority. Complete per-document
+predecode/canonicalization reservation and round-trip fit remain separate; no
+arbitrary wire cap or whole-graph accumulation envelope is introduced. Phase 2
+acceptance, actual artifact inventory and frozen-host qualification remain open.
+
 ### Work
 
 1. Enforce the exact ARCH-030 one-way DAG and forbidden old-package seam for every package introduced in this phase. Phase 2 completes only `paths`, `safefs`, `profile`, `receipt`, `execenv`, `source`, `toolchain`, `state`, and test-only `testenv`; it does not create compile-only `mise`, `home`, `plan`, `recovery`, `app`, or `host` scaffolds. The DAG gate scans production and `_test.go`, rejects imports of every full old package tree including `internal/testutil`, and permits `internal/testenv` only from `_test.go`. No bridge, alias, re-export, registry, fallback, production `testenv` import, or old CLI route is permitted.
