@@ -55,14 +55,14 @@ Journal encoding reserves `2048 + J + S_cap + A_cap + A_len`; decoding reserves
 checked before allocation/growth. This does not introduce an aggregate graph or
 retained-object-count policy.
 
-## Fixed storage to bind to implementation
+## Fixed storage bound to implementation
 
 | Storage | Candidate bytes | Pending bytes |
 |---|---:|---:|
 | Two top model slots | 960 | 1776 |
 | Cursor | 40 | 40 |
 | Counting/emitting writers | 96 | 96 |
-| Reservation and scalar plan | 56 | 56 |
+| Reservation and scalar plan | 64 | 64 |
 | Thirteen collection counters | 104 | 104 |
 | Three spans | 48 | 48 |
 | Reusable SHA-256 state | 120 | 120 |
@@ -72,12 +72,15 @@ retained-object-count policy.
 | Two tree slice headers | 48 | 48 |
 | Decimal scratch | 24 | 24 |
 | Pending wrapper string payload | 0 | 88 |
-| **Planned total** | **1736** | **2640** |
+| **Concrete total** | **1744** | **2648** |
 | **Reserved control** | **2048** | **3968** |
 
-These planned layouts are upper-bound constraints, not permission for untracked
-allocations. Bind actual private types, hash state and all simultaneous allocation
-paths during implementation review. Do not hold Candidate and Completed together
+The concrete private types and hash state are checked by
+`TestCodecImplementationLayout`; the scalar plan includes its actual alignment
+and a separate reservation counter (64 bytes, eight above the initial sketch).
+Both totals still fit the unchanged control allowances. Layout checks alone do
+not validate allocation paths; those require independent implementation review.
+These constraints never permit untracked allocations. Do not hold Candidate and Completed together
 in an all-schema result union that exceeds the candidate allowance. Source
 scratch remains separate. Runtime allocator metadata, stack/GC effects and fixed
 schema caches retain PC-042's existing treatment; this is not an RSS guarantee.

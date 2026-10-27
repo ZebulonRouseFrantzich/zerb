@@ -212,7 +212,13 @@ checks, then implement the closed canonical decoders and direct pending encoder,
 with differential/fuzz and exact-boundary evidence. Ordinary scalar codecs,
 formats, accepted values, the complete budget, package/API seams and aggregate
 resource/host gates remain unchanged. A passing layout argument alone is not
-production enforcement, file integration or a completed durable graph.
+production enforcement, file integration or a completed durable graph. The
+bounded implementation now provides private candidate/pending/journal decoders
+and direct pending/journal encoders, with old-minimum-schedule admission before
+materialization. Its actual layout and differential/boundary/race coverage are
+reviewed independently. It does not activate a Store, graph classifier, writer,
+filesystem publication or completion authority; full graph resource policy and
+future file-read ownership accounting remain required before that integration.
 
 ### Work
 
