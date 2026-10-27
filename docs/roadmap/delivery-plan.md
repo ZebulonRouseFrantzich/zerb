@@ -238,6 +238,15 @@ adds no public schema/API. Its derived selected-record reservation is not a
 whole-Store envelope. Currentless/precommit relations, complete data authentication,
 namespace/history scanning, artifact fit and qualification stay separately gated.
 
+The next selected precommit increment binds the optional prior current to its
+new-operation journal/held writer, B and independent prior completed receipt,
+through prepared/mutating/pending prefixes. Owner-approved operation-field
+freshness and completion-ready pending publication are ARCH-024/025/026 rules;
+basic codecs remain broad. Review concrete retained layouts and joint reservation
+before implementation. This pure result creates no Store/admission, liveness,
+filesystem publication or recovery executor. Full graph/data/history accounting,
+actual artifact fit and qualification remain gated.
+
 ### Work
 
 1. Enforce the exact ARCH-030 one-way DAG and forbidden old-package seam for every package introduced in this phase. Phase 2 completes only `paths`, `safefs`, `profile`, `receipt`, `execenv`, `source`, `toolchain`, `state`, and test-only `testenv`; it does not create compile-only `mise`, `home`, `plan`, `recovery`, `app`, or `host` scaffolds. The DAG gate scans production and `_test.go`, rejects imports of every full old package tree including `internal/testutil`, and permits `internal/testenv` only from `_test.go`. No bridge, alias, re-export, registry, fallback, production `testenv` import, or old CLI route is permitted.
