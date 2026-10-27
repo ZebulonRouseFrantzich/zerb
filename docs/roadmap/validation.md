@@ -299,6 +299,34 @@ all filesystem/host acceptance remain separate mandatory integration work.
 The [focused observation](proof-results.md#state-current-record-codec-2026-10-26)
 records this value-only evidence separately from those integration requirements.
 
+### Private writer-owner and current correspondence
+
+This ARCH-024/031 value-only subset of VAL-026/030/031/032 validates general
+held/released writer records and current-to-writer correspondence. It does not
+execute a transition or validate a durable graph. Golden vectors cover initial,
+acquired, transferred and released shapes, both parities, maximum uint64 and the
+mandatory zero process object. Reject the locally impossible released-one,
+held-one/nonempty-predecessor and held-two/empty-predecessor shapes derived from
+the closed transitions. Reject skipped/future/wrapped predecessor generations,
+invalid/reused tokens and invalid held/released process fields. Ordinary owner
+bytes remain bounded at 4,096 before decoding, with fixed errors, no partial
+result, strict canonical field/order/type/omission/duplicate/alias/EOF behavior
+and no input/output aliasing or mutation. Preserve FreshInit's original accepted
+set, errors and byte vectors through its narrow wrappers.
+
+For current correspondence, gate on both scalar validators and equal instance,
+then exercise every held equal/older and released older branch with immediate
+and distant predecessors. Reject future/same released generations, mismatched
+tokens/instances, a fresh held owner's empty predecessor against older current,
+and every malformed record even when its selected identity fields appear to
+match. Use maximum/zero/order boundaries and an independently structured
+generation-distance oracle to catch wraparound. Race/fuzz checks and independent
+security review remain required. These value predicates never prove process
+death, transferred ownership, lease/record-inode stability, journal or receipt
+correspondence, root admission, durable completion or host qualification.
+The [focused observation](proof-results.md#state-writer-owner-correspondence-2026-10-27)
+records the executed value checks separately from those integration gates.
+
 | ID | Requirements proved | Scenario and required evidence |
 |---|---|---|
 | VAL-030 | PC-016, PC-060, PC-061; ARCH-017, ARCH-023, ARCH-024, ARCH-031 | Prove the stable close-on-exec `admission.lock` shared/exclusive and `writer.lock` exclusive open-file-description primitives on each candidate filesystem; neither inode is replaced, unlinked, or inherited. Exercise shared compatibility, exclusive exclusion, fixed lock order, simultaneous writers, two stale reclaimers, durable live/stale/reused PID-plus-start-plus-namespace identities, malformed/missing/substituted synchronization and owner paths, and non-cooperating pathname changes. For each writer acquire, stale compare-transfer, and release, inject failure before/after temporary create/write/file-sync, prior owner inode/schema/generation/token/process comparison, stable lock-inode revalidation, atomic rename, parent sync, reopen/new-inode/full-byte verification, authority revalidation, released publication, writer unlock, and admission unlock. Race visible record/path A→B substitution, restoration attempts spanning a required boundary, inode replacement, token reuse/substitution, generation substitution/overflow, predecessor mismatch, and process death at every boundary. Do not claim detection of an indistinguishable same-UID A→B→A cycle fully restored between checks; do prove it grants no ZERB authority and that any substitution present at a boundary stops advancement. Exactly one kernel-lock holder may publish; tokens are fresh, generations strictly advance, journals bind the active generation/token, release is durably published before unlock, no synchronization or owner path is unlinked, age alone proves nothing, and a loser or unverified owner advances no candidate/journal/receipt/current/external mutation. |

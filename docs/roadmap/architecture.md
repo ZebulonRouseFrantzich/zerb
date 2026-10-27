@@ -616,6 +616,35 @@ Fresh root publication has schema 1, domain `zerb.root`, status `initializing`, 
 
 Fresh writer publication is `released`, generation zero, empty token, zero process, previous generation zero and empty previous token. Post-initialization bootstrap acquisition is `held`, generation one, a fresh distinct writer token and current process, previous generation zero and empty previous token. Its successful release is `released`, generation two, empty token and zero process, previous generation one and previous token equal to that held token. Preserve the declared non-pointer `processIdentity`: Go 1.24 `encoding/json` encodes its zero object despite `omitempty`, so released writer records include `"process":{"pid":0,"start":0,"pid_namespace":0}`; the empty token strings are omitted by their tags. Golden bytes freeze that representation. Other generation/transfer relations remain ARCH-031; FreshInit never advances an unrelated predecessor.
 
+General writer-owner value validation uses the same concrete ordered fields and
+4,096-byte strict canonical codec, without widening FreshInit's accepted subset.
+The following retained-field shapes follow from ARCH-031's closed acquisition,
+held-transfer and release increments, starting only at released generation zero:
+
+| Status/generation | Required predecessor fields |
+|---|---|
+| `released(0)` | Previous generation zero and empty previous token |
+| `held(1)` | Previous generation zero and empty previous token |
+| `held(2)` | Previous generation one and a nonempty previous token |
+| `held(g)`, `g >= 3` | Previous generation `g-1`; empty or nonempty previous token |
+| `released(g)`, `g >= 2` | Previous generation `g-1` and a nonempty previous token |
+
+Held generation zero is invalid. Released generation one would require a held
+generation-zero predecessor, so it is invalid; for the same reason held
+generation one cannot name a previous token, and held generation two cannot
+name an empty one. These are immediate consequences of the existing transitions,
+not reconstruction of deleted owner history. Both parities and permitted
+maximum-uint64 record values remain scalar-valid; a later successor attempt
+still refuses overflow under ARCH-031. The validator never increments a counter.
+Held records require a lowercase 32-hex token distinct from instance and positive
+PID/start/PID-namespace; released records clear token/process, retaining the
+existing mandatory zero process object in their canonical bytes. Every nonempty
+previous token is lowercase 32-hex and distinct from instance and, when held,
+the current token. Empty/nonempty held predecessor tokens distinguish released
+versus held predecessor shapes only; they prove no release, death or transfer.
+FreshInit-facing validation/encoding/decoding still admit only its exact
+released-zero, held-one and released-two forms and retain their existing errors.
+
 `currentRecord.Instance` equals the initialized owner pair. Its instance, operation ID, operation token and writer token are each exactly 32 lowercase hexadecimal characters; operation ID, operation token and writer token are pairwise distinct. Its operation ID/token and positive uint64 writer generation/token bind the exact journal and active writer at stable commit; initialization, writer and operation tokens remain distinct. These fields are mandatory even when candidate and receipt bytes equal the prior current relation. Candidate and receipt digests do not encode completion identity. Missing, malformed, mismatched or unsupported current identity fails closed; there is no compatibility decoder or migration. After commit, cleanup and any recovery compare-transfer preserve the exact committed current bytes, including its completed writer/operation identity; a later recovery writer does not become the committing writer.
 
 The bounded private current-record codec validates only this exact scalar/wire
@@ -640,6 +669,15 @@ Completion identity cross-validation uses these closed relations after ordinary 
 | Released owner `W` | `C` has an older generation. If `C.WriterGeneration == W.PreviousGeneration`, its writer token equals `W.PreviousToken`; if older, its token differs from `W.PreviousToken`. |
 
 A fresh held owner acquired from a released owner has an empty predecessor token and cannot satisfy the completed-held relation against an older current, regardless of their generation gap; that exact journal-less graph is pre-journal repair input. An admitted cleanup transfer has a nonempty predecessor token. Current binds the exact writer/operation at commit, and every admitted transfer validates the immediate predecessor plus retained current identity. Deleted historical owner generations are not reconstructed or claimed as independently retained evidence.
+
+The private current-to-writer value predicate first validates both scalar records
+and their instance equality, then applies only this table's held/released rows.
+It compares generations and predecessor fields without addition or overflow.
+Its Boolean correspondence does not validate the initialized owner pair, journal,
+candidate/receipt graph, process liveness or retained lock/record inodes, grant
+writer/completion authority, or classify a root. Those remain state-owned
+integration obligations. Journal correspondence is not implemented by this
+bounded writer/current increment.
 
 ### ARCH-025 — Prepared, mutating, dirty, and stable truth
 
