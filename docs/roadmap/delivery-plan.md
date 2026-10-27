@@ -205,6 +205,15 @@ cgroup admission, full retained invocation matrix and host qualification remain
 outstanding. Foundation conformance now explicitly races the new execenv package;
 this coverage strengthening does not create process execution authority.
 
+The owner approved the specialized private large-state codecs after the standard
+decoder's capacity exceeded the complete reservation for existing accepted output.
+First independently review the concrete representation/accounting plan and layout
+checks, then implement the closed canonical decoders and direct pending encoder,
+with differential/fuzz and exact-boundary evidence. Ordinary scalar codecs,
+formats, accepted values, the complete budget, package/API seams and aggregate
+resource/host gates remain unchanged. A passing layout argument alone is not
+production enforcement, file integration or a completed durable graph.
+
 ### Work
 
 1. Enforce the exact ARCH-030 one-way DAG and forbidden old-package seam for every package introduced in this phase. Phase 2 completes only `paths`, `safefs`, `profile`, `receipt`, `execenv`, `source`, `toolchain`, `state`, and test-only `testenv`; it does not create compile-only `mise`, `home`, `plan`, `recovery`, `app`, or `host` scaffolds. The DAG gate scans production and `_test.go`, rejects imports of every full old package tree including `internal/testutil`, and permits `internal/testenv` only from `_test.go`. No bridge, alias, re-export, registry, fallback, production `testenv` import, or old CLI route is permitted.
