@@ -1057,6 +1057,9 @@ func isGenerationSuccessor(previous, current uint64) bool {
 }
 
 func validWriterPredecessor(writer writerOwnerRecord) bool {
+	if writer.PreviousToken != "" && (!validIdentityToken(writer.PreviousToken) || writer.PreviousToken == writer.Instance) {
+		return false
+	}
 	if writer.Generation == 0 {
 		return writer.Status == "released" && writer.PreviousGeneration == 0 && writer.PreviousToken == ""
 	}

@@ -85,6 +85,7 @@ func TestProofCurrentlessReleasedWriterClassification(t *testing.T) {
 func TestProofCurrentlessInvalidWriterClassification(t *testing.T) {
 	for _, name := range []string{
 		"released-one", "released-empty-predecessor", "released-skipped-predecessor",
+		"released-short-token", "released-nonhex-token", "released-uppercase-token", "released-instance-token",
 		"released-pid", "released-start", "released-namespace", "released-process",
 		"held-one-token", "held-two-empty", "held-zero", "held-without-current",
 		"orphan-receipt", "extra-entry",
@@ -102,6 +103,14 @@ func TestProofCurrentlessInvalidWriterClassification(t *testing.T) {
 				writer.PreviousToken = ""
 			case "released-skipped-predecessor":
 				writer.PreviousGeneration = 0
+			case "released-short-token":
+				writer.PreviousToken = "a"
+			case "released-nonhex-token":
+				writer.PreviousToken = strings.Repeat("g", 32)
+			case "released-uppercase-token":
+				writer.PreviousToken = strings.Repeat("A", 32)
+			case "released-instance-token":
+				writer.PreviousToken = refs.instance
 			case "released-pid":
 				writer.Process.PID = 1
 			case "released-start":

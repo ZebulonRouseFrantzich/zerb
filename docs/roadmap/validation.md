@@ -353,8 +353,9 @@ shapes. A released owner may accompany `READY(∅)` at generation zero or any
 scalar-valid later released generation, including both parities and maximum
 uint64. This is distinct from FreshInit's intentionally narrower producer.
 Reject released generation one, held-one with a predecessor token, held-two
-without one, skipped/wrapped predecessors and every nonzero released-process
-tuple. A held owner without current does not become ordinary READY. Keep the
+without one, skipped/wrapped predecessors, malformed or instance-equal predecessor
+tokens and every nonzero released-process tuple. A held owner without current
+does not become ordinary READY. Keep the
 existing journal-less repair boundary separate.
 
 Exercise actual disposable proof directories with valid unreferenced immutable
