@@ -107,29 +107,16 @@ func encodeWriterOwner(record writerOwner) ([]byte, error) {
 	if !validWriterOwner(record) {
 		return nil, errInitRecord
 	}
-	data, err := json.Marshal(record)
-	if err != nil || len(data) > initRecordLimit {
+	data, err := encodeWriterOwnerRecord(record)
+	if err != nil {
 		return nil, errInitRecord
 	}
 	return data, nil
 }
 
 func decodeWriterOwner(data []byte) (writerOwner, error) {
-	if len(data) == 0 || len(data) > initRecordLimit {
-		return writerOwner{}, errInitRecord
-	}
-	var record writerOwner
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	if decoder.Decode(&record) != nil {
-		return writerOwner{}, errInitRecord
-	}
-	var trailing any
-	if decoder.Decode(&trailing) != io.EOF {
-		return writerOwner{}, errInitRecord
-	}
-	canonical, err := encodeWriterOwner(record)
-	if err != nil || !bytes.Equal(canonical, data) {
+	record, err := decodeWriterOwnerRecord(data)
+	if err != nil || !validWriterOwner(record) {
 		return writerOwner{}, errInitRecord
 	}
 	return record, nil
