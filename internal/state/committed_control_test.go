@@ -281,6 +281,37 @@ func TestCommittedControlWriterAndJournalRelations(t *testing.T) {
 	committedTestAssert(t, in, nil)
 }
 
+func TestCommittedControlAheadWriterToken(t *testing.T) {
+	for _, phase := range []Phase{PhasePendingReceipt, PhaseCleanup} {
+		t.Run(string(phase), func(t *testing.T) {
+			for _, tt := range []struct {
+				name  string
+				token string
+				want  error
+			}{
+				{"instance", strings.Repeat("1", 32), errCommittedControlRecords},
+				{"retained predecessor", strings.Repeat("6", 32), errCommittedControlRecords},
+				{"distinct", strings.Repeat("7", 32), nil},
+			} {
+				t.Run(tt.name, func(t *testing.T) {
+					in := committedTestInput(t, false)
+					in.Writer = writerRecordFixture(5, strings.Repeat("6", 32), false)
+					in.Writer.Token = strings.Repeat("5", 32)
+					j := committedTestReadJournal(t, in)
+					j.Phase = phase
+					j.WriterGeneration, j.WriterToken, j.WriterPreviousToken = 6, tt.token, in.Writer.Token
+					committedTestPutJournal(t, &in, j)
+					if !currentMatchesWriter(in.Current, in.Writer) {
+						t.Fatal("fixture must match retained current and writer")
+					}
+					_ = committedTestReadJournal(t, in)
+					committedTestAssert(t, in, tt.want)
+				})
+			}
+		})
+	}
+}
+
 func TestCommittedControlReceiptLinks(t *testing.T) {
 	for _, tt := range []struct {
 		name   string
