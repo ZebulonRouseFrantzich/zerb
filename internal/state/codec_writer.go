@@ -1,0 +1,125 @@
+package state
+
+import (
+	"strconv"
+	"unicode/utf8"
+
+	"github.com/ZebulonRouseFrantzich/zerb/internal/receipt"
+)
+
+// Sizing uses the same writer without a buffer. Encoding receives exactly the
+// reserved capacity and cannot grow it. No input-dependent pooled state survives.
+type codecJSONWriter struct {
+	out     []byte
+	size    uint64
+	strings uint64
+	failed  bool
+	writing bool
+}
+
+func (w *codecJSONWriter) raw(s string) {
+	if w.failed {
+		return
+	}
+	if w.size > codecReservationLimit || uint64(len(s)) > codecReservationLimit-w.size {
+		w.failed = true
+		return
+	}
+	w.size += uint64(len(s))
+	if w.writing {
+		if len(s) > cap(w.out)-len(w.out) {
+			w.failed = true
+			return
+		}
+		w.out = append(w.out, s...)
+	}
+}
+
+func (w *codecJSONWriter) string(s string) {
+	if w.failed {
+		return
+	}
+	w.strings++
+	if !utf8.ValidString(s) {
+		w.failed = true
+		return
+	}
+	w.raw(`"`)
+	start := 0
+	for i := 0; i < len(s); {
+		c := s[i]
+		if c >= 0x20 && c != '"' && c != '\\' && c != '<' && c != '>' && c != '&' {
+			if c < utf8.RuneSelf {
+				i++
+				continue
+			}
+			r, n := utf8.DecodeRuneInString(s[i:])
+			if r != '\u2028' && r != '\u2029' {
+				i += n
+				continue
+			}
+			w.raw(s[start:i])
+			if r == '\u2028' {
+				w.raw(`\u2028`)
+			} else {
+				w.raw(`\u2029`)
+			}
+			i += n
+			start = i
+			continue
+		}
+		w.raw(s[start:i])
+		switch c {
+		case '"':
+			w.raw(`\"`)
+		case '\\':
+			w.raw(`\\`)
+		case '\n':
+			w.raw(`\n`)
+		case '\r':
+			w.raw(`\r`)
+		case '\t':
+			w.raw(`\t`)
+		case '\b':
+			w.raw(`\b`)
+		case '\f':
+			w.raw(`\f`)
+		default:
+			const digits = "0123456789abcdef"
+			escaped := [6]byte{'\\', 'u', '0', '0', digits[c>>4], digits[c&15]}
+			w.raw(string(escaped[:]))
+		}
+		i++
+		start = i
+	}
+	w.raw(s[start:])
+	w.raw(`"`)
+}
+func (w *codecJSONWriter) digest(v receipt.Digest) { w.string(string(v)) }
+func (w *codecJSONWriter) integer(v int) {
+	var tmp [20]byte
+	w.raw(string(strconv.AppendInt(tmp[:0], int64(v), 10)))
+}
+func (w *codecJSONWriter) unsigned(v uint64) {
+	var tmp [20]byte
+	w.raw(string(strconv.AppendUint(tmp[:0], v, 10)))
+}
+func (w *codecJSONWriter) unsigned32(v uint32) { w.unsigned(uint64(v)) }
+func (w *codecJSONWriter) boolean(v bool) {
+	if v {
+		w.raw(`true`)
+	} else {
+		w.raw(`false`)
+	}
+}
+
+func (w *codecJSONWriter) tree(files []receipt.File) {
+	w.raw(`{"schema":1,"domain":"zerb.tree.v1","files":[`)
+	for i, file := range files {
+		if i != 0 {
+			w.raw(`,`)
+		}
+		w.file(file)
+	}
+	w.raw(`]}`)
+}
