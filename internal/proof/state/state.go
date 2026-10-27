@@ -1064,10 +1064,15 @@ func validWriterPredecessor(writer writerOwnerRecord) bool {
 		return false
 	}
 	if writer.Status == "released" {
-		return writer.PreviousToken != ""
+		return writer.Generation >= 2 && writer.PreviousToken != ""
 	}
-	return writer.Status == "held" && writer.Token != "" &&
-		(writer.PreviousToken == "" || writer.Token != writer.PreviousToken)
+	if writer.Status != "held" || writer.Token == "" || writer.Token == writer.PreviousToken {
+		return false
+	}
+	if writer.Generation == 1 {
+		return writer.PreviousToken == ""
+	}
+	return writer.Generation != 2 || writer.PreviousToken != ""
 }
 
 func candidateTemplate(profile string) candidateReferenceRecord {
@@ -1433,7 +1438,7 @@ func readCurrentAuthority(s, d string, uid int) (rootOwnerRecord, writerOwnerRec
 	if root != initializedRoot(root.Instance) || root.Instance == "" || owner != namespaceOwner(root.Instance, "data") ||
 		writer.Schema != 1 || writer.Domain != "zerb.writer-owner" || writer.Instance != root.Instance ||
 		(writer.Status != "released" && writer.Status != "held") ||
-		(writer.Status == "released" && (writer.Token != "" || validProcessIdentity(writer.Process))) ||
+		(writer.Status == "released" && (writer.Token != "" || writer.Process != (processIdentity{}))) ||
 		(writer.Status == "held" && (writer.Token == "" || !validProcessIdentity(writer.Process))) ||
 		!validWriterPredecessor(writer) {
 		return rootOwnerRecord{}, writerOwnerRecord{}, false
@@ -1468,10 +1473,7 @@ func readCurrentRelation(s string, uid int, instance string, currentPresent bool
 	return current, currentReceipt, true
 }
 
-func exactJournalLessCurrent(s, instance string, currentPresent bool, writer writerOwnerRecord, current currentRecord) string {
-	if !currentPresent && writer.Status == "released" && writer != releasedWriter(instance, "", 0, 0, "") {
-		return ""
-	}
+func exactJournalLessCurrent(s string, currentPresent bool, writer writerOwnerRecord, current currentRecord) string {
 	if !currentPresent {
 		if !validCandidateDirectory(filepath.Join(s, "candidates")) || !emptyDir(filepath.Join(s, "receipts")) {
 			return ""
@@ -1603,7 +1605,7 @@ func exactCurrent(s, d string, uid int) string {
 		return ""
 	}
 	if len(journalEntries) == 0 {
-		return exactJournalLessCurrent(s, root.Instance, currentPresent, writer, current)
+		return exactJournalLessCurrent(s, currentPresent, writer, current)
 	}
 	journal, valid := readCurrentJournal(s, uid, root.Instance, journalEntries[0], writer)
 	if !valid {

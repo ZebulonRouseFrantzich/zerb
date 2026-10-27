@@ -346,6 +346,24 @@ misses and every intermediate publication maximum. Neither per-codec success nor
 active reference counts supplies that outer proof. These graph rows remain
 planned and unexercised until actual implementation/evidence exists.
 
+### Currentless writer proof parity
+
+The disposable state proof must follow ARCH-024/031's closed retained writer
+shapes. A released owner may accompany `READY(∅)` at generation zero or any
+scalar-valid later released generation, including both parities and maximum
+uint64. This is distinct from FreshInit's intentionally narrower producer.
+Reject released generation one, held-one with a predecessor token, held-two
+without one, skipped/wrapped predecessors and every nonzero released-process
+tuple. A held owner without current does not become ordinary READY. Keep the
+existing journal-less repair boundary separate.
+
+Exercise actual disposable proof directories with valid unreferenced immutable
+candidates, orphan receipts and unexpected entries. Compare full file bytes,
+object identities, modes, owners and namespace inventories around classification.
+These tests repair proof-model consistency with PC-061/ARCH-018, not production
+Store integration, real writer-lock release, process-death inference, persistence
+or host qualification. The exported-path topology skips remain unqualified.
+
 ### Selected committed-control correspondence
 
 The ARCH-024/025/026 subset verifies only the selected committed records described

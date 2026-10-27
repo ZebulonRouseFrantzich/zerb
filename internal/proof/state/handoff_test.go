@@ -138,7 +138,7 @@ func TestCleanPlanningInitializationDoesNotClaimBootstrapWork(t *testing.T) {
 	}
 }
 
-func TestFreshReadyRequiresReleasedGenerationZero(t *testing.T) {
+func TestReadyRejectsImpossibleReleasedGenerationOne(t *testing.T) {
 	s, d, refs := makeGraph(t.TempDir(), "READY(∅)")
 	if err := writeRecord(s+"/writer-owner.json", releasedWriter(refs.instance, "", 1, 0, refs.priorWriterToken)); err != nil {
 		t.Fatal(err)
@@ -274,8 +274,8 @@ func TestProofTokenDomainsAreDistinct(t *testing.T) {
 	if validWriterPredecessor(releasedWriter(refs.instance, "", 1, 0, "")) {
 		t.Fatal("released generation-one owner admitted without the prior held token")
 	}
-	if !validWriterPredecessor(releasedWriter(refs.instance, "", 1, 0, refs.writerToken)) {
-		t.Fatal("released generation-one owner rejected the prior held token")
+	if validWriterPredecessor(releasedWriter(refs.instance, "", 1, 0, refs.writerToken)) {
+		t.Fatal("released generation-one owner admitted an impossible held-generation-zero predecessor")
 	}
 	if validWriterPredecessor(heldWriter(refs.instance, refs.writerToken, 2, processIdentity{}, 1, refs.writerToken)) {
 		t.Fatal("held writer admitted its own token as predecessor")
