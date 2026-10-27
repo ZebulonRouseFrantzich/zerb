@@ -350,6 +350,7 @@ class FilesystemTests(unittest.TestCase):
         self.assertIn("./internal/safefs", commands["foundation-race"])
         self.assertIn("./internal/toolchain", commands["foundation-race"])
         self.assertIn("./internal/state", commands["foundation-race"])
+        self.assertIn("./internal/execenv", commands["foundation-race"])
         self.assertIn("-trimpath", commands["release-build"])
         self.assertEqual(commands["release-build"][-1], "./cmd/zerb")
         self.assertIn("test_*.py", commands["python-boundaries"])
