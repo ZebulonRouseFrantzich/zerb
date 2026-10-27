@@ -108,6 +108,72 @@ exercise that arbitration without manufacturing a real-time total-order claim.
 
 For a normally exiting `exec` or `shell` child, PC-015 owns status propagation. Catchable wrapper signals are forwarded under the frozen policy, followed by escalation and reaping, and return the PC-015 signal-derived status. Context cancellation without an associated POSIX signal uses the same termination/reaping policy and returns the operational-failure status. An uncatchable wrapper death has no return. Deliberate detachment by arbitrary user payloads is outside orchestration only if PC-015 states that limit and validation proves ZERB supplies no manager credentials or manager-state paths to the detached process.
 
+#### Approved Runner ownership direction — activation remains gated
+
+The owner approved the following provisional direction for completing ARCH-009/010.
+It does not qualify a host or authorize managed execution while any activation
+condition below remains unproved.
+
+- Caller C retains caller-owned standard files and is the sole owner of ZERB's
+  physical-terminal bridge, terminal changes and restoration. Invocation owner O
+  is an invocation subreaper isolated from C's foreground session and owns
+  lifecycle cleanup. C is the
+  backup subreaper under one process-wide child-ownership contract; no unrelated
+  consumer may steal a registered child's wait status. The proposed descendant
+  topology C → O → supervisor S → launcher L/guard G is a direction to prove,
+  not authority to weaken the existing parent-death or release boundary.
+- Only narrowly validated null-device and PTY capabilities may supplement the
+  approved supplied-file transaction. Omitted streams receive direction-appropriate
+  null endpoints. Ordinary file authority is not broadened into generic device
+  access. Exact device, mount, peer and descriptor validation must be reviewed
+  before device acquisition is implemented; no ambient `/dev/tty` fallback,
+  mounting, permission repair or host-security change is implied.
+- Interactive shell initially requires the three supplied streams to identify
+  the same foreground controlling terminal under a cooperative-owner contract.
+  Redirected or headless interactive shell refuses; ordinary exec pipelines
+  remain supported. Same-terminal/foreground observations are not a kernel lease
+  against unrelated terminal controllers. C uses owned independent descriptions
+  so its bridge cannot change caller-visible shared status flags. In this path O
+  receives neither the physical-terminal descriptions nor a PTY-master backup.
+- C stops its bridge and restores only while it retains terminal authority;
+  authority loss must not cause a stale overwrite. Catchable cancellation still
+  requires complete process cleanup and exact status accounting before success.
+  If C is forcibly killed, ZERB's bridge stops but terminal state may remain raw:
+  an orphan helper must neither restore stale settings nor keep reading input.
+  This grants no claim about already-issued I/O or separately opened payload FDs.
+- While C remains available and the invocation has not irreversibly failed, a
+  consuming wait requires the exact raw child status to have reached C's retained
+  ledger and that receipt to have been acknowledged to the current wait owner.
+  An intermediate O acknowledgement alone is insufficient. Until then, `WNOWAIT`
+  preserves kernel status for adoption. If C dies or root status custody becomes
+  unavailable, surviving registered wait owners must latch invocation failure,
+  retain available exact raw statuses locally, and complete cleanup and reaping
+  without waiting for C's acknowledgement. This path cannot produce invocation
+  success; C's uncatchable death has no public return. Missing or unresolved status
+  remains failure and must never be synthesized as a zero guard result.
+  Role/spawn-intent and child-identity binding, adoption and whole-tree cleanup
+  remain required. A signaled or nonzero guard result is operational failure.
+
+Inert app/host propagation of the three process-file references, without opening,
+reading, duplicating or closing them during construction, follows the approved
+stream contract; general application I/O remains unchanged. It supplies no
+execution authority or reason to add compile-only app/host scaffolding.
+
+**Unclosed release condition:** In the proposed descendant topology O survives
+C's death, while L's immediate death relation names S. A final C-liveness check
+or authenticated release token does not synchronize C's later death with L's
+execution. Pausing death watchers, killing C, then running S/L can therefore
+violate death-before-release exclusion. Production activation must remain closed
+until an independently reviewed mechanism and its exact release linearization
+satisfy ARCH-009. Neither changing ancestry nor relaxing that exclusion is an
+ordinary implementation detail; either requires an explicit owner decision.
+
+Exact C/O/S/G placement outside the addressed kill subtree, authenticated stage
+and spawn registration, wait-status custody, class-root and cgroup authority,
+physical-device policy, and the complete concurrent descriptor/memory/work/cleanup
+ledger remain activation prerequisites. Local kernel custody observations prove
+only their stated subset, not these composed properties or frozen-host support.
+
 ### ARCH-011 — Complete process environments
 
 Unlisted variables and descriptors are absent. Phase 1 freezes the exact variable allowlist, replacement value, working directory, `HOME`/XDG roots, executable identity/search rule, network controls, prompt controls, and descriptors for every row below and proves the policy for descendants, not only leaders.

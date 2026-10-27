@@ -152,6 +152,33 @@ deadline/expiry checks establish no renewal; real-process elapsed durations are
 observations, not scheduler upper bounds. Cleanup failure must win status
 arbitration independently of an observed zero guard wait status.
 
+### Runner ownership and custody proof boundary
+
+The approved ARCH-009/010 ownership direction requires separate evidence for:
+
+1. Root C death before release, with death watchers deliberately unscheduled;
+   immediate-parent death evidence alone cannot qualify surviving O topology.
+2. Ordinary root status custody: exact raw wait status transferred to C and
+   acknowledged before consumption, including intermediate-owner death before
+   observation, before transfer, before/after C's acknowledgement and after
+   consumption. Separately exercise C death or unavailable root custody at every
+   boundary: latch failure, finish cleanup and reaping without C acknowledgement,
+   and never synthesize guard success from missing status. Distinguish normal
+   exit 137 from SIGKILL despite equal public status mapping. Finish with every
+   adopted child reaped; missing or unresolved identity/status is failure.
+3. Authenticated role/spawn-intent registration, interrupted birth and multi-hop
+   acknowledgement. A small C → O → child kernel test is not this full protocol.
+4. Trusted null and PTY/device acquisition; caller-only physical-terminal bridge,
+   cooperative foreground ownership, authority-loss refusal and catchable cleanup.
+   C's uncatchable death does not promise automatic physical-terminal restoration.
+5. The composed role/cgroup/namespace/resource ledger and actual retained process
+   classes, followed separately by required frozen-host/installed acceptance.
+
+Local disposable subprocess tests may exercise wait retention, adoption and raw
+status preservation without privilege or owner-host operations. They must not
+mark unexercised dispatch, root-death release, terminal, cgroup, resource or host
+rows passed. No new numeric resource envelope follows from a bounded test fixture.
+
 ## Protected roots, filesystem, archives, and destinations
 
 | ID | Requirements proved | Scenario and required evidence |
