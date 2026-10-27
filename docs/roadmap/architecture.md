@@ -1100,9 +1100,9 @@ type Spec struct {
     Args []string
     Dir string
     Env []string
-    Stdin io.Reader
-    Stdout io.Writer
-    Stderr io.Writer
+    Stdin *os.File
+    Stdout *os.File
+    Stderr *os.File
     Class Class
 }
 type Exit struct {
@@ -1115,6 +1115,8 @@ type Runner interface {
 func NewRunner() Runner
 func DispatchSupervisor() (handled bool, code int)
 ```
+
+The process-execution stream boundary accepts only explicit `*os.File` handles for stdin, stdout and stderr, including both `mise.Service.Exec` and the matching `app.Mise.Exec` seam. Callers retain ownership of their original files. The runner duplicates each supplied descriptor with close-on-exec ownership, closes only its own duplicates on every success/failure path, and supplies null endpoints for omitted streams; it never closes a caller file or starts an arbitrary reader/writer copy goroutine. Duplicating a descriptor shares its open-file description, including offsets and status flags: duplication does not isolate caller I/O, permit changing caller-visible flags, establish exclusive terminal ownership or solve PTY cancellation/restoration. Borrowing must synchronize with `os.File` close and avoid `File.Fd`'s blocking-mode conversion. The `app.Run`/`newOperations` application I/O and random-input interfaces remain general `io.Reader`/`io.Writer`; this execution seam must not silently narrow them or perform an unbounded bridge. Complete Runner activation, null-endpoint authority, dispatch, owned reaping, PTY handling and resource-fit integration remain separate required contracts/evidence; this stream contract grants no fallback runner or process release authority.
 
 `NewRunner` returns the one inert production runner value; construction performs no filesystem, environment, process, network, root-resolution, or durable-state work. `host.NewOptions` constructs one runner and supplies that exact instance to every service and as `app.Services.Runner`. `execenv.Spec` intentionally exposes no shell string, `ExtraFiles`, credential channel, transport mechanism, arbitrary descriptor, cgroup bypass, or alternate cancellation primitive. The production runner always performs the frozen executable-identity recheck, inherited-descriptor sanitation, same-binary supervisor handshake, class policy, and required cgroup setup before releasing the managed executable. `DispatchSupervisor` examines only the reserved close-on-exec control descriptor, validates its Unix-socket type, peer PID/UID, parent executable identity, one-time random protocol nonce, complete bounded specification, and parent-death relation, and consumes it only when every check passes; otherwise it returns `handled=false` without reading public argv or accepting any public dispatch token.
 
@@ -1394,7 +1396,7 @@ func (s *Service) Parse(*source.Effective) (LockedTool, error)
 func (s *Service) Inspect(context.Context, *toolchain.Handle, LockedTool) (Observation, error)
 func (s *Service) Install(context.Context, *toolchain.Handle, LockedTool) (Observation, error)
 func (s *Service) Environment(context.Context, *toolchain.Handle, LockedTool, receipt.ToolObservation) (Environment, error)
-func (s *Service) Exec(context.Context, *toolchain.Handle, LockedTool, receipt.ToolObservation, []string, io.Reader, io.Writer, io.Writer) (execenv.Exit, error)
+func (s *Service) Exec(context.Context, *toolchain.Handle, LockedTool, receipt.ToolObservation, []string, *os.File, *os.File, *os.File) (execenv.Exit, error)
 ```
 
 `Environment` is reconstructed from the exact stable candidate/receipt/tool observation under the caller's lease and contains no ZERB manager credential/state path. `Exec` releases the requested payload through `execenv.ClassExec`; `app.shell` combines the same environment with the exact promoted Bash executable and releases it through `execenv.ClassShell`. No separate shell metadata is generated or persisted.
@@ -1577,7 +1579,7 @@ type Mise interface {
     Inspect(context.Context, *toolchain.Handle, mise.LockedTool) (mise.Observation, error)
     Install(context.Context, *toolchain.Handle, mise.LockedTool) (mise.Observation, error)
     Environment(context.Context, *toolchain.Handle, mise.LockedTool, receipt.ToolObservation) (mise.Environment, error)
-    Exec(context.Context, *toolchain.Handle, mise.LockedTool, receipt.ToolObservation, []string, io.Reader, io.Writer, io.Writer) (execenv.Exit, error)
+    Exec(context.Context, *toolchain.Handle, mise.LockedTool, receipt.ToolObservation, []string, *os.File, *os.File, *os.File) (execenv.Exit, error)
 }
 type Home interface {
     Map(context.Context, *toolchain.Handle, *source.Effective) ([]home.Mapping, error)
