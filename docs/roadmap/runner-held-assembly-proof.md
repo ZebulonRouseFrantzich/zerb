@@ -144,3 +144,47 @@ private diagnostics, and twenty additional covered-race repetitions of all eleve
 integrated rows passed. Neither observation explains the initial failure or proves
 it unrelated. Preserve that unresolved result alongside any fresh gate/CI result;
 there is no claimed fix or general stability/qualification conclusion.
+
+## Failure diagnostic retention
+
+The collector now runs its three Go test stages with `-json`. Before execution,
+its existing measured Git source scan copies Go/module bytes from the same
+identity-checked open/read/hash operation. A frozen catalog admits only those
+package/test identifiers and source locations; tests cannot enlarge it by creating
+new source files. Capture is bounded by 4,096 files, 16 MiB total, 1 MiB per file,
+1,024-byte source paths and 256-byte test identifiers. These are diagnostic
+envelopes, not production codec or whole-Runner memory claims. The current fixture
+measures 370 source/module files and approximately 4.04 MB.
+
+For an output `report.json`, the command exclusively reserves an owner-only
+`report.json.checks.jsonl` beside it, syncing the directory. Before any test stage
+it persists a start record; before the next stage it flushes/fsyncs that stage's
+exit/unknown status and safe failure observations. Source binding precedes checks
+and collection completion records after-source stability. An interrupted start
+without completion remains unresolved. An unavailable checkpoint fails collection;
+existing output/journals are never overwritten or repaired. Raw output still dies
+with its disposable temporary log and never enters the journal/report.
+
+Failure evidence retains observed repo-relative file/line locations, catalogued
+top-level tests, collector arrival ordinals, and closed diagnostic role events.
+Dynamic subtest suffixes, messages, nonces, PIDs, descriptors, arbitrary paths and
+output hashes are omitted. Locations identify source assertions without copying
+their formatted values; they do not authenticate an assertion's execution.
+Held assembly emits actual Wait4/retained EXIT facts, separately from expected
+statuses, plus send/receive/birth/refusal events. `harness` and `fixture` are
+diagnostic actors, not authenticated F/O/M/S/G roles. Child output streams to the
+outer test capture, avoiding the former 8 KiB prefix truncation. Diagnostic-write
+failure retains rejection/cleanup behavior, including untransferred capabilities.
+
+The reducer accepts at most 64 KiB per line and keeps a 4,096-event tail, separate
+bounded source locations and failure synopses (last eight source-location
+ordinals and sixteen typed observations). Overflow, malformed/unknown records,
+missing failure locations or unsupported output are explicitly incomplete. Early
+failure locations survive later pass traffic. Producer-local sequence and capture
+arrival do not establish a global causal order; uninstrumented subprocesses have
+no newly claimed wait/status coverage. These diagnostics grant no authority.
+
+Intentional no-role failures verify ordinary and late assertion retention, actual
+driver/child statuses and secret-free structured output. They are regression
+fixtures, not successful lifecycle/qualification rows. Nothing in this change
+explains or erases the historical `75af604` failure.

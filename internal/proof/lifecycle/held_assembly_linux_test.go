@@ -5,14 +5,17 @@ package lifecycle
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -27,15 +30,15 @@ func TestAuthenticatedHeldAssembly(t *testing.T) {
 	for _, mode := range []string{"held", "foreign-sender", "wrong-parent", "wrong-nonce", "replayed-phase", "substituted-backup", "interrupted-S", "interrupted-G", "owner-loss", "queued-owner-ack", "marker-fd"} {
 		t.Run(mode, func(t *testing.T) {
 			cmd := heldAssemblyCommand("F", mode, t.TempDir())
-			var output custodyOutput
-			cmd.Stdout, cmd.Stderr = &output, &output
+			cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 			err := cmd.Run()
+			heldAssemblyHarnessWait(t, cmd, mode, "F")
 			var exit *exec.ExitError
 			if errors.As(err, &exit) && exit.ExitCode() == 77 {
-				t.Skipf("unexercised retained-status capability: %s", output.Bytes())
+				t.Skip("unexercised retained-status capability")
 			}
 			if err != nil {
-				t.Fatalf("held assembly: %v\n%s", err, output.Bytes())
+				t.Fatalf("held assembly: %v", err)
 			}
 		})
 	}
@@ -71,28 +74,208 @@ func TestHeldAssemblyChild(t *testing.T) {
 	os.Exit(0)
 }
 
+const heldAssemblyTracePrefix = "ZERB_ASSEMBLY_TRACE "
+
+var heldAssemblyTraceSequence atomic.Uint64
+
+type heldAssemblyTraceRecord struct {
+	Role      string  `json:"role"`
+	Mode      string  `json:"mode"`
+	Sequence  uint64  `json:"sequence"`
+	Event     string  `json:"event"`
+	Phase     string  `json:"phase"`
+	Subject   string  `json:"subject"`
+	RawStatus *uint32 `json:"raw_status,omitempty"`
+}
+
+func heldAssemblyTraceRole(value string) bool {
+	switch value {
+	case "F", "M", "O", "S", "G", "harness", "fixture":
+		return true
+	}
+	return false
+}
+
+func heldAssemblyTraceMode(value string) bool {
+	switch value {
+	case "held", "foreign-sender", "wrong-parent", "wrong-nonce", "replayed-phase", "substituted-backup", "interrupted-S", "interrupted-G", "owner-loss", "queued-owner-ack", "marker-fd":
+		return true
+	}
+	return false
+}
+
+func heldAssemblyTracePhase(value string) string {
+	switch value {
+	case "hello", "scope", "scoped", "birth", "birth-interrupted", "birth-refused", "register", "registered", "refused", "retire", "retired", "arm-request", "arm-refused", "stop", "stop-G", "child-status", "parent-scope", "parent-scoped", "parent-register", "parent-registered", "arm", "startup", "cleanup", "status", "unknown":
+		return value
+	}
+	return "unknown"
+}
+
+func heldAssemblyTraceSubject(value string) string {
+	if heldAssemblyTraceRole(value) && value != "harness" && value != "fixture" {
+		return value
+	}
+	return "unknown"
+}
+
+func heldAssemblyTraceBytes(record heldAssemblyTraceRecord) ([]byte, error) {
+	if !heldAssemblyTraceRole(record.Role) || !heldAssemblyTraceMode(record.Mode) || record.Sequence == 0 ||
+		record.Phase != heldAssemblyTracePhase(record.Phase) || record.Subject != heldAssemblyTraceSubject(record.Subject) {
+		return nil, errors.New("invalid closed assembly trace field")
+	}
+	statusEvent := false
+	switch record.Event {
+	case "wait", "retained-exit":
+		statusEvent = true
+	case "send", "received", "birth", "refusal", "error-send", "error-receive", "error-live-before", "error-live-after", "error-wait", "error-retained-exit", "error-birth":
+	default:
+		return nil, errors.New("invalid closed assembly trace event")
+	}
+	if statusEvent != (record.RawStatus != nil) || record.RawStatus != nil && *record.RawStatus > 65535 {
+		return nil, errors.New("invalid assembly trace status")
+	}
+	payload, err := json.Marshal(record)
+	if err != nil {
+		return nil, errors.New("assembly trace encoding failed")
+	}
+	line := append([]byte(heldAssemblyTracePrefix), payload...)
+	line = append(line, '\n')
+	if len(line) > 512 {
+		return nil, errors.New("assembly trace record exceeds bound")
+	}
+	return line, nil
+}
+
+func heldAssemblyWriteTrace(fd int, record heldAssemblyTraceRecord) error {
+	line, err := heldAssemblyTraceBytes(record)
+	if err != nil {
+		return err
+	}
+	n, err := unix.Write(fd, line) // One bounded write; no buffering or dynamic error text enters the trace.
+	if n != len(line) {
+		err = errors.Join(err, io.ErrShortWrite)
+	}
+	return err
+}
+
+func heldAssemblyRecord(event, phase, subject string, raw *uint32) error {
+	return heldAssemblyWriteTrace(2, heldAssemblyTraceRecord{
+		Role: os.Getenv("ZERB_ASSEMBLY_ROLE"), Mode: os.Getenv("ZERB_ASSEMBLY_MODE"), Sequence: heldAssemblyTraceSequence.Add(1),
+		Event: event, Phase: heldAssemblyTracePhase(phase), Subject: heldAssemblyTraceSubject(subject), RawStatus: raw,
+	})
+}
+
+// The diagnostic observer is outside the F/M/O/S/G authority tree. Its wait
+// record describes only the actual child consumed by this test harness.
+func heldAssemblyHarnessRecord(t *testing.T, event, phase, subject string, raw *uint32, mode string) {
+	t.Helper()
+	record := heldAssemblyTraceRecord{Role: "harness", Mode: mode, Sequence: heldAssemblyTraceSequence.Add(1), Event: event, Phase: heldAssemblyTracePhase(phase), Subject: heldAssemblyTraceSubject(subject), RawStatus: raw}
+	if err := heldAssemblyWriteTrace(2, record); err != nil {
+		t.Fatalf("harness trace write failed: %v", err)
+	}
+}
+
+func heldAssemblyHarnessWait(t *testing.T, cmd *exec.Cmd, mode, subject string) {
+	t.Helper()
+	if cmd.ProcessState == nil {
+		heldAssemblyHarnessRecord(t, "error-wait", "status", subject, nil, mode)
+		t.Fatal("harness child wait unavailable")
+	}
+	status, ok := cmd.ProcessState.Sys().(syscall.WaitStatus)
+	if !ok {
+		heldAssemblyHarnessRecord(t, "error-wait", "status", subject, nil, mode)
+		t.Fatal("harness child wait status unavailable")
+	}
+	raw := uint32(status)
+	heldAssemblyHarnessRecord(t, "wait", "status", subject, &raw, mode)
+}
+
+func heldAssemblyTrace(t *testing.T, event, phase, subject string, raw *uint32) {
+	t.Helper()
+	if err := heldAssemblyRecord(event, phase, subject, raw); err != nil {
+		t.Fatalf("assembly trace write failed: %v", err)
+	}
+}
+
+// These local observations log returned kernel facts before comparing expected
+// values. Expected raw status is never substituted for an actual observation.
+func heldAssemblyWait(t *testing.T, pid int, want uint32, subject string) uint32 {
+	t.Helper()
+	for {
+		var status syscall.WaitStatus
+		got, err := syscall.Wait4(pid, &status, 0, nil)
+		if err == syscall.EINTR {
+			continue
+		}
+		if err != nil || got != pid {
+			heldAssemblyTrace(t, "error-wait", "status", subject, nil)
+			t.Fatalf("exact held wait failed: %v", err)
+		}
+		raw := uint32(status)
+		heldAssemblyTrace(t, "wait", "status", subject, &raw)
+		if raw != want {
+			t.Fatalf("exact held wait raw=%#x want=%#x", raw, want)
+		}
+		return raw
+	}
+}
+
+func heldAssemblyStored(t *testing.T, fd int, want uint32, subject string) {
+	t.Helper()
+	info, err := cloneTraceGetInfo(fd)
+	if err != nil || info.Mask&(1<<3) == 0 {
+		heldAssemblyTrace(t, "error-retained-exit", "status", subject, nil)
+		t.Fatalf("held retained EXIT unavailable: %v", err)
+	}
+	raw := uint32(info.Exit)
+	heldAssemblyTrace(t, "retained-exit", "status", subject, &raw)
+	if raw != want {
+		t.Fatalf("held retained EXIT raw=%#x want=%#x", raw, want)
+	}
+}
+
 func heldAssemblySend(t *testing.T, control *os.File, frame assemblyMessage, phase string, rights ...int) {
 	t.Helper()
 	frame.Phase = phase
 	if err := sendAssemblyPacket(control, frame, rights...); err != nil {
+		heldAssemblyTrace(t, "error-send", phase, frame.Role, nil)
 		t.Fatalf("assembly send %s: %v", phase, err)
 	}
+	heldAssemblyTrace(t, "send", phase, frame.Role, nil)
 }
 
 // The transport authenticates the writer; the held pidfd additionally refuses
 // queued packets from a terminal role, even before its natural wait consumes it.
-func heldAssemblyRead(control *os.File, sender, senderFD, rights int) (assemblyMessage, []*os.File, error) {
+func heldAssemblyRead(t *testing.T, control *os.File, sender, senderFD, rights int) (assemblyMessage, []*os.File, error) {
+	traceError := func(event string) error {
+		err := heldAssemblyRecord(event, "unknown", "unknown", nil)
+		if err != nil {
+			t.Errorf("assembly trace write failed: %v", err)
+		}
+		return err
+	}
 	if err := heldAssemblyLive(senderFD, sender, -1); err != nil {
-		return assemblyMessage{}, nil, err
+		return assemblyMessage{}, nil, errors.Join(err, traceError("error-live-before"))
 	}
 	frame, files, err := receiveAssemblyPacket(control, sender, uint32(os.Geteuid()), rights)
 	if err != nil {
-		return frame, files, err
+		for _, file := range files {
+			err = errors.Join(err, file.Close())
+		}
+		return assemblyMessage{}, nil, errors.Join(err, traceError("error-receive"))
 	}
 	if err := heldAssemblyLive(senderFD, sender, -1); err != nil {
 		for _, file := range files {
 			err = errors.Join(err, file.Close())
 		}
+		return assemblyMessage{}, nil, errors.Join(err, traceError("error-live-after"))
+	}
+	if err := heldAssemblyRecord("received", frame.Phase, frame.Role, nil); err != nil {
+		for _, file := range files {
+			err = errors.Join(err, file.Close())
+		}
+		t.Errorf("assembly trace write failed: %v", err)
 		return assemblyMessage{}, nil, err
 	}
 	return frame, files, nil
@@ -100,7 +283,7 @@ func heldAssemblyRead(control *os.File, sender, senderFD, rights int) (assemblyM
 
 func heldAssemblyReceive(t *testing.T, control *os.File, sender, senderFD, rights int) (assemblyMessage, []*os.File) {
 	t.Helper()
-	frame, files, err := heldAssemblyRead(control, sender, senderFD, rights)
+	frame, files, err := heldAssemblyRead(t, control, sender, senderFD, rights)
 	if err != nil {
 		heldAssemblyClose(t, files)
 		t.Fatalf("assembly receive from held live sender: %v", err)
@@ -114,14 +297,16 @@ func heldAssemblyExpect(t *testing.T, control *os.File, sender, senderFD int, wa
 	got, files := heldAssemblyReceive(t, control, sender, senderFD, 0)
 	heldAssemblyClose(t, files)
 	if got != want {
+		heldAssemblyTrace(t, "refusal", phase, want.Role, nil)
 		t.Fatalf("assembly phase %s refused or unbound", phase)
 	}
 }
 
 func heldAssemblyRefuse(t *testing.T, control *os.File, sender, senderFD int, frame assemblyMessage) {
 	t.Helper()
+	heldAssemblyTrace(t, "refusal", "refused", frame.Role, nil)
 	heldAssemblySend(t, control, frame, "refused")
-	_, files, err := heldAssemblyRead(control, sender, senderFD, 0)
+	_, files, err := heldAssemblyRead(t, control, sender, senderFD, 0)
 	heldAssemblyClose(t, files)
 	if err == nil {
 		t.Fatal("failed role accepted a subsequent assembly packet")
@@ -238,6 +423,7 @@ func heldAssemblyStart(t *testing.T, role, mode, root string, files []*os.File, 
 	attr.PidFD = &fd
 	cmd.SysProcAttr = attr
 	if err := cmd.Start(); err != nil {
+		heldAssemblyTrace(t, "error-birth", "startup", role, nil)
 		t.Fatal(err)
 	}
 	pid := cmd.Process.Pid
@@ -248,6 +434,31 @@ func heldAssemblyStart(t *testing.T, role, mode, root string, files []*os.File, 
 		t.Fatal("atomic birth capability absent")
 	}
 	groupProofFD(t, fd)
+	if traceErr := heldAssemblyRecord("birth", "startup", role, nil); traceErr != nil {
+		// Logging failure precedes handoff: revoke the exact birth capability, and
+		// consume only a natural child. F still owns CLONE_PARENT S's actual wait.
+		signalErr := unix.PidfdSendSignal(fd, syscall.SIGKILL, nil, 0)
+		if signalErr == syscall.ESRCH {
+			signalErr = nil
+		}
+		var waitErr error
+		if signalErr == nil && attr.Cloneflags&syscall.CLONE_PARENT == 0 {
+			var raw syscall.WaitStatus
+			for {
+				var got int
+				got, waitErr = syscall.Wait4(pid, &raw, 0, nil)
+				if waitErr == syscall.EINTR {
+					continue
+				}
+				if waitErr == nil && got != pid {
+					waitErr = errors.New("birth diagnostic cleanup wait differs")
+				}
+				break
+			}
+		}
+		closeErr := unix.Close(fd)
+		t.Fatalf("birth trace write failed: %v", errors.Join(traceErr, signalErr, waitErr, closeErr))
+	}
 	return pid, fd
 }
 
@@ -295,7 +506,8 @@ func heldAssemblyCaller(t *testing.T) bool {
 	var mu sync.Mutex
 	owned := make(map[int]int)
 	waited := make(map[int]uint32)
-	wait := func(pid int, raw uint32) { cloneTraceWait(t, pid, raw); waited[pid] = raw }
+	subjects := make(map[int]string)
+	wait := func(pid int, raw uint32) { waited[pid] = heldAssemblyWait(t, pid, raw, subjects[pid]) }
 	add := func(pid, fd int) { mu.Lock(); owned[pid] = fd; mu.Unlock() }
 	cleanup := func() {
 		mu.Lock()
@@ -331,13 +543,20 @@ func heldAssemblyCaller(t *testing.T) bool {
 			}
 			if waitErr != nil || pid == 0 && time.Now().After(deadline) {
 				t.Errorf("held cleanup unresolved: %v", waitErr)
+				if err := heldAssemblyRecord("error-wait", "cleanup", "unknown", nil); err != nil {
+					t.Errorf("cleanup trace write failed: %v", err)
+				}
 				break
 			}
 			if pid == 0 {
 				time.Sleep(time.Millisecond)
 				continue
 			}
-			waited[pid] = uint32(raw)
+			observedRaw := uint32(raw)
+			waited[pid] = observedRaw
+			if err := heldAssemblyRecord("wait", "cleanup", subjects[pid], &observedRaw); err != nil {
+				t.Errorf("cleanup trace write failed: %v", err)
+			}
 		}
 		// A registered G may already have been consumed by O. ECHILD alone cannot
 		// supply that fact; require retained EXIT from every capability we accepted.
@@ -346,8 +565,15 @@ func heldAssemblyCaller(t *testing.T) bool {
 			info, err := cloneTraceGetInfo(fd)
 			if err != nil || info.Mask&(1<<3) == 0 {
 				t.Errorf("held cleanup retained EXIT unresolved: %v", err)
+				if traceErr := heldAssemblyRecord("error-retained-exit", "cleanup", subjects[pid], nil); traceErr != nil {
+					t.Errorf("cleanup trace write failed: %v", traceErr)
+				}
 			} else {
 				retained[pid] = uint32(info.Exit)
+				observedRaw := retained[pid]
+				if err := heldAssemblyRecord("retained-exit", "cleanup", subjects[pid], &observedRaw); err != nil {
+					t.Errorf("cleanup trace write failed: %v", err)
+				}
 				if raw, ok := waited[pid]; ok && retained[pid] != raw {
 					t.Error("retained EXIT differs from F actual wait")
 				}
@@ -377,6 +603,7 @@ func heldAssemblyCaller(t *testing.T) bool {
 	}
 	mPID, mFD := heldAssemblyStart(t, "M", mode, root, mFiles, &syscall.SysProcAttr{Setsid: true, Pdeathsig: syscall.SIGKILL})
 	add(mPID, mFD)
+	subjects[mPID] = "M"
 	if err := mc.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -387,6 +614,7 @@ func heldAssemblyCaller(t *testing.T) bool {
 	sc = nil
 	oPID, oFD := heldAssemblyStart(t, "O", mode, root, oFiles, &syscall.SysProcAttr{Setsid: true})
 	add(oPID, oFD)
+	subjects[oPID] = "O"
 	if err := oc.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -444,6 +672,7 @@ func heldAssemblyCaller(t *testing.T) bool {
 		t.Fatal(err)
 	}
 	add(sPID, sFD)
+	subjects[sPID] = "S"
 	heldAssemblySend(t, o, of, "birth")
 	if mode == "interrupted-G" {
 		heldAssemblyExpect(t, o, oPID, oFD, of, "birth-interrupted")
@@ -456,8 +685,8 @@ func heldAssemblyCaller(t *testing.T) bool {
 			heldAssemblyClose(t, rights)
 			t.Fatal("wrong-parent refusal absent")
 		}
-		cloneTraceStored(t, int(rights[0].Fd()), birth.Raw)
-		heldAssemblyClose(t, rights)
+		defer heldAssemblyClose(t, rights)
+		heldAssemblyStored(t, int(rights[0].Fd()), birth.Raw, "G")
 		fail()
 		return false
 	}
@@ -476,6 +705,7 @@ func heldAssemblyCaller(t *testing.T) bool {
 		t.Fatal(err)
 	}
 	add(gPID, gFD)
+	subjects[gPID] = "G"
 	ids[3], ids[4] = sPID, gPID
 	if !heldAssemblyTuple(ids, true) {
 		t.Fatal("incomplete or repeated all-role tuple")
@@ -503,7 +733,7 @@ func heldAssemblyCaller(t *testing.T) bool {
 			t.Fatal(err)
 		}
 		wait(oPID, uint32(syscall.SIGKILL))
-		cloneTraceStored(t, oFD, uint32(syscall.SIGKILL))
+		heldAssemblyStored(t, oFD, uint32(syscall.SIGKILL), "O")
 		fail()
 		return false
 	}
@@ -521,14 +751,14 @@ func heldAssemblyCaller(t *testing.T) bool {
 	}
 	if mode == "queued-owner-ack" {
 		custodyCheck(t, custodyObserve(t, oPID), oPID, "29") // Actual WNOWAIT observation; O remains unconsumed.
-		_, files, err := heldAssemblyRead(o, oPID, oFD, 0)
+		_, files, err := heldAssemblyRead(t, o, oPID, oFD, 0)
 		heldAssemblyClose(t, files)
 		if err == nil {
 			t.Fatal("queued registration ACK from terminal O accepted")
 		}
 		fail()
 		wait(oPID, 29<<8)
-		cloneTraceStored(t, oFD, 29<<8)
+		heldAssemblyStored(t, oFD, 29<<8, "O")
 		return false
 	}
 	heldAssemblyExpect(t, o, oPID, oFD, of, "registered")
@@ -546,7 +776,7 @@ func heldAssemblyCaller(t *testing.T) bool {
 	if mode == "foreign-sender" {
 		heldAssemblySend(t, foreign, gf, "registered")
 		heldAssemblySend(t, g, gf, "register", mFD)
-		_, unexpected, err := heldAssemblyRead(g, gPID, gFD, 0)
+		_, unexpected, err := heldAssemblyRead(t, g, gPID, gFD, 0)
 		heldAssemblyClose(t, unexpected)
 		if err == nil {
 			t.Fatal("actual foreign writer accepted matching G frame")
@@ -582,17 +812,17 @@ func heldAssemblyCaller(t *testing.T) bool {
 	heldAssemblySend(t, m, mf, "stop")
 	heldAssemblySend(t, s, sf, "stop")
 	wait(mPID, 11<<8)
-	cloneTraceStored(t, mFD, 11<<8)
+	heldAssemblyStored(t, mFD, 11<<8, "M")
 	wait(sPID, 137<<8)
-	cloneTraceStored(t, sFD, 137<<8)
+	heldAssemblyStored(t, sFD, 137<<8, "S")
 	heldAssemblySend(t, o, of, "stop-G")
 	status := of
 	status.ChildPID = gPID
 	heldAssemblyExpect(t, o, oPID, oFD, status, "child-status") // O consumed raw unarmed G zero.
-	cloneTraceStored(t, gFD, 0)
+	heldAssemblyStored(t, gFD, 0, "G")
 	heldAssemblySend(t, o, of, "stop")
 	wait(oPID, 0)
-	cloneTraceStored(t, oFD, 0)
+	heldAssemblyStored(t, oFD, 0, "O")
 	groupProofNoChildren(t)
 	return false
 }
@@ -626,6 +856,7 @@ func heldAssemblyChild(t *testing.T, role string) {
 	parent, err := validateInternalControl(3)
 	if err != nil {
 		if role == "G" && mode == "wrong-parent" {
+			heldAssemblyTrace(t, "refusal", "startup", "G", nil)
 			os.Exit(23)
 		}
 		t.Fatalf("exact-parent bootstrap refused: %v", err)
@@ -741,12 +972,12 @@ func heldAssemblyCreator(t *testing.T, control, self, temporary, rootCap *os.Fil
 	birth.ChildPID = pid
 	if mode == "interrupted-S" {
 		heldAssemblySend(t, control, scope, "birth-interrupted")
-		_, files, _ := heldAssemblyRead(control, parent, int(rootCap.Fd()), 0)
+		_, files, _ := heldAssemblyRead(t, control, parent, int(rootCap.Fd()), 0)
 		heldAssemblyClose(t, files)
 		return
 	}
 	heldAssemblySend(t, control, birth, "birth", fd)
-	frame, files, err := heldAssemblyRead(control, parent, int(rootCap.Fd()), 0)
+	frame, files, err := heldAssemblyRead(t, control, parent, int(rootCap.Fd()), 0)
 	heldAssemblyClose(t, files)
 	if err != nil {
 		return
@@ -755,7 +986,7 @@ func heldAssemblyCreator(t *testing.T, control, self, temporary, rootCap *os.Fil
 		t.Fatal("M complete registration differs from birth")
 	}
 	heldAssemblySend(t, control, frame, "registered")
-	command, files, err := heldAssemblyRead(control, parent, int(rootCap.Fd()), 0)
+	command, files, err := heldAssemblyRead(t, control, parent, int(rootCap.Fd()), 0)
 	heldAssemblyClose(t, files)
 	if err != nil {
 		return
@@ -777,7 +1008,7 @@ func heldAssemblyCreator(t *testing.T, control, self, temporary, rootCap *os.Fil
 }
 
 func heldAssemblyLeaf(t *testing.T, control, rootCap *os.File, rootPID int, image executableIdentity, hello assemblyMessage, role string) {
-	frame, files, err := heldAssemblyRead(control, rootPID, int(rootCap.Fd()), 1)
+	frame, files, err := heldAssemblyRead(t, control, rootPID, int(rootCap.Fd()), 1)
 	if err != nil {
 		heldAssemblyClose(t, files)
 		return
@@ -796,7 +1027,7 @@ func heldAssemblyLeaf(t *testing.T, control, rootCap *os.File, rootPID int, imag
 		return
 	}
 	heldAssemblySend(t, control, frame, "registered")
-	command, extras, err := heldAssemblyRead(control, rootPID, int(rootCap.Fd()), 0)
+	command, extras, err := heldAssemblyRead(t, control, rootPID, int(rootCap.Fd()), 0)
 	heldAssemblyClose(t, extras)
 	if err != nil {
 		return
@@ -855,8 +1086,29 @@ func heldAssemblyOwner(t *testing.T, control, self, temporary, rootCap *os.File,
 				}
 				if err != nil || got != pid {
 					t.Errorf("O actual child cleanup wait: %v", err)
+					if err := heldAssemblyRecord("error-wait", "cleanup", "G", nil); err != nil {
+						t.Errorf("O cleanup trace write failed: %v", err)
+					}
 				} else {
-					cloneTraceStored(t, fd, uint32(raw))
+					observedRaw := uint32(raw)
+					if err := heldAssemblyRecord("wait", "cleanup", "G", &observedRaw); err != nil {
+						t.Errorf("O cleanup trace write failed: %v", err)
+					}
+					info, err := cloneTraceGetInfo(fd)
+					if err != nil || info.Mask&(1<<3) == 0 {
+						t.Errorf("O cleanup retained EXIT unavailable: %v", err)
+						if err := heldAssemblyRecord("error-retained-exit", "cleanup", "G", nil); err != nil {
+							t.Errorf("O cleanup trace write failed: %v", err)
+						}
+					} else {
+						retainedRaw := uint32(info.Exit)
+						if err := heldAssemblyRecord("retained-exit", "cleanup", "G", &retainedRaw); err != nil {
+							t.Errorf("O cleanup trace write failed: %v", err)
+						}
+						if retainedRaw != observedRaw {
+							t.Error("O cleanup retained EXIT differs from actual wait")
+						}
+					}
 				}
 				break
 			}
@@ -868,12 +1120,12 @@ func heldAssemblyOwner(t *testing.T, control, self, temporary, rootCap *os.File,
 	birth := scope
 	birth.ChildPID = pid
 	if mode == "wrong-parent" {
-		cloneTraceWait(t, pid, 23<<8)
-		cloneTraceStored(t, fd, 23<<8)
+		heldAssemblyWait(t, pid, 23<<8, "G")
+		heldAssemblyStored(t, fd, 23<<8, "G")
 		consumed = true
 		birth.Raw = 23 << 8
 		heldAssemblySend(t, control, birth, "birth-refused", fd)
-		_, files, _ := heldAssemblyRead(control, parent, int(rootCap.Fd()), 0)
+		_, files, _ := heldAssemblyRead(t, control, parent, int(rootCap.Fd()), 0)
 		heldAssemblyClose(t, files)
 		return
 	}
@@ -891,12 +1143,12 @@ func heldAssemblyOwner(t *testing.T, control, self, temporary, rootCap *os.File,
 	heldAssemblyExpect(t, guard, pid, fd, gf, "parent-scoped")
 	if mode == "interrupted-G" {
 		heldAssemblySend(t, control, scope, "birth-interrupted")
-		_, files, _ := heldAssemblyRead(control, parent, int(rootCap.Fd()), 0)
+		_, files, _ := heldAssemblyRead(t, control, parent, int(rootCap.Fd()), 0)
 		heldAssemblyClose(t, files)
 		return
 	}
 	heldAssemblySend(t, control, birth, "birth", fd)
-	frame, files, err := heldAssemblyRead(control, parent, int(rootCap.Fd()), 2)
+	frame, files, err := heldAssemblyRead(t, control, parent, int(rootCap.Fd()), 2)
 	if err != nil {
 		heldAssemblyClose(t, files)
 		return
@@ -915,7 +1167,7 @@ func heldAssemblyOwner(t *testing.T, control, self, temporary, rootCap *os.File,
 	gf.IDs = frame.IDs
 	heldAssemblySend(t, guard, gf, "parent-register")
 	heldAssemblyExpect(t, guard, pid, fd, gf, "parent-registered")
-	command, extras, err := heldAssemblyRead(control, parent, int(rootCap.Fd()), 0)
+	command, extras, err := heldAssemblyRead(t, control, parent, int(rootCap.Fd()), 0)
 	heldAssemblyClose(t, extras)
 	if err != nil {
 		return
@@ -931,8 +1183,8 @@ func heldAssemblyOwner(t *testing.T, control, self, temporary, rootCap *os.File,
 	heldAssemblySend(t, control, frame, "arm-refused")
 	heldAssemblyExpect(t, control, parent, int(rootCap.Fd()), frame, "stop-G")
 	heldAssemblySend(t, guard, gf, "stop")
-	cloneTraceWait(t, pid, 0)
-	cloneTraceStored(t, fd, 0)
+	heldAssemblyWait(t, pid, 0, "G")
+	heldAssemblyStored(t, fd, 0, "G")
 	consumed = true
 	report := frame
 	report.ChildPID = pid
@@ -974,7 +1226,7 @@ func heldAssemblyGuard(t *testing.T, control, self, rootCap *os.File, parent int
 	heldAssemblySend(t, custody, direct, "hello")
 	// Parent and F registration order is independent. O validates backup rights
 	// before it sends this complete parent binding; G never treats it as F's ACK.
-	parentFrame, files, err := heldAssemblyRead(control, parent, int(parentCap.Fd()), 0)
+	parentFrame, files, err := heldAssemblyRead(t, control, parent, int(parentCap.Fd()), 0)
 	heldAssemblyClose(t, files)
 	if err != nil {
 		return
@@ -983,7 +1235,7 @@ func heldAssemblyGuard(t *testing.T, control, self, rootCap *os.File, parent int
 		t.Fatal("G parent complete registration rejected")
 	}
 	heldAssemblySend(t, control, parentFrame, "parent-registered")
-	frame, rights, err := heldAssemblyRead(custody, rootPID, int(rootCap.Fd()), 1)
+	frame, rights, err := heldAssemblyRead(t, custody, rootPID, int(rootCap.Fd()), 1)
 	if err != nil {
 		heldAssemblyClose(t, rights)
 		return
@@ -997,7 +1249,7 @@ func heldAssemblyGuard(t *testing.T, control, self, rootCap *os.File, parent int
 		return
 	}
 	heldAssemblySend(t, custody, frame, "registered")
-	arm, files, err := heldAssemblyRead(control, parent, int(parentCap.Fd()), 0)
+	arm, files, err := heldAssemblyRead(t, control, parent, int(parentCap.Fd()), 0)
 	heldAssemblyClose(t, files)
 	if err != nil {
 		return
@@ -1010,7 +1262,7 @@ func heldAssemblyGuard(t *testing.T, control, self, rootCap *os.File, parent int
 	// No cgroup capability exists. A request cannot arm this held fixture.
 	heldAssemblySend(t, custody, frame, "arm-refused")
 	heldAssemblySend(t, control, parentFrame, "arm-refused")
-	command, files, err := heldAssemblyRead(control, parent, int(parentCap.Fd()), 0)
+	command, files, err := heldAssemblyRead(t, control, parent, int(parentCap.Fd()), 0)
 	heldAssemblyClose(t, files)
 	if err != nil {
 		return
@@ -1020,4 +1272,92 @@ func heldAssemblyGuard(t *testing.T, control, self, rootCap *os.File, parent int
 		t.Fatal("unbound G administrative stop")
 	}
 	// Zero is solely the unarmed G process status, with no guard-cleanup claim.
+}
+
+// This opt-in failure is for validating the redacted retention path without
+// starting any proof roles or making a host-qualification claim.
+func TestHeldAssemblyTraceFailureFixture(t *testing.T) {
+	if os.Getenv("ZERB_ASSEMBLY_TRACE_FIXTURE") != "intentional-failure" {
+		return
+	}
+	t.Setenv("ZERB_ASSEMBLY_ROLE", "fixture")
+	t.Setenv("ZERB_ASSEMBLY_MODE", "held")
+	heldAssemblyTrace(t, "error-wait", "status", "M", nil)
+	t.Fatal("intentional assembly trace retention fixture failure")
+}
+
+func TestHeldAssemblyTraceEncoding(t *testing.T) {
+	zero := uint32(0)
+	valid := heldAssemblyTraceRecord{Role: "F", Mode: "held", Sequence: 1, Event: "wait", Phase: "status", Subject: "G", RawStatus: &zero}
+	payload, err := heldAssemblyTraceBytes(valid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := heldAssemblyTracePrefix + `{"role":"F","mode":"held","sequence":1,"event":"wait","phase":"status","subject":"G","raw_status":0}` + "\n"
+	if string(payload) != want {
+		t.Fatal("bounded trace encoding differs")
+	}
+	tooLarge := uint32(65536)
+	for _, field := range []string{"role", "mode", "sequence", "event", "phase", "subject", "missing-status", "extra-status", "status-bound"} {
+		t.Run(field, func(t *testing.T) {
+			record := valid
+			switch field {
+			case "role":
+				record.Role = "undeclared"
+			case "mode":
+				record.Mode = "undeclared"
+			case "sequence":
+				record.Sequence = 0
+			case "event":
+				record.Event = "undeclared"
+			case "phase":
+				record.Phase = "undeclared"
+			case "subject":
+				record.Subject = "undeclared"
+			case "missing-status":
+				record.RawStatus = nil
+			case "extra-status":
+				record.Event = "send"
+			case "status-bound":
+				record.RawStatus = &tooLarge
+			}
+			if payload, err := heldAssemblyTraceBytes(record); err == nil || payload != nil {
+				t.Fatal("invalid trace field reached output")
+			}
+		})
+	}
+	if err := heldAssemblyWriteTrace(-1, valid); !errors.Is(err, syscall.EBADF) {
+		t.Fatal("raw stderr write error was lost")
+	}
+	if heldAssemblyTracePhase("undeclared") != "unknown" || heldAssemblyTraceSubject("undeclared") != "unknown" || heldAssemblyTraceSubject("harness") != "unknown" || !heldAssemblyTraceRole("harness") || heldAssemblyTraceSubject("fixture") != "unknown" {
+		t.Fatal("untrusted trace field was not reduced to its closed tag")
+	}
+}
+
+// These opt-in fixtures test streaming retention beyond the old bounded prefix.
+// They create no authenticated role and provide no lifecycle proof evidence.
+func TestHeldAssemblyTraceOuterFailureFixture(t *testing.T) {
+	if os.Getenv("ZERB_ASSEMBLY_TRACE_FIXTURE") != "streamed-late-failure" {
+		return
+	}
+	cmd := exec.Command(os.Args[0], "-test.run=^TestHeldAssemblyTraceLateFailureFixture$")
+	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+	err := cmd.Run()
+	heldAssemblyHarnessWait(t, cmd, "held", "unknown")
+	if err != nil {
+		t.Fatalf("intentional streamed fixture child failure: %v", err)
+	}
+	t.Fatal("intentional streamed fixture unexpectedly succeeded")
+}
+
+func TestHeldAssemblyTraceLateFailureFixture(t *testing.T) {
+	if os.Getenv("ZERB_ASSEMBLY_TRACE_FIXTURE") != "streamed-late-failure" {
+		return
+	}
+	t.Setenv("ZERB_ASSEMBLY_ROLE", "fixture")
+	t.Setenv("ZERB_ASSEMBLY_MODE", "held")
+	for range 128 {
+		heldAssemblyTrace(t, "refusal", "unknown", "unknown", nil)
+	}
+	t.Fatal("intentional late assembly trace retention fixture failure")
 }

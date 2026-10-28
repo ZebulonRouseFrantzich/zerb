@@ -1039,3 +1039,48 @@ Every field below is explicitly a **Phase 1 evidence field**. A result is inconc
   review remains clear, but the overall proof has this unresolved observation.
   Later passing local/CI results can establish only their own outcomes. They do
   not close this issue, prove stability, qualify a host or enable production.
+
+### CLOUD-FAILURE-DIAGNOSTIC-RETENTION-2026-10-28
+
+- **Scope and authority:** VAL-003 and VAL-018/019 diagnostic maintenance only.
+  The historical `75af604` proof-race exit 1 remains unexplained; the discarded
+  assertion cannot be recovered and is not reclassified by this change.
+- **Retention:** Each standard collector invocation exclusively reserves a
+  `0600` output-adjacent `.checks.jsonl` journal, parent-syncs creation and
+  flushes/fsyncs check starts/completions before proceeding. A pre-execution,
+  measured-source catalog admits only known source identifiers/line locations;
+  arbitrary output, dynamic subtest suffixes, nonce/PID/FD/path values and output
+  hashes are discarded. Malformed/oversized/deep/unknown records, overflow or
+  missing locations are incomplete; stage failure/unknown exit is never promoted.
+  Failure location references survive later passing traffic. Source binding and
+  completion distinguish a finished collection from an unresolved started check.
+- **Held evidence:** A closed 512-byte trace vocabulary reports role phase/birth,
+  actual Wait4/retained EXIT values and refusal facts without expected-value
+  substitution. Diagnostic actors `harness`/`fixture` are not authenticated roles.
+  Producer sequence and collector arrival are not global causal ordering or
+  status/authentication authority. Streaming child output removes the old 8 KiB
+  prefix loss; failed diagnostic writes preserve descriptor/birth cleanup and
+  original assertions/timeouts. Other subprocess classes gain no invented facts.
+- **Observed regressions:** Two explicit no-role Go failure fixtures exit 1 and
+  retain source locations/typed observations through the fsynced journal. The
+  late fixture emits 128 records beyond 8 KiB, retains its late assertion and the
+  outer harness's actual child raw status 256 (exit 1); the Go JSON stream totals
+  46,860 bytes. These deliberately failing fixtures are retention tests, not
+  positive lifecycle rows. The measured catalog has 370 files, approximately
+  4.04 MB and 49 packages, within 4,096-file/16-MiB/1-MiB-per-file capture limits.
+  Python boundary tests cover poison-value omission, source mutation, aggregate
+  growth before open, immutable catalog, nested/duplicate JSON, bounds/overflow,
+  old failure archival, checkpoint I/O failure, unknown timeout status and
+  preservation of occupied output/journal slots. Focused held/packet/trace race
+  validation passed in 3.337 seconds with unchanged measured working source.
+- **Review and open gates:** Independent Sol/high security/source review resolved
+  catalog timing, deep-input, prefix truncation and late-event eviction findings;
+  the reviewer did not run tests. Exact committed-source conformance/CI remain
+  separate subsequent results. Current cloud membership is `0::/` with a read-only
+  cgroup2 mount and no supplied owned writable delegation. Real guard arming,
+  descriptor-relative cgroup kill/limits/emptiness and full containment cannot be
+  proved here. No root kill, remount, permission repair or stand-in grants that
+  authority. External reaping, Nix artifact/inventory/fit, twelve safefs, forty-six
+  initialization and ten observation topology gaps, full host/installed matrices
+  and production activation remain open. No package, public API, CLI, host-security
+  setting, service, merge or deployment change.
