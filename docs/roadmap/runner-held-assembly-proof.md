@@ -167,6 +167,8 @@ with its disposable temporary log and never enters the journal/report.
 
 Failure evidence retains observed repo-relative file/line locations, catalogued
 top-level tests, collector arrival ordinals, and closed diagnostic role events.
+Opaque bounded case ordinals correlate a failure with its own location without
+retaining dynamic case names (at most 4,096 in-memory cases; names at most 1,024 UTF-8 bytes).
 Dynamic subtest suffixes, messages, nonces, PIDs, descriptors, arbitrary paths and
 output hashes are omitted. Locations identify source assertions without copying
 their formatted values; they do not authenticate an assertion's execution.

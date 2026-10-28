@@ -105,6 +105,20 @@ class DiagnosticTests(unittest.TestCase):
         self.assertEqual(result["failures"][0]["location_ordinals"], [1])
         self.assertEqual(result["locations"][0]["line"], 3)
 
+    def test_failed_case_cannot_borrow_another_cases_location(self):
+        result = self.collect(self.record("output", Test="TestFixture/passed-secret-case", Output="fixture_test.go:3: private"),
+                              self.record("pass", Test="TestFixture/passed-secret-case"),
+                              self.record("fail", Test="TestFixture/failed-secret-case"),
+                              self.record("fail", Test=""))
+        self.assertEqual(result["status"], "incomplete")
+        self.assertEqual(result["failures"][0]["location_ordinals"], [])
+        self.assertEqual(result["missing_failure_locations"], 2)
+        self.assertNotIn("secret-case", json.dumps(result))
+        covered = self.collect(self.record("output", Output="fixture_test.go:3: private"),
+                               self.record("fail"), self.record("fail", Test=""))
+        self.assertEqual(covered["status"], "catalogued")
+        self.assertEqual(covered["missing_failure_locations"], 0)
+
     def test_unknown_locations_and_symlink_sources_do_not_enter_catalog(self):
         (self.repo / "alias_test.go").symlink_to(self.repo / "fixture_test.go")
         result = self.collect(self.record("output", Output="../../secret.go:1: sensitive\nfixture_test.go:99999: sensitive"))

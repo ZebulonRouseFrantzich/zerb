@@ -92,6 +92,7 @@ def failure_diagnostics(log, catalog):
     events = deque(maxlen=MAX_EVENTS)
     failures = []
     locations = []
+    scopes = {}
     dropped, ordinal = 0, 0
     log.seek(0)
     while True:
@@ -117,15 +118,22 @@ def failure_diagnostics(log, catalog):
         if entry is None:
             dropped += 1
             continue
-        test = record.get("Test", "")
-        if not isinstance(test, str):
+        raw_test = record.get("Test", "")
+        if not isinstance(raw_test, str) or len(raw_test.encode("utf-8", errors="surrogatepass")) > 1024:
             dropped += 1
             continue
-        test = test.split("/", 1)[0]
+        test = raw_test.split("/", 1)[0]
         if test and test not in entry["tests"]:
             dropped += 1
             continue
-        base = {"stream_ordinal": ordinal, "package": package, "test": test}
+        scope_key = (package, raw_test)
+        if scope_key not in scopes:
+            if len(scopes) >= MAX_EVENTS:
+                dropped += 1
+                continue
+            scopes[scope_key] = len(scopes) + 1
+        scope = scopes[scope_key]
+        base = {"stream_ordinal": ordinal, "package": package, "test": test, "test_scope": scope}
         action = record.get("Action")
         if action in ("run", "pass", "fail", "skip"):
             event = {**base, "kind": "test-" + action}
@@ -135,9 +143,9 @@ def failure_diagnostics(log, catalog):
             if action == "fail":
                 if len(failures) < MAX_EVENTS:
                     associated = [row["stream_ordinal"] for row in reversed(locations)
-                                  if row["package"] == package and row["test"] == test][:8]
+                                  if row["test_scope"] == scope][:8]
                     window = [row for row in reversed(events) if row["package"] == package and
-                              row["test"] == test and row["kind"] == "assembly-observation"][:16]
+                              row["test_scope"] == scope and row["kind"] == "assembly-observation"][:16]
                     failures.append({**event, "location_ordinals": list(reversed(associated)),
                                      "recent_assembly_observations": list(reversed(window))})
                 else:
@@ -172,8 +180,11 @@ def failure_diagnostics(log, catalog):
                     events.append(value)
         elif action not in ("start", "pause", "cont", "bench"):
             dropped += 1
-    located = bool(locations)
-    return {"schema": "zerb-safe-failure-diagnostics-v1", "status": "incomplete" if dropped or not failures or not located else "catalogued",
+    located_packages = {row["package"] for row in failures if row["test"] and row["location_ordinals"]}
+    missing_locations = sum(not row["location_ordinals"] if row["test"] else row["package"] not in located_packages
+                            for row in failures)
+    return {"schema": "zerb-safe-failure-diagnostics-v1", "status": "incomplete" if dropped or not failures or missing_locations else "catalogued",
             "dropped_records": dropped, "failures": failures, "locations": locations, "observations": list(events),
+            "missing_failure_locations": missing_locations,
             "ordering": "collector-arrival and producer-local sequence only; not a global causal order",
             "coverage": "source locations and instrumented held-assembly statuses only; arbitrary output omitted"}
