@@ -150,6 +150,29 @@ Use separate linked review PRs, preserve existing stacked work, and keep the pub
 router unchanged until its independent cutover gate. No stage is Phase 2/MVP or
 release completion merely because a build or a narrow proof passes.
 
+### Reconciliation of the current proof stack
+
+This table records bounded implementation-readiness evidence, not phase completion
+or a newly frozen production protocol. It does not reorder the gates above.
+
+| Planned slice | Current evidence | Concrete unfinished boundary |
+|---|---|---|
+| 1. Private kernel capabilities | PR #45: Go observer birth, stored-status and tracing subsets. PR #46: retained group-pidfd authority through actual leader consumption, refusal and isolation controls. | Complete group/session/attachment races, capability admission/fit and their private production foundation remain unclosed. Neither PR completes slice 1. |
+| 2. Authenticated role assembly | The registered-backup fixture adds actual pre-release M-pidfd transfer, bound role/value checks, F's retained birth capability, O-loss boundaries, and close-only rights refusal. This differs from the earlier post-exit G-status acknowledgement fixture. | Full F/O/M/S/G registration, mutual role authentication, complete descriptor ownership/churn, fallback custody under all required losses and bounded partial-birth assembly remain open. The test-private wire is not a production registry. |
+| 3. Guarded noninteractive lifecycle | Separate timing, custody, direct-parent and owned-group prerequisites have local evidence. | Real independent guard/cgroup/namespace authority, actual reaper context, whole-tree resource/cleanup proof and composed cancellation/death/release matrix remain open. |
+| 4. Retained class integration | No new manager or acquisition execution is introduced by this proof stack. | Prior lifecycle gates plus the actual authenticated pinned Nix build, runtime/license inventory and representation fit remain required. Synthetic inventories cannot replace them. |
+| 5. Interactive/full Runner | Approved caller-only physical-terminal direction remains unchanged. | Full PTY/job-control, terminal authority/loss, complete Runner methods and required host/installed acceptance remain unproved. |
+
+The registered-backup subset keeps F alive as M/O's natural wait owner; it cannot
+qualify the unresolved external-reaper relation after actual F death. Socketpair
+credentials authenticate F to its children. F's held birth, exclusive inherited
+endpoint custody and full same-image observations provide limited provenance,
+not mutual F-side kernel sender authentication. The existing proof JSON decoder
+checks decoded values, unknown fields and trailing values; this subset does not
+qualify duplicate-free production grammar. Readiness can reject a terminal role,
+but neither readiness nor a missing stored EXIT establishes raw status or reaping.
+Ordered fault checkpoints are not a concurrent death/release linearization proof.
+
 ## New local evidence and remaining decision
 
 Thirty group-pidfd rows observed delivery after leader reaping, SIGKILL/reap of
