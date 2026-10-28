@@ -1,10 +1,13 @@
 # Direct original-caller parenthood: bounded design and proof candidate
 
-This is a non-normative proposal under the owner-approved design/proof phase.
+This is a non-normative design note under the owner-approved design/proof phase.
 It does not replace ARCH-009/010, PC-015, VAL-018/019/020, activate a Runner, or
 qualify a platform. The repository's existing guarantees remain requirements.
 One distributed ZERB image and the original shell-launched invocation PID are
-preserved. The proposal is incomplete until every gate below closes.
+preserved. The three bounded directions (CLONE_PARENT observer birth, separate
+control-role/native-descendant status evidence and qualified parent/reaper
+contexts) are now approved for proof and owned by ARCH-009/010 and VAL-019.
+Production design is incomplete until every gate below closes.
 
 ## Process identities and authority
 
@@ -18,10 +21,13 @@ Ordinary exec must preserve the relation; unsupported credential transitions,
 privileged executable formats and unproved changes refuse before release.
 
 F separately creates O, the surviving invocation cleanup/status owner. O creates
-S, the tracing process, and the independent cleanup guard G under an explicitly
-registered authority arrangement. S is M's sole tracer; F does not trace M.
+the independent cleanup guard G under an explicitly registered authority
+arrangement. M creates S using CLONE_PARENT, with F as S's natural parent and
+M's session inherited by S. S takes its own group and remains M's sole tracer;
+F does not trace M. The source/registration protocol must distinguish creator M
+from parent F; the ordinary-fork alternative is not the selected direction.
 The candidate observation tuple is full-syscall strace attachment to the held
-same-image launcher before its target exec. The current proof tuple that starts
+same-image launcher before its target exec. The earlier proof tuple that starts
 the manager beneath strace is not silently treated as the same tuple.
 
 Nonancestor attachment must work under existing kernel/LSM/seccomp/dumpability
@@ -71,11 +77,12 @@ emptiness never imply an exit code or successful reap. Retain exit/signal/core
 distinctions. In particular exit 137 and SIGKILL are not interchangeable.
 
 The real wait owner must be allowed to reap before another role waits for stored
-EXIT information. F must not wait for O's final result before reaping M. O may
-consume its own S/G wait only after the kernel-custody prerequisites are valid,
-then independently recognize stored EXIT. The existing acknowledgement-before-
-consumption contract requires a reviewed superseding relation; this proposal does
-not claim it was already replaced by a pidfd getter.
+EXIT information. F must not wait for O's final result before reaping M or S.
+F naturally reaps M/S and O naturally reaps G, subject to the qualified actual
+adoption relation after owner death. Each wait owner consumes only under the
+approved kernel-custody prerequisites; survivors then require stored EXIT.
+ARCH-010 now owns this provisional replacement for the earlier acknowledgement-
+only proposal. A working pidfd getter is not proof of the full production protocol.
 
 When F lives, F naturally reaps M. After F dies, M is reparented to the nearest
 eligible living ancestor subreaper or namespace init, not necessarily promptly to
@@ -133,7 +140,7 @@ group guess or old mandatory group-kill contract change is approved here.
 
 ## Evidence boundary and disposition
 
-The local combined fixture is Python/ctypes plus the existing strace executable,
+The earlier local combined fixture used Python/ctypes plus the existing strace executable,
 not an installed ZERB binary or Go runtime fork implementation. It uses inherited
 fixture handles, a test driver/subreaper and a synthetic payload. It establishes
 only actual parent-death, separate tracing, ordered status handoff and delayed
@@ -157,6 +164,7 @@ storage, actual manager classes and installed acceptance remain unexecuted. The
 existing source-built artifact inventory and resource-fit gates remain unchanged.
 Production Runner/Dispatch activation, Phase 2 completion and support stay false.
 
-The next contract decision, if review cannot close it within the approved scope,
-must consolidate external-reaper liveness, numeric-group authority and complete
-role/descendant custody. Do not patch one gap by silently weakening another.
+The three directions above are approved, not frozen qualification. Further
+material changes needed to close external-reaper liveness, group authority or
+complete role/descendant custody must still be surfaced. Do not patch one gap by
+silently weakening another.

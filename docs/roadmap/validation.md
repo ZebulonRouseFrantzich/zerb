@@ -156,16 +156,27 @@ arbitration independently of an observed zero guard wait status.
 
 The approved ARCH-009/010 ownership direction requires separate evidence for:
 
-1. Root C death before release, with death watchers deliberately unscheduled;
-   immediate-parent death evidence alone cannot qualify surviving O topology.
-2. Ordinary root status custody: exact raw wait status transferred to C and
-   acknowledged before consumption, including intermediate-owner death before
-   observation, before transfer, before/after C's acknowledgement and after
-   consumption. Separately exercise C death or unavailable root custody at every
-   boundary: latch failure, finish cleanup and reaping without C acknowledgement,
-   and never synthesize guard success from missing status. Distinguish normal
-   exit 137 from SIGKILL despite equal public status mapping. Finish with every
-   adopted child reaped; missing or unresolved identity/status is failure.
+1. Original-caller F (earlier C) death before release, with watchers unscheduled.
+   F directly parents M. Prove M's full-lifetime creator and locked release/exec
+   thread parent-death relation, ordinary exec preservation, and exact final
+   ordering. M-created CLONE_PARENT observer S must have natural parent F, inherited
+   SID=M, separate PGID=S, intentional zero survival stage and qualified atomic
+   pidfd birth. Wrong creator-based parent-death configuration and failed exec
+   must expose their actual F-owned child/status disposition. Prove S's exact
+   plain-strace attachment remains identity-owned through F/M/G/S failures; held
+   checkpoint rows alone are not the complete concurrent release proof.
+2. Registered control-role custody: exact preheld identity-bound pidfds, approved
+   kernel-retained raw status and acknowledged live/backup ownership before
+   release. Exercise missing/unsupported EXIT, before/after natural consumption,
+   deadlock avoidance, creator/owner/caller loss, partial transfer and interrupted
+   birth. A later failed exec may return no creator PID/pidfd while leaving an
+   F-owned child; source-level error is not absence. Distinguish exit 137 from
+   SIGKILL. Full tracing/native-wait and actual-reaping evidence remains separately
+   required for covered native descendants; a complete log cannot retroactively
+   mint a before-reap pidfd or prove an unobserved external reap. Missing facts
+   latch unresolved failure and never synthesize guard zero or clean completion.
+   Qualify actual parent/reaper contexts without substituting a cooperative test
+   subreaper; deliberately delayed external consumption must retain uncertainty.
 3. Authenticated role/spawn-intent registration, interrupted birth and multi-hop
    acknowledgement. A small C → O → child kernel test is not this full protocol.
 4. Trusted null and PTY/device acquisition; caller-only physical-terminal bridge,
@@ -178,6 +189,9 @@ Local disposable subprocess tests may exercise wait retention, adoption and raw
 status preservation without privilege or owner-host operations. They must not
 mark unexercised dispatch, root-death release, terminal, cgroup, resource or host
 rows passed. No new numeric resource envelope follows from a bounded test fixture.
+The three direct-parent contracts above authorize bounded design/proof only.
+They do not close ARCH-009/010 activation, rewrite the public caller boundary,
+qualify a real reaper/host, or permit security changes when a capability refuses.
 
 ## Protected roots, filesystem, archives, and destinations
 

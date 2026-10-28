@@ -110,18 +110,36 @@ For a normally exiting `exec` or `shell` child, PC-015 owns status propagation. 
 
 #### Approved Runner ownership direction — activation remains gated
 
-The owner approved the following provisional direction for completing ARCH-009/010.
-It does not qualify a host or authorize managed execution while any activation
-condition below remains unproved.
+The owner approved the following provisional contract for bounded proof work
+toward ARCH-009/010. F below is the original shell-launched caller, called C in
+the earlier ownership/terminal prose; no hidden child is renamed as that caller.
+The direct-parent/CLONE_PARENT/pidfd direction supersedes the earlier proposed
+C->O->S->L descendant topology and its proposed root-acknowledgement-only custody
+rule. It does not qualify a host, freeze the production stage protocol, or
+authorize managed execution while any activation condition remains unproved.
 
 - Caller C retains caller-owned standard files and is the sole owner of ZERB's
   physical-terminal bridge, terminal changes and restoration. Invocation owner O
   is an invocation subreaper isolated from C's foreground session and owns
   lifecycle cleanup. C is the
   backup subreaper under one process-wide child-ownership contract; no unrelated
-  consumer may steal a registered child's wait status. The proposed descendant
-  topology C → O → supervisor S → launcher L/guard G is a direction to prove,
-  not authority to weaken the existing parent-death or release boundary.
+  consumer may steal a registered child's wait status. F directly parents the
+  held same-image launcher M, which later becomes the managed leader. M's locked
+  release/exec thread installs and revalidates its direct SIGKILL parent-death
+  relation to F; observing a different Go thread or only package initialization
+  is insufficient. The original F creator thread remains alive throughout that
+  birth relation. No queued token or watcher substitutes for this boundary.
+- M creates the observer S with CLONE_PARENT: F is S's natural parent, while M
+  is its creator. S inherits M's fresh session and takes its own process group;
+  its session membership must reserve M's numeric identity for the entire interval
+  in which exact plain strace can attach using `-p M`. S is M's sole tracer and
+  does not become an extra child of the managed program. G remains O's child.
+  The observer needs an explicitly validated zero parent-death survival stage;
+  Go's nonzero creator-M parent check cannot be mistaken for parent-F validation.
+  Exact Go/kernel clone/pidfd behavior, unexpected parenthood, interrupted birth,
+  full same-image stage authentication and S's unchanged session must all be
+  proved. Existing policy must permit attachment without PR_SET_PTRACER,
+  privilege repair or a different tracer. Missing evidence refuses release.
 - Only narrowly validated null-device and PTY capabilities may supplement the
   approved supplied-file transaction. Omitted streams receive direction-appropriate
   null endpoints. Ordinary file authority is not broadened into generic device
@@ -141,32 +159,49 @@ condition below remains unproved.
   If C is forcibly killed, ZERB's bridge stops but terminal state may remain raw:
   an orphan helper must neither restore stale settings nor keep reading input.
   This grants no claim about already-issued I/O or separately opened payload FDs.
-- While C remains available and the invocation has not irreversibly failed, a
-  consuming wait requires the exact raw child status to have reached C's retained
-  ledger and that receipt to have been acknowledged to the current wait owner.
-  An intermediate O acknowledgement alone is insufficient. Until then, `WNOWAIT`
-  preserves kernel status for adoption. If C dies or root status custody becomes
-  unavailable, surviving registered wait owners must latch invocation failure,
-  retain available exact raw statuses locally, and complete cleanup and reaping
-  without waiting for C's acknowledgement. This path cannot produce invocation
-  success; C's uncatchable death has no public return. Missing or unresolved status
-  remains failure and must never be synthesized as a zero guard result.
-  Role/spawn-intent and child-identity binding, adoption and whole-tree cleanup
-  remain required. A signaled or nonzero guard result is operational failure.
+- Status custody for registered ZERB control roles uses preheld, identity-bound
+  pidfds with acknowledged live/backup ownership before operational release.
+  Actual kernel support for retained raw exit information must be proved, not
+  inferred from a version, open descriptor or ioctl success. The natural wait
+  owner must be allowed to consume before a survivor requires PIDFD_INFO_EXIT:
+  the stored information may appear only during actual final reaping. Require
+  the returned EXIT bit and exact raw exit/signal distinctions, including exit
+  137 versus SIGKILL. A missing bit is unresolved, never zero. F must not wait
+  for O's final result before reaping M. O-only custody is insufficient on O death.
+  F's death while the invocation remains open, or unavailable root custody,
+  latches invocation failure. Surviving owners retain available exact facts and
+  finish owned cleanup/reaping without waiting for F acknowledgement. This path
+  cannot produce invocation success or a new clean completion merely because
+  every status later becomes known; F's uncatchable death has no public return.
+- This control-role registry does not invent a requirement to mint a pidfd before
+  every ordinary manager child resumes, and does not waive complete descendant
+  identity, trace, native-wait and actual-reaping evidence. Post-hoc trace parsing
+  cannot manufacture an earlier capability. Unknown children, missing facts,
+  incomplete tracing or unobserved external consumption remain operational
+  failure, not successful reaping. Exact guard zero plus required cleanup facts
+  remains mandatory; cgroup emptiness alone supplies neither a status nor a reap.
+- Supported parent/reaper contexts require qualification in their actual launch
+  ancestry. After F dies, a natural ancestor reaper may consume M/S; O cannot
+  compel that process to wait. Terminal death, pidfd readiness and cgroup empty
+  do not substitute for actual consumption. Unavailable required evidence returns
+  or retains unresolved failure without clean completion/receipt. No universal
+  external-reaper deadline, new service, host-policy repair or permission to alter
+  the owner's host is implied. Failed or interrupted registration latches failure;
+  available statuses must be retained and owned cleanup completed without
+  inventing root acknowledgement, child identity or guard success.
 
 Inert app/host propagation of the three process-file references, without opening,
 reading, duplicating or closing them during construction, follows the approved
 stream contract; general application I/O remains unchanged. It supplies no
 execution authority or reason to add compile-only app/host scaffolding.
 
-**Unclosed release condition:** In the proposed descendant topology O survives
-C's death, while L's immediate death relation names S. A final C-liveness check
-or authenticated release token does not synchronize C's later death with L's
-execution. Pausing death watchers, killing C, then running S/L can therefore
-violate death-before-release exclusion. Production activation must remain closed
-until an independently reviewed mechanism and its exact release linearization
-satisfy ARCH-009. Neither changing ancestry nor relaxing that exclusion is an
-ordinary implementation detail; either requires an explicit owner decision.
+**Unclosed release condition:** The superseded descendant proposal could start
+candidate code after original-caller death while watchers were unscheduled. The
+approved direct-parent candidate is a mechanism to prove, not an already closed
+race: full creator/release-thread lifetime, ordinary exec preservation, exact
+parent/stage/descriptor identity, S attachment ownership and interrupted births
+remain required. Production activation stays closed until its independently
+reviewed composed proof and exact death/release linearization satisfy ARCH-009.
 
 Exact C/O/S/G placement outside the addressed kill subtree, authenticated stage
 and spawn registration, wait-status custody, class-root and cgroup authority,

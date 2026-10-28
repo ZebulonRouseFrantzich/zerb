@@ -1,7 +1,8 @@
 # Direct-parent Runner: implementation-readiness plan
 
-This is a conditional plan for the approved design/proof phase, not a change to
-ARCH-009/010 or authorization to enable production execution. The existing
+This is a conditional plan for the approved three-contract design/proof phase,
+not authorization to enable production execution. ARCH-009/010 and VAL-019 now
+own those provisional proof directions. The existing
 non-normative [candidate](runner-direct-parent-design.md) and its open gates apply.
 These steps concern Runner readiness; they do not finish the product MVP.
 
@@ -42,20 +43,22 @@ authority; its actual raw zero
 status is required in addition to cleanup facts. All F/O/G writer sets and close
 responsibilities must be explicit; a stray writer must not suppress death EOF.
 
-One newly proposed bootstrap needs owner review: M creates S after entering its
+The approved bounded bootstrap direction has M create S after entering its
 fresh SID=M and before entering the managed kill cgroup. S inherits SID=M, takes
 its own process group, and becomes the exact plain strace observer. Thus S's own
 session membership reserves M's numeric identity while S can execute `-p M`.
 G can remain O's child, outside managed group/cgroup killing.
 
-There are two concrete birth choices, neither implemented or adopted here:
+The reviewed birth comparison selected CLONE_PARENT for proof, with the ordinary
+fork alternative retained below only to explain its native-wait risk:
 
 - Ordinary fork leaves S as M's native child across exec. A valid payload that
   waits for all children can then wait for S while S waits for the payload. This
   user-visible wait-semantics risk cannot be dismissed by checking only Git.
 - A CLONE_PARENT birth from M would retain the inherited session but make F the
-  natural parent of S. This is the preferred design candidate for preserving
-  native child/wait semantics, pending owner approval and actual Go/kernel proof.
+  natural parent of S. This is the owner-approved proof candidate for preserving
+  native child/wait semantics; actual Go/kernel and complete protocol proofs
+  remain required before production activation.
   It adds explicit creator-M versus natural-parent-F registration/authentication
   and interrupted-birth obligations; Go API symbols alone do not qualify it.
   Go 1.24's nonzero SysProcAttr.Pdeathsig path checks against creator M, so S needs
@@ -90,8 +93,8 @@ The current fixture's inherited pipes are not this authenticated FD protocol.
    with exact identity, capabilities, descriptors and fallback custody. For native
    manager children, independently prove complete trace/native-wait/containment
    evidence. Stock strace output cannot retroactively mint a before-reap pidfd.
-   Owner review must settle this evidence relation without dropping any required
-   child, status or actual-reaping fact; missing evidence remains failure.
+   The approved relation still needs complete protocol/evidence proof without
+   dropping any child, status or actual-reaping fact; missing evidence is failure.
 3. **Reaping, guard and resource closure.** Prove external-reaper disposition,
    deadlock-free waits, exact guard zero/nonzero/signaled/missing rows, O/F loss,
    bounded partial birth and complete resource/cleanup ownership. Keep G/S out of
@@ -125,11 +128,11 @@ must refuse, and a runtime loss cannot publish clean completion or a completed
 receipt. Do not reuse the 750 ms signal grace as a reap timeout. Exact reporting
 and durable evidence routing belong to later app/state integration.
 
-A successful completion promise under arbitrary shell/container ancestry would
-need a further contract decision. The recommendation is explicit qualification
-of supported launch/reaper contexts plus truthful unresolved failure outside
-the established relation. This is a support/admission restriction needing owner
-review, not a silently proven ability to force reaping or a host repair recipe.
+A successful completion promise under arbitrary shell/container ancestry is not
+approved. The owner approved explicit qualification of supported launch/reaper
+contexts plus truthful unresolved failure outside the established relation. This
+still needs actual qualification and protocol review; it does not prove an
+ability to force reaping or authorize a host repair recipe.
 No operation on the owner's host is authorized by this checklist.
 
 ## Smallest linked implementation PRs after those contracts close
@@ -159,8 +162,9 @@ actual reap, while a later pidfd_open returned ESRCH. This disproves post-hoc
 capability registration as a general solution; it does not disprove trace-based
 descendant observation or grant any late numeric PID authority.
 
-The consolidated next decision is the S-in-M-session bootstrap, the explicit
-control-role versus native-descendant custody/evidence relation, and the supported
-external-reaper context/refusal semantics. The pidfd group operation is a proposed
-safe implementation of existing group signalling, still subject to exact runtime
-qualification and independent review. No new package or access grant is proposed.
+The S-in-M-session CLONE_PARENT bootstrap, control-role versus native-descendant
+custody/evidence relation and qualified external-reaper/refusal direction are
+approved for bounded proof. The pidfd group operation remains a candidate safe
+implementation of group signalling subject to exact runtime qualification and
+independent review. Unclosed protocol/qualification gates remain in the owning
+contracts. No new package, access grant or production activation follows.

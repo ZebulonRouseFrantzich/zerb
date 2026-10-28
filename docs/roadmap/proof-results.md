@@ -784,3 +784,52 @@ Every field below is explicitly a **Phase 1 evidence field**. A result is inconc
 - **Launch-model analysis:** A service contacted after C starts is not thereby C's ancestor. An external one-invocation front door can conditionally establish F → O → actual public C, retaining C's ordinary argv and direct launcher death fence; F's PID or shell job identity is not C, and asynchronous F-death forwarding is not strict C-death exclusion. Keeping F's foreground group occupied by C while distinct-PID O detaches avoids the specific original-PID setsid obstruction, but actual terminal/job-control composition is untested. A dedicated session-wide invocation host is broader; an ordinary shell or generic service manager is not the required registered-status protocol. No launch approach, companion executable, new public router, hidden argv mode or host trust identity was adopted.
 - **Status and activation boundaries:** To retain exact already-consumed results after C dies, O must receive and retain raw status before C consumes the corresponding wait, while C's required live receipt also remains intact; adoption recovers only unconsumed children. This is a proposed necessary custody direction, not an implemented mirrored ledger or owner-survival proof. Exact birth registration, acknowledgement and failure/death matrices, ancestor trust/bootstrap, public PID/signal/status semantics, parse-before-activation ordering, terminal ownership, cgroup placement and the composed resource envelope remain open. Simultaneous loss of every status custodian cannot be represented as retained process-local evidence.
 - **Limits:** The sequential fixture uses four hierarchy processes including the shared test runner, at most two socketpairs, bounded frames/diagnostics and existing proc/executable observations. It neither operates a real terminal nor contacts an owner host or service. It does not qualify a host, installed tuple, process class or complete launch experience. All previous twelve safefs, 46 initialization and ten initialized-observation topology gaps and the real Nix artifact/inventory/fit gate remain open. No package, public API, CLI, host/security setting or production process path changed.
+
+### CLOUD-DIRECT-PARENT-GO-CLONE-2026-10-28
+
+- **Authority:** ARCH-009/010; PC-015; VAL-018/019/020. The owner approved
+  CLONE_PARENT observer investigation, separate control-role/native-descendant
+  status evidence and qualified parent/reaper contexts for bounded proof. One
+  distributed ZERB image and original-caller F are preserved; production stays disabled.
+- **Go birth subset:** Go 1.24.9 on Linux 6.18.55 amd64 returned an actual usable
+  CLOEXEC pidfd from the reviewed legacy-clone path. M creates S with natural
+  parent F, inherited SID=M, PGID=S and zero parent-death setting. F-created socket
+  provenance passes the existing narrow parent/executable check; it is not a
+  complete nonce/stage/role protocol. The ordinary-fork control leaves S under M
+  and rejects the F-created peer. Wrong nonzero creator-based parent-death setup
+  produces actual SIGKILL and no observer frame. Failed exec returns no creator
+  PID/pidfd while F still consumes the interrupted child's exit 253; M has ECHILD.
+- **Composed subset:** An explicit cooperating surrogate reaper R retains the
+  preheld M/S pidfds. S transitions to the observed full-identity strace 6.13 and
+  attaches before M release; held M threads and S's retained SID/PGID are checked.
+  Live payload entry returns raw exit 17. Ordered actual F death produces M
+  SIGKILL while S survives and returns zero. Delayed R consumption leaves EXIT
+  absent despite R's WNOWAIT terminal observation; actual consumption then exposes
+  raw SIGKILL. S's zero is not M's status. M reinstalls/rechecks SIGKILL on its
+  locked release/exec thread; the payload initial thread verifies ordinary
+  same-image exec preserved it. Package-init observation alone was insufficient.
+- **Checks:** The seven rows passed ten repetitions under the race detector;
+  a retained JSON run independently records all seven passing with zero skips.
+  Lifecycle lint reports zero issues. Independent Sol security/correctness review
+  resolved wait-error/zero confusion, swallowed cleanup failures, thread-specific
+  parent-death observation, trace-thread coverage, identity-mask checks and
+  executable identity. The reviewer read source/evidence, not a second execution.
+  Exact-source full conformance has not yet run at this focused checkpoint and
+  will be recorded separately after a clean commit.
+- **Actual context refusal:** A separate single cloud-context experiment inserted
+  no surrogate subreaper, checked driver subreaper zero and M's configured/rechecked
+  direct death relation, consumed actual F SIGKILL, and received ECHILD for M.
+  No stored M EXIT appeared during its eight-second fixture watchdog. This is
+  unresolved external reaping, not proof it never occurs. That experiment did
+  not independently observe M terminal readiness and did not retain private M/
+  namespace identity or elapsed duration; none is inferred retroactively. It was
+  not retried, and no host setting or external reaper was changed.
+- **Evidence and limits:** The exact helper sources are nonsensitive reviewed
+  code; their hashes and source-bound reports remain in private typed proof
+  artifacts. R's cooperative consumption does not qualify actual ancestry. These
+  rows contain no independent G, real cgroup cleanup, authenticated production
+  dispatch, sealed-image substitution race, native whole tree, resource closure,
+  physical terminal, arbitrary kernel/LSM or global death/exec linearization proof.
+  All prior filesystem/topology, artifact-build/inventory/fit and frozen-host
+  gates remain open. No production, dependency, public API, service or security
+  setting changed; cloud/phase/support completion is not claimed.
