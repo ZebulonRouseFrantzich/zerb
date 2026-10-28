@@ -4,7 +4,6 @@ package lifecycle
 
 import (
 	"bytes"
-	"io"
 	"os"
 	"os/exec"
 	"strconv"
@@ -208,7 +207,9 @@ func custodyOwner(t *testing.T, gate, status string) {
 	defer control.Close()
 	syscall.CloseOnExec(3)
 	guard := custodyCommand("G", gate, status, os.Getenv("HOME"), nil)
-	guard.Stdout, guard.Stderr = io.Discard, io.Discard
+	// Inherit files whose capture reader outlives O; io.Discard would create
+	// O-owned pipes and turn coverage diagnostics into SIGPIPE after O dies.
+	guard.Stdout, guard.Stderr = os.Stdout, os.Stderr
 	if err := guard.Start(); err != nil {
 		t.Fatal(err)
 	}

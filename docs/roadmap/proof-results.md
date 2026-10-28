@@ -833,3 +833,33 @@ Every field below is explicitly a **Phase 1 evidence field**. A result is inconc
   All prior filesystem/topology, artifact-build/inventory/fit and frozen-host
   gates remain open. No production, dependency, public API, service or security
   setting changed; cloud/phase/support completion is not claimed.
+
+### CLOUD-DIRECT-PARENT-CI-REFUSAL-2026-10-28
+
+- **Observed CI failures:** The first PR-45 CI run at the preceding checkpoint
+  denied separate strace attachment with actual PTRACE_SEIZE EPERM. Its covered
+  custody rows also observed SIGPIPE instead of intended normal guard exits.
+  These were failures, not qualification or a reason to change host policy.
+- **Coverage fixture correction:** `io.Discard` made os/exec create pipes whose
+  readers belonged to O. Killing O could make G's coverage-exit diagnostics hit
+  a closed pipe and change its raw status. The failure reproduced ten times
+  locally with coverage enabled. Direct inherited stdout/stderr files retain
+  the surviving capture reader. All exact wait/status/ACK assertions and coverage
+  settings remain intact; no signal was ignored and no expected status relaxed.
+- **Explicit unsupported-context result:** Only the bounded, exact M-matched
+  strace EPERM diagnostic and actual S exit 1 can enter the refusal path. F and
+  R require held M SIGKILL, exact retained S/M status, no payload entry and
+  completed child cleanup before returning an unexercised capability result.
+  Generic attachment errors, timeout, changed status or cleanup failure still
+  fail. A new exercised control uses a competing owned F tracer to produce real
+  kernel EPERM; it changes no host security setting and is not itself skipped.
+- **Affected checks:** Eight birth/trace rows and twenty custody rows passed ten
+  repetitions with both race and coverage instrumentation (280 cases). A retained
+  JSON run observes all eight birth/trace rows passing with zero skips in this
+  cloud context. Scoped lint reports zero issues. Independent Sol review accepts
+  both narrow fixes. New committed-source conformance and replacement CI remain
+  separate pending observations, rather than relabeling the original failed run.
+- **Unchanged gates:** An unsupported CI context's positive tracing rows remain
+  unexercised, never implementation-qualified. The separate actual-cloud reaper
+  result remains unresolved. Guard/cgroup, complete authentication/tree/resource,
+  global race, terminal, artifact and frozen-host/installed gates remain open.

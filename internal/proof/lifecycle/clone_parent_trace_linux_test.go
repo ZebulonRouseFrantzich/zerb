@@ -31,7 +31,7 @@ func TestCloneParentTrace(t *testing.T) {
 	if _, err := os.Stat("/usr/bin/strace"); err != nil {
 		t.Skipf("unexercised: existing /usr/bin/strace unavailable: %v", err)
 	}
-	for _, mode := range []string{"live", "caller-death", "delayed-reaper"} {
+	for _, mode := range []string{"live", "caller-death", "delayed-reaper", "denied-attachment"} {
 		t.Run(mode, func(t *testing.T) {
 			cmd := cloneTraceCommand("R", mode, t.TempDir())
 			var output custodyOutput
@@ -70,9 +70,10 @@ func TestCloneParentTraceChild(t *testing.T) {
 		return
 	}
 	runtime.LockOSThread()
+	unexercised := false
 	switch role {
 	case "R":
-		cloneTraceReaper(t)
+		unexercised = cloneTraceReaper(t)
 	case "F":
 		cloneTraceCaller(t)
 	case "M":
@@ -92,6 +93,9 @@ func TestCloneParentTraceChild(t *testing.T) {
 	}
 	if t.Failed() {
 		os.Exit(1)
+	}
+	if unexercised {
+		os.Exit(77)
 	}
 	os.Exit(0)
 }
@@ -180,7 +184,7 @@ func cloneTraceWait(t *testing.T, pid int, want uint32) {
 	}
 }
 
-func cloneTraceReaper(t *testing.T) {
+func cloneTraceReaper(t *testing.T) bool {
 	if err := unix.Prctl(unix.PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0); err != nil {
 		t.Fatal(err)
 	}
@@ -271,16 +275,43 @@ func cloneTraceReaper(t *testing.T) {
 	mu.Lock()
 	owned = append(owned, sFD)
 	mu.Unlock()
-	ready := cloneParentRead(t, parent)
-	if ready.Gate != "attached" {
-		t.Fatalf("observer did not attach; no release: %+v", ready)
+	registered := cloneParentRead(t, parent)
+	if registered.Gate != "registered" || registered.PID <= 0 || registered.Parent <= 0 {
+		t.Fatalf("missing held role registration: %+v", registered)
 	}
 	for i, fd := range []int{mFD, sFD} {
-		wantPID := []int{ready.PID, ready.Parent}[i]
+		wantPID := []int{registered.PID, registered.Parent}[i]
 		info, err := cloneTraceGetInfo(fd)
 		if err != nil || info.Mask&1 == 0 || info.Mask&(1<<3) != 0 || info.PID != uint32(wantPID) || info.TGID != uint32(wantPID) || info.PPID != uint32(cmd.Process.Pid) {
 			t.Fatalf("preheld live role relation: %+v err=%v", info, err)
 		}
+	}
+	cloneParentWrite(t, parent, cloneParentEvent{Gate: "inspect"})
+	ready := cloneParentRead(t, parent)
+	if ready.PID != registered.PID || ready.Parent != registered.Parent {
+		t.Fatalf("attachment result changed registered identities: %+v", ready)
+	}
+	if ready.Gate == "refused" {
+		if ready.Err != int(syscall.EPERM) || ready.Raw != 1<<8 || ready.PID <= 0 || ready.Parent <= 0 {
+			t.Fatalf("invalid cleaned attach refusal: %+v", ready)
+		}
+		if err := cmd.Wait(); err != nil {
+			t.Fatalf("refusal F cleanup failed: %v", err)
+		}
+		cloneTraceStored(t, mFD, uint32(syscall.SIGKILL))
+		cloneTraceStored(t, sFD, 1<<8)
+		cloneTraceNoPayloadOrChildren(t, root)
+		if mode != "denied-attachment" {
+			fmt.Fprintln(os.Stderr, "unexercised: exact strace PTRACE_SEIZE permission denial; owned M/S consumed, F zero, payload absent, no children")
+			return true // Helper dispatcher checks deferred cleanup errors first.
+		}
+		return false
+	}
+	if ready.Gate != "attached" {
+		t.Fatalf("observer did not attach; no release: %+v", ready)
+	}
+	if mode == "denied-attachment" {
+		t.Fatal("competing-tracer negative row unexpectedly attached")
 	}
 	if mode == "live" {
 		cloneParentWrite(t, parent, cloneParentEvent{Gate: "continue"})
@@ -332,6 +363,19 @@ func cloneTraceReaper(t *testing.T) {
 	if mode != "live" && !bytes.Contains(trace, []byte("killed by SIGKILL")) {
 		t.Fatal("trace omitted actual M SIGKILL")
 	}
+	return false
+}
+
+func cloneTraceNoPayloadOrChildren(t *testing.T, root string) {
+	t.Helper()
+	if _, err := os.Stat(filepath.Join(root, "payload-entered")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("refusal payload absence not established: %v", err)
+	}
+	var raw syscall.WaitStatus
+	pid, err := syscall.Wait4(-1, &raw, syscall.WNOHANG, nil)
+	if pid != -1 || err != syscall.ECHILD {
+		t.Fatalf("refusal retained an unconsumed child: pid=%d raw=%#x err=%v", pid, uint32(raw), err)
+	}
 }
 
 func cloneTraceCaller(t *testing.T) {
@@ -350,8 +394,13 @@ func cloneTraceCaller(t *testing.T) {
 	defer observer.Close()
 	defer observerChild.Close()
 	root, mode := os.Getenv("ZERB_TRACE_ROOT"), os.Getenv("ZERB_TRACE_MODE")
+	observerError, err := os.OpenFile(filepath.Join(root, "observer-stderr"), os.O_RDWR|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer observerError.Close()
 	cmd := cloneTraceCommand("M", mode, root)
-	cmd.ExtraFiles = []*os.File{child, observerChild}
+	cmd.ExtraFiles = []*os.File{child, observerChild, observerError}
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	mFD := -1
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true, Pdeathsig: syscall.SIGKILL, PidFD: &mFD}
@@ -384,9 +433,39 @@ func cloneTraceCaller(t *testing.T) {
 		seen.Parent != os.Getpid() || seen.SID != cmd.Process.Pid || seen.PGID != seen.PID || seen.Signal != 0 || !seen.Accepted {
 		t.Fatalf("wrong pre-attach observer relation: created=%+v observer=%+v", created, seen)
 	}
+	cloneParentWrite(t, control, cloneParentEvent{Gate: "registered", PID: cmd.Process.Pid, Parent: seen.PID})
+	if cloneParentRead(t, control).Gate != "inspect" {
+		t.Fatal("missing pre-attachment custody acknowledgement")
+	}
+	if mode == "denied-attachment" {
+		// A real competing tracer causes kernel EPERM without changing policy.
+		// If this ancestor itself is denied, S must still prove its own denial.
+		if err := unix.PtraceSeize(cmd.Process.Pid); err != nil && err != syscall.EPERM {
+			t.Fatal(err)
+		}
+	}
 	cloneParentWrite(t, observer, cloneParentEvent{Gate: "attach", PID: cmd.Process.Pid})
 	if err := cloneTraceAttached(cmd.Process.Pid, seen.PID); err != nil {
-		t.Fatal(err) // No target token on attach failure; no policy repair.
+		if _, err := observerError.Seek(0, io.SeekStart); err != nil {
+			t.Fatal(err)
+		}
+		diagnostic, readErr := io.ReadAll(io.LimitReader(observerError, 1025))
+		if !errors.Is(err, errCloneTraceObserverExited) || readErr != nil || !cloneTracePermissionDenied(diagnostic, cmd.Process.Pid) {
+			t.Fatalf("attachment failed without verified permission refusal: %v (stderr read=%v, bytes=%d)", err, readErr, len(diagnostic))
+		}
+		custodyCheck(t, custodyObserve(t, seen.PID), seen.PID, "1")
+		if err := unix.PidfdSendSignal(mFD, syscall.SIGKILL, nil, 0); err != nil {
+			t.Fatal(err)
+		}
+		if err := cmd.Wait(); err == nil || cmd.ProcessState.Sys().(syscall.WaitStatus) != syscall.WaitStatus(syscall.SIGKILL) {
+			t.Fatalf("held M refusal cleanup did not retain raw SIGKILL: %v", err)
+		}
+		cloneTraceWait(t, seen.PID, 1<<8)
+		cloneTraceStored(t, mFD, uint32(syscall.SIGKILL))
+		cloneTraceStored(t, sFD, 1<<8)
+		cloneTraceNoPayloadOrChildren(t, root)
+		cloneParentWrite(t, control, cloneParentEvent{Gate: "refused", PID: cmd.Process.Pid, Parent: seen.PID, Err: int(syscall.EPERM), Raw: 1 << 8})
+		return
 	}
 	cloneParentWrite(t, control, cloneParentEvent{Gate: "attached", PID: cmd.Process.Pid, Parent: seen.PID})
 	if cloneParentRead(t, control).Gate != "continue" {
@@ -404,6 +483,8 @@ func cloneTraceManaged(t *testing.T) {
 	defer control.Close()
 	observer := cloneTraceControl(4)
 	defer observer.Close()
+	observerError := cloneTraceControl(5)
+	defer observerError.Close()
 	parent, err := validateInternalControl(3)
 	if err != nil || parent != os.Getppid() || sessionID() != os.Getpid() || cloneTraceInitialTID != os.Getpid() || cloneTraceInitialSignal != syscall.SIGKILL {
 		t.Fatalf("wrong direct F/M setup: %v", err)
@@ -415,10 +496,11 @@ func cloneTraceManaged(t *testing.T) {
 	cmd := cloneTraceCommand("S", os.Getenv("ZERB_TRACE_MODE"), os.Getenv("ZERB_TRACE_ROOT"))
 	sFD := -1
 	pid, err := syscall.ForkExec(os.Args[0], cmd.Args, &syscall.ProcAttr{
-		Env: cmd.Env, Files: []uintptr{0, 1, 2, observer.Fd()},
+		Env: cmd.Env, Files: []uintptr{0, 1, observerError.Fd(), observer.Fd()},
 		Sys: &syscall.SysProcAttr{Cloneflags: syscall.CLONE_PARENT, Setpgid: true, PidFD: &sFD},
 	})
 	observer.Close()
+	observerError.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -479,6 +561,14 @@ func cloneTraceObserver(t *testing.T) {
 	}
 }
 
+var errCloneTraceObserverExited = errors.New("observer exited before attachment")
+
+func cloneTracePermissionDenied(diagnostic []byte, pid int) bool {
+	want := fmt.Sprintf(": attach: ptrace(PTRACE_SEIZE, %d): Operation not permitted\n", pid)
+	// strace versions label diagnostics with either argv[0] or its basename.
+	return bytes.Equal(diagnostic, []byte("/usr/bin/strace"+want)) || bytes.Equal(diagnostic, []byte("strace"+want))
+}
+
 // Check every currently held Go thread, including the locked exec thread.
 // shortcut: this ordered stable snapshot is not adversarial thread-churn proof;
 // qualify descriptor/thread races separately before production use.
@@ -495,6 +585,13 @@ func cloneTraceAttached(pid, observer int) error {
 	deadline := time.Now().Add(5 * time.Second)
 	path := fmt.Sprintf("/proc/%d/task", pid)
 	for time.Now().Before(deadline) {
+		var terminal unix.Siginfo
+		if err := unix.Waitid(unix.P_PID, observer, &terminal, unix.WEXITED|unix.WNOWAIT|unix.WNOHANG, nil); err != nil && err != syscall.EINTR {
+			return err
+		}
+		if terminal.Signo != 0 {
+			return errCloneTraceObserverExited
+		}
 		threads, err := os.ReadDir(path)
 		if err != nil {
 			return err
