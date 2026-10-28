@@ -909,3 +909,59 @@ Every field below is explicitly a **Phase 1 evidence field**. A result is inconc
   gates remain open. Production execution, Phase 2, MVP and release/support stay
   incomplete. No production package, dependency, exported API or host setting
   changes are part of this proof.
+
+### CLOUD-REGISTERED-BACKUP-CUSTODY-2026-10-28
+
+- **Scope and new relation:** ARCH-009/010 and VAL-018/019/020 test-private
+  pre-release M-capability registration with a live F backup. Unlike the earlier
+  post-exit G-status acknowledgement rows, F retains its original atomic M/O
+  birth pidfds before transferring a duplicate M capability to O. M/O execute
+  the already-opened same Go test image and remain F's natural children. F
+  consumes M before asking O for stored EXIT, avoiding a status/reaping cycle.
+  M performs synthetic marker/exit behavior, not manager execution or final
+  managed-target exec. No additional process role is added to production dispatch.
+- **Binding and refusal:** Child-generated nonces and expected message order are
+  bound in local state to the held F/O/M tuple, expected role and full image
+  identity. Wrong nonce, cross-role nonce, role, PID, owner, image, substituted O
+  pidfd, ordinary file, zero/multiple/truncated rights, extra stream byte and
+  replayed registration refuse before synthetic entry. Rejected capabilities
+  are close-only; F cleanup signals only its own birth-held M/O pidfds.
+- **Actual custody boundaries:** O is killed before transfer, after validated
+  receipt/before acknowledgement, after acknowledgement/before release, and
+  before/after actual M consumption. F retains and verifies the exact M facts.
+  Live and consumption-boundary rows distinguish exits 0, 11 and 137 from raw
+  SIGKILL. O cannot consume M (actual ECHILD). Every successful row requires exact
+  M/O consuming waits and terminal ECHILD; known statuses never clear a latched
+  owner-loss or failed-registration result.
+- **Liveness counterexample:** Missing stored EXIT is not liveness: a terminal
+  unreaped M/O can still return the expected PID/TGID/PPID without EXIT. New
+  terminal-but-unconsumed controls retain that misleading identity and reject it
+  using a nonblocking pidfd-readiness observation. Readiness is used only to
+  refuse, never to produce a raw status or claim consumption. No atomic global
+  death/release fence follows from these ordered observations.
+- **Rights ownership:** The bounded receiver uses MSG_CMSG_CLOEXEC, accepts one
+  delivered rights descriptor and closes delivered prefixes on rejection. Pipe
+  EOF/HUP checks detect leaked writer duplicates without global descriptor counts
+  while proving sender ownership. SO_PASSPIDFD is required disabled on the
+  exclusively owned socket before recvmsg: automatic SCM_PIDFD could otherwise
+  install an unexpected descriptor. The preflight refusal leaves the queued
+  capability intact. Option-query failures refuse; no host setting is changed.
+  Packet MSG_TRUNC and extra stream-byte cases are separately exercised.
+- **Evidence limits:** F-created socket credentials identify F to O, not O to F.
+  Held births, exclusive endpoint inheritance and full same-image observations
+  are limited provenance; complete mutual role authentication remains open.
+  Existing proof JSON value semantics do not prove duplicate-free wire grammar.
+  The provisional bounded test frame is not a frozen production registry/API.
+  There is no S/G assembly, real guard/cgroup/namespace/resource, native whole
+  tree, original-F-death, physical-terminal or complete descriptor-churn proof.
+  Actual external reaping, prior topology gaps, authenticated Nix artifact
+  inventory/fit, frozen-host and installed acceptance remain unqualified.
+  Production activation, Phase 2, MVP and the five-slice program remain incomplete.
+- **Focused validation:** Thirty process rows and nine rights rows passed ten
+  race/coverage repetitions (300 process cases and 90 framing checks). Retained
+  JSON records every row passing with zero skips; scoped lint reports zero issues.
+  Independent Sol code/security review inspected the final source and evidence
+  without rerunning tests and has no remaining findings. Roadmapcheck reports
+  zero errors and two existing proof-ledger anchor warnings. Clean committed-source
+  conformance and exact-head CI remain separate later observations; no unexecuted
+  result is claimed at this focused checkpoint.
