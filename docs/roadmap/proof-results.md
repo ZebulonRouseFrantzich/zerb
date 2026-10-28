@@ -965,3 +965,58 @@ Every field below is explicitly a **Phase 1 evidence field**. A result is inconc
   zero errors and two existing proof-ledger anchor warnings. Clean committed-source
   conformance and exact-head CI remain separate later observations; no unexecuted
   result is claimed at this focused checkpoint.
+
+### CLOUD-AUTHENTICATED-HELD-ASSEMBLY-2026-10-28
+
+- **Scope:** ARCH-009/010 and VAL-018/019/020 integrated F/O/M/S/G held bootstrap,
+  following the exact [ownership table](runner-held-assembly-proof.md). M creates
+  S with CLONE_PARENT (natural F parent); O creates G. F-created FD 3 reaches S
+  through M, while G's bootstrap FD 3 is O-created. G's separate F custody channel
+  gains authority only after O-parent authentication and F-pidfd validation.
+- **Actual sender and capability binding:** Every seqpacket record uses recvmsg,
+  kernel SCM_CREDENTIALS, an independently held expected PID/UID, exact bounded
+  rights count and MSG_CMSG_CLOEXEC. Peer credentials at socket creation alone
+  cannot authenticate a later child writer. Per-channel nonces distinguish initial
+  partial births from final five-distinct-role registration. Packet refusal closes
+  every installed rights prefix; exclusive socket options disallow automatic
+  SCM_PIDFD installation. Existing JSON decoded-value semantics are not a
+  duplicate-free production grammar claim. Decoder refusals are fixed text and
+  a nonce-bearing unknown-key regression verifies error redaction.
+- **Integrated ownership:** F retains M/O birth and validated S/G capabilities.
+  O acknowledges M/S backup copies and retains its original G; S/G validate M
+  copies. M retires creator S custody only after the required holders register.
+  G retains separately validated F/O identity handles; F never receives O's
+  protocol-disarm writer. Received refusal capabilities remain close-only.
+  Inherited slots above 3 regain CLOEXEC before subsequent births; an inherited
+  marker and the original sender's ownership are checked through real files.
+- **Role attributes and refusal:** M preserves the locked direct-F SIGKILL
+  relation, S's survival stage is zero with SID=M/PGID=S, O/G stay outside M's
+  session/group, and G installs/revalidates O-parent SIGUSR1. F/O subreaper
+  attributes are set and read back. Held sender identity/readiness is checked
+  before/after every accepted packet, and all five are observed live at the
+  completed held checkpoint. A queued ACK from a terminal, unconsumed O exit 29
+  is refused; missing stored EXIT does not establish liveness. These ordered
+  checks are not an atomic global death/release fence.
+- **Disposal and facts:** Positive disposal gives actual F waits for M exit 11
+  and S exit 137, actual O wait for G zero, then actual F wait for O zero, with
+  retained exact EXIT facts. G zero is solely its unarmed process status, never
+  guard-cleanup success. Every cleanup sweeps retained EXIT for all validated
+  owned capabilities, comparing F's actual wait facts separately and retaining
+  O-consumed G facts. Interrupted untransferred births remain failed/unresolved
+  registration; no later pathname/PID lookup mints a missing capability.
+- **Checks:** Eleven integrated rows and twenty-five packet cases passed ten
+  race/coverage repetitions: 110 integrated cases and 250 transport checks.
+  Retained JSON records zero failures/skips; scoped lint reports zero issues.
+  Independent Sol design/security/source review resolved queued-dead-sender
+  acceptance, G's missing parent-death stage, missing subreaper readback,
+  incomplete retained-status cleanup and nonce error-redaction findings. The
+  reviewer inspected source/evidence, not a separate execution. New clean-source
+  conformance and exact-head CI remain separate later observations.
+- **Unchanged gates:** G is explicitly unarmed, has no real cgroup capability
+  and directly reports arm refusal. Managed release and strace activation remain
+  disabled. There is no production protocol/API, complete descriptor/death churn,
+  sealed mutation/global-exec race, native descendant, resource, physical terminal,
+  actual external-reaper, pinned Nix artifact/inventory/fit or frozen-host/installed
+  qualification. All earlier topology gaps remain open. No host security setting,
+  package, service, merge or deployment changes. Full slice 2, Phase 2, MVP,
+  production activation and support are not declared complete.
