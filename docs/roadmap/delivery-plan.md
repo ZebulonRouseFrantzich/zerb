@@ -208,6 +208,13 @@ cgroup admission, full retained invocation matrix and host qualification remain
 outstanding. Foundation conformance now explicitly races the new execenv package;
 this coverage strengthening does not create process execution authority.
 
+The approved [Runner ownership direction](architecture.md#approved-runner-ownership-direction--activation-remains-gated)
+permits bounded disposable custody proofs and contract closure, not production
+Runner activation. The root-death release counterexample remains a blocking
+architecture decision; narrow kernel status tests do not close it. Device policy,
+role registration, composed cleanup/resource fit and actual host qualification
+remain separate gates. No partial Runner or app/host scaffolding is admitted.
+
 The owner approved the specialized private large-state codecs after the standard
 decoder's capacity exceeded the complete reservation for existing accepted output.
 First independently review the concrete representation/accounting plan and layout

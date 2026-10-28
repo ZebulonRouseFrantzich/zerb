@@ -152,6 +152,47 @@ deadline/expiry checks establish no renewal; real-process elapsed durations are
 observations, not scheduler upper bounds. Cleanup failure must win status
 arbitration independently of an observed zero guard wait status.
 
+### Runner ownership and custody proof boundary
+
+The approved ARCH-009/010 ownership direction requires separate evidence for:
+
+1. Original-caller F (earlier C) death before release, with watchers unscheduled.
+   F directly parents M. Prove M's full-lifetime creator and locked release/exec
+   thread parent-death relation, ordinary exec preservation, and exact final
+   ordering. M-created CLONE_PARENT observer S must have natural parent F, inherited
+   SID=M, separate PGID=S, intentional zero survival stage and qualified atomic
+   pidfd birth. Wrong creator-based parent-death configuration and failed exec
+   must expose their actual F-owned child/status disposition. Prove S's exact
+   plain-strace attachment remains identity-owned through F/M/G/S failures; held
+   checkpoint rows alone are not the complete concurrent release proof.
+2. Registered control-role custody: exact preheld identity-bound pidfds, approved
+   kernel-retained raw status and acknowledged live/backup ownership before
+   release. Exercise missing/unsupported EXIT, before/after natural consumption,
+   deadlock avoidance, creator/owner/caller loss, partial transfer and interrupted
+   birth. A later failed exec may return no creator PID/pidfd while leaving an
+   F-owned child; source-level error is not absence. Distinguish exit 137 from
+   SIGKILL. Full tracing/native-wait and actual-reaping evidence remains separately
+   required for covered native descendants; a complete log cannot retroactively
+   mint a before-reap pidfd or prove an unobserved external reap. Missing facts
+   latch unresolved failure and never synthesize guard zero or clean completion.
+   Qualify actual parent/reaper contexts without substituting a cooperative test
+   subreaper; deliberately delayed external consumption must retain uncertainty.
+3. Authenticated role/spawn-intent registration, interrupted birth and multi-hop
+   acknowledgement. A small C → O → child kernel test is not this full protocol.
+4. Trusted null and PTY/device acquisition; caller-only physical-terminal bridge,
+   cooperative foreground ownership, authority-loss refusal and catchable cleanup.
+   C's uncatchable death does not promise automatic physical-terminal restoration.
+5. The composed role/cgroup/namespace/resource ledger and actual retained process
+   classes, followed separately by required frozen-host/installed acceptance.
+
+Local disposable subprocess tests may exercise wait retention, adoption and raw
+status preservation without privilege or owner-host operations. They must not
+mark unexercised dispatch, root-death release, terminal, cgroup, resource or host
+rows passed. No new numeric resource envelope follows from a bounded test fixture.
+The three direct-parent contracts above authorize bounded design/proof only.
+They do not close ARCH-009/010 activation, rewrite the public caller boundary,
+qualify a real reaper/host, or permit security changes when a capability refuses.
+
 ## Protected roots, filesystem, archives, and destinations
 
 | ID | Requirements proved | Scenario and required evidence |
