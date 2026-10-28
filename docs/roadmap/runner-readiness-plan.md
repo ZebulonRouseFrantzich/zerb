@@ -157,6 +157,19 @@ the remaining member, ESRCH for the empty old group and no effect on a separate
 control group. Source inspection supports kernel-object addressing; forced numeric
 PID reuse was not tested. An injected unread-birth failure left no adopted child.
 
+The repository Go regression `TestPidfdGroupAuthority` now repeats the narrower
+owned-group transition with atomic birth pidfds, explicit session/group checks,
+observable member delivery before and after the leader's actual consuming wait,
+nonleader/conflicting-scope refusal, empty-old-group ESRCH, and an independently
+responsive control whose exact zero status is required. A separate individual
+SIGTERM row verifies that control would fail on an unintended signal. Interrupted
+member registration proves sole-endpoint EOF disposition and actual child waits;
+the fixture-local socket-shutdown regression covers pending-reader revocation.
+CLONE_PARENT makes the cooperating test driver the member's natural parent; this
+does not qualify orphan adoption or an actual external reaper. These regressions
+do not close the remaining strace/session, numeric-reuse, complete protocol,
+containment/resource or global death/exec race gates.
+
 Thirty fast-child rows retained a full trace of child exit 11 and its parent's
 actual reap, while a later pidfd_open returned ESRCH. This disproves post-hoc
 capability registration as a general solution; it does not disprove trace-based
