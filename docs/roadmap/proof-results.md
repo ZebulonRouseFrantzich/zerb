@@ -965,3 +965,122 @@ Every field below is explicitly a **Phase 1 evidence field**. A result is inconc
   zero errors and two existing proof-ledger anchor warnings. Clean committed-source
   conformance and exact-head CI remain separate later observations; no unexecuted
   result is claimed at this focused checkpoint.
+
+### CLOUD-AUTHENTICATED-HELD-ASSEMBLY-2026-10-28
+
+- **Scope:** ARCH-009/010 and VAL-018/019/020 integrated F/O/M/S/G held bootstrap,
+  following the exact [ownership table](runner-held-assembly-proof.md). M creates
+  S with CLONE_PARENT (natural F parent); O creates G. F-created FD 3 reaches S
+  through M, while G's bootstrap FD 3 is O-created. G's separate F custody channel
+  gains authority only after O-parent authentication and F-pidfd validation.
+- **Actual sender and capability binding:** Every seqpacket record uses recvmsg,
+  kernel SCM_CREDENTIALS, an independently held expected PID/UID, exact bounded
+  rights count and MSG_CMSG_CLOEXEC. Peer credentials at socket creation alone
+  cannot authenticate a later child writer. Per-channel nonces distinguish initial
+  partial births from final five-distinct-role registration. Packet refusal closes
+  every installed rights prefix; exclusive socket options disallow automatic
+  SCM_PIDFD installation. Existing JSON decoded-value semantics are not a
+  duplicate-free production grammar claim. Decoder refusals are fixed text and
+  a nonce-bearing unknown-key regression verifies error redaction.
+- **Integrated ownership:** F retains M/O birth and validated S/G capabilities.
+  O acknowledges M/S backup copies and retains its original G; S/G validate M
+  copies. M retires creator S custody only after the required holders register.
+  G retains separately validated F/O identity handles; F never receives O's
+  protocol-disarm writer. Received refusal capabilities remain close-only.
+  Inherited slots above 3 regain CLOEXEC before subsequent births; an inherited
+  marker and the original sender's ownership are checked through real files.
+- **Role attributes and refusal:** M preserves the locked direct-F SIGKILL
+  relation, S's survival stage is zero with SID=M/PGID=S, O/G stay outside M's
+  session/group, and G installs/revalidates O-parent SIGUSR1. F/O subreaper
+  attributes are set and read back. Held sender identity/readiness is checked
+  before/after every accepted packet, and all five are observed live at the
+  completed held checkpoint. A queued ACK from a terminal, unconsumed O exit 29
+  is refused; missing stored EXIT does not establish liveness. These ordered
+  checks are not an atomic global death/release fence.
+- **Disposal and facts:** Positive disposal gives actual F waits for M exit 11
+  and S exit 137, actual O wait for G zero, then actual F wait for O zero, with
+  retained exact EXIT facts. G zero is solely its unarmed process status, never
+  guard-cleanup success. Every cleanup sweeps retained EXIT for all validated
+  owned capabilities, comparing F's actual wait facts separately and retaining
+  O-consumed G facts. Interrupted untransferred births remain failed/unresolved
+  registration; no later pathname/PID lookup mints a missing capability.
+- **Checks:** Eleven integrated rows and twenty-five packet cases passed ten
+  race/coverage repetitions: 110 integrated cases and 250 transport checks.
+  Retained JSON records zero failures/skips; scoped lint reports zero issues.
+  Independent Sol design/security/source review resolved queued-dead-sender
+  acceptance, G's missing parent-death stage, missing subreaper readback,
+  incomplete retained-status cleanup and nonce error-redaction findings. The
+  reviewer inspected source/evidence, not a separate execution. New clean-source
+  conformance and exact-head CI remain separate later observations.
+- **Unchanged gates:** G is explicitly unarmed, has no real cgroup capability
+  and directly reports arm refusal. Managed release and strace activation remain
+  disabled. There is no production protocol/API, complete descriptor/death churn,
+  sealed mutation/global-exec race, native descendant, resource, physical terminal,
+  actual external-reaper, pinned Nix artifact/inventory/fit or frozen-host/installed
+  qualification. All earlier topology gaps remain open. No host security setting,
+  package, service, merge or deployment changes. Full slice 2, Phase 2, MVP,
+  production activation and support are not declared complete.
+
+### CLOUD-HELD-ASSEMBLY-CONFORMANCE-FAILURE-2026-10-28
+
+- **Initial full gate:** Clean source `75af60449217cb825bf540ea0902cea87f666bea`
+  was unchanged before/after collection. Proof-race exited 1 after 241.254 seconds
+  with 1387 diagnostic bytes; the other nine required stages passed. The collector
+  intentionally omitted/discarded its raw diagnostics, so the exact failing test
+  and cause are unavailable. The failed source-bound report is retained privately.
+- **Finite follow-up:** The unchanged exact proof-race command was run once with
+  private retained output and passed every proof package; lifecycle took 12.253
+  seconds and state took 233.149 seconds. Twenty additional race/coverage
+  repetitions of the eleven new integrated rows passed (220 cases, 42.581 seconds).
+  No code was changed to obtain those results. A fresh standard gate is a separate
+  subsequent observation, not a rewrite of this failed one.
+- **Unresolved limitation:** There is no identified cause, reproduced failing test,
+  correction, or evidence that the failure was unrelated to this change. Source
+  review remains clear, but the overall proof has this unresolved observation.
+  Later passing local/CI results can establish only their own outcomes. They do
+  not close this issue, prove stability, qualify a host or enable production.
+
+### CLOUD-FAILURE-DIAGNOSTIC-RETENTION-2026-10-28
+
+- **Scope and authority:** VAL-003 and VAL-018/019 diagnostic maintenance only.
+  The historical `75af604` proof-race exit 1 remains unexplained; the discarded
+  assertion cannot be recovered and is not reclassified by this change.
+- **Retention:** Each standard collector invocation exclusively reserves a
+  `0600` output-adjacent `.checks.jsonl` journal, parent-syncs creation and
+  flushes/fsyncs check starts/completions before proceeding. A pre-execution,
+  measured-source catalog admits only known source identifiers/line locations;
+  arbitrary output, dynamic subtest suffixes, nonce/PID/FD/path values and output
+  hashes are discarded. Malformed/oversized/deep/unknown records, overflow or
+  missing locations are incomplete; stage failure/unknown exit is never promoted.
+  Failure location references survive later passing traffic. Source binding and
+  completion distinguish a finished collection from an unresolved started check.
+- **Held evidence:** A closed 512-byte trace vocabulary reports role phase/birth,
+  actual Wait4/retained EXIT values and refusal facts without expected-value
+  substitution. Diagnostic actors `harness`/`fixture` are not authenticated roles.
+  Producer sequence and collector arrival are not global causal ordering or
+  status/authentication authority. Streaming child output removes the old 8 KiB
+  prefix loss; failed diagnostic writes preserve descriptor/birth cleanup and
+  original assertions/timeouts. Other subprocess classes gain no invented facts.
+- **Observed regressions:** Two explicit no-role Go failure fixtures exit 1 and
+  retain source locations/typed observations through the fsynced journal. The
+  late fixture emits 128 records beyond 8 KiB, retains its late assertion and the
+  outer harness's actual child raw status 256 (exit 1); the Go JSON stream totals
+  46,860 bytes. These deliberately failing fixtures are retention tests, not
+  positive lifecycle rows. The measured catalog has 370 files, approximately
+  4.04 MB and 49 packages, within 4,096-file/16-MiB/1-MiB-per-file capture limits.
+  Python boundary tests cover poison-value omission, source mutation, aggregate
+  growth before open, immutable catalog, nested/duplicate JSON, bounds/overflow,
+  old failure archival, checkpoint I/O failure, unknown timeout status and
+  preservation of occupied output/journal slots. Focused held/packet/trace race
+  validation passed in 3.337 seconds with unchanged measured working source.
+- **Review and open gates:** Independent Sol/high security/source review resolved
+  catalog timing, deep-input, prefix truncation and late-event eviction findings;
+  the reviewer did not run tests. Exact committed-source conformance/CI remain
+  separate subsequent results. Current cloud membership is `0::/` with a read-only
+  cgroup2 mount and no supplied owned writable delegation. Real guard arming,
+  descriptor-relative cgroup kill/limits/emptiness and full containment cannot be
+  proved here. No root kill, remount, permission repair or stand-in grants that
+  authority. External reaping, Nix artifact/inventory/fit, twelve safefs, forty-six
+  initialization and ten observation topology gaps, full host/installed matrices
+  and production activation remain open. No package, public API, CLI, host-security
+  setting, service, merge or deployment change.

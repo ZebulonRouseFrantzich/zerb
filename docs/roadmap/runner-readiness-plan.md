@@ -158,7 +158,7 @@ or a newly frozen production protocol. It does not reorder the gates above.
 | Planned slice | Current evidence | Concrete unfinished boundary |
 |---|---|---|
 | 1. Private kernel capabilities | PR #45: Go observer birth, stored-status and tracing subsets. PR #46: retained group-pidfd authority through actual leader consumption, refusal and isolation controls. | Complete group/session/attachment races, capability admission/fit and their private production foundation remain unclosed. Neither PR completes slice 1. |
-| 2. Authenticated role assembly | The registered-backup fixture adds actual pre-release M-pidfd transfer, bound role/value checks, F's retained birth capability, O-loss boundaries, and close-only rights refusal. This differs from the earlier post-exit G-status acknowledgement fixture. | Full F/O/M/S/G registration, mutual role authentication, complete descriptor ownership/churn, fallback custody under all required losses and bounded partial-birth assembly remain open. The test-private wire is not a production registry. |
+| 2. Authenticated role assembly | PR #47 adds registered M capability/live-F backup. The [held assembly](runner-held-assembly-proof.md) integrates F/O/M/S/G birth, exact-parent bootstrap, per-packet kernel sender credentials, complete nonce-bound role tuple, explicit descriptor routing and acknowledged backup custody. G remains unarmed. | The integrated held bootstrap is a prerequisite, not production assembly: complete descriptor/death churn, sealed final dispatch, all-loss/resource closure, real class-root/cgroup authority and operational guard readiness remain open. Neither test-private wire freezes a production registry. |
 | 3. Guarded noninteractive lifecycle | Separate timing, custody, direct-parent and owned-group prerequisites have local evidence. | Real independent guard/cgroup/namespace authority, actual reaper context, whole-tree resource/cleanup proof and composed cancellation/death/release matrix remain open. |
 | 4. Retained class integration | No new manager or acquisition execution is introduced by this proof stack. | Prior lifecycle gates plus the actual authenticated pinned Nix build, runtime/license inventory and representation fit remain required. Synthetic inventories cannot replace them. |
 | 5. Interactive/full Runner | Approved caller-only physical-terminal direction remains unchanged. | Full PTY/job-control, terminal authority/loss, complete Runner methods and required host/installed acceptance remain unproved. |
@@ -172,6 +172,14 @@ checks decoded values, unknown fields and trailing values; this subset does not
 qualify duplicate-free production grammar. Readiness can reject a terminal role,
 but neither readiness nor a missing stored EXIT establishes raw status or reaping.
 Ordered fault checkpoints are not a concurrent death/release linearization proof.
+
+The newer held-assembly proof uses credential-bearing seqpacket records for every
+message, including ACKs. Expected sender PID/UID comes from held validated state;
+fresh liveness is checked around packet acceptance and at the final held tuple.
+G keeps its O-parent bootstrap and separately authenticated F custody channel;
+an O relay is not substituted for G's direct evidence. This closes the earlier
+fixture's limited sender provenance only for the documented held test graph,
+without qualifying production dispatch, mutation races or an armed guard.
 
 ## New local evidence and remaining decision
 
