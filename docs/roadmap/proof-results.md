@@ -1020,3 +1020,22 @@ Every field below is explicitly a **Phase 1 evidence field**. A result is inconc
   qualification. All earlier topology gaps remain open. No host security setting,
   package, service, merge or deployment changes. Full slice 2, Phase 2, MVP,
   production activation and support are not declared complete.
+
+### CLOUD-HELD-ASSEMBLY-CONFORMANCE-FAILURE-2026-10-28
+
+- **Initial full gate:** Clean source `75af60449217cb825bf540ea0902cea87f666bea`
+  was unchanged before/after collection. Proof-race exited 1 after 241.254 seconds
+  with 1387 diagnostic bytes; the other nine required stages passed. The collector
+  intentionally omitted/discarded its raw diagnostics, so the exact failing test
+  and cause are unavailable. The failed source-bound report is retained privately.
+- **Finite follow-up:** The unchanged exact proof-race command was run once with
+  private retained output and passed every proof package; lifecycle took 12.253
+  seconds and state took 233.149 seconds. Twenty additional race/coverage
+  repetitions of the eleven new integrated rows passed (220 cases, 42.581 seconds).
+  No code was changed to obtain those results. A fresh standard gate is a separate
+  subsequent observation, not a rewrite of this failed one.
+- **Unresolved limitation:** There is no identified cause, reproduced failing test,
+  correction, or evidence that the failure was unrelated to this change. Source
+  review remains clear, but the overall proof has this unresolved observation.
+  Later passing local/CI results can establish only their own outcomes. They do
+  not close this issue, prove stability, qualify a host or enable production.

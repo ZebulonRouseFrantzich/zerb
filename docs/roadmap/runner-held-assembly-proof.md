@@ -135,3 +135,12 @@ issues. Independent Sol security/design/source review has no remaining findings;
 the reviewer inspected source/evidence without rerunning tests. Full clean-source
 conformance and exact-head CI are separate subsequent observations. This records
 the held bootstrap subset only, never an armed or complete production Runner.
+
+The first full conformance attempt at source `75af604` failed its proof-race
+stage (exit 1); the other nine stages passed and source binding stayed clean.
+That collector discarded detailed diagnostics, so the failing test and cause
+remain unknown. The exact proof-race command subsequently passed with retained
+private diagnostics, and twenty additional covered-race repetitions of all eleven
+integrated rows passed. Neither observation explains the initial failure or proves
+it unrelated. Preserve that unresolved result alongside any fresh gate/CI result;
+there is no claimed fix or general stability/qualification conclusion.
