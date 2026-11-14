@@ -22,6 +22,13 @@ Before qualification, movement between Phase 2–4 work scopes requires complete
 
 The separate Phase 1 qualification/freeze gate still requires the complete real Fedora/kernel/x86_64/btrfs matrix, exact tool and CA evidence, all required positive and dependent negative rows, independent plan/security review and owner freeze approval. Cloud conformance cannot waive any row or turn `inconclusive` into `implementation-qualified`/`exclusion-proven`. Real frozen-host qualification/freeze is required before local Phase 6 public-entrypoint cutover work. Release, real-workstation use and support additionally require complete Phase 6 installed-binary acceptance and final reviews; this plan grants no publication, push or merge authority. Phase 5 exclusion confirmation remains required before Phase 6.
 
+Cloud conformance reserves an additional exclusive `--output`-adjacent
+`.checks.jsonl` failure-diagnostic journal before running test stages. Preserve it
+with the report. The [held-assembly diagnostic notes](runner-held-assembly-proof.md#failure-diagnostic-retention)
+define redaction, bounded source/role observations, fsync checkpoints and incomplete
+evidence handling; raw tool output is not retained. This is diagnostic maintenance,
+not additional host qualification or permission to enable execution.
+
 ## Phase 0 — Authority migration and exhaustive disposition
 
 ### Purpose

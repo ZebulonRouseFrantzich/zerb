@@ -345,7 +345,7 @@ class FilesystemTests(unittest.TestCase):
         tools = {name: {"identity": {"path": "/measured/" + name}} for name in cloud.REQUIRED_TOOLS}
         commands = dict(cloud.commands(tools, self.root, self.root))
         self.assertEqual(set(commands), set(cloud.REQUIRED_CHECKS))
-        self.assertEqual(commands["proof-race"], ["/measured/go", "test", "-race", "-count=1", "./internal/proof/..."])
+        self.assertEqual(commands["proof-race"], ["/measured/go", "test", "-json", "-race", "-count=1", "./internal/proof/..."])
         self.assertIn("./internal/paths", commands["foundation-race"])
         self.assertIn("./internal/safefs", commands["foundation-race"])
         self.assertIn("./internal/toolchain", commands["foundation-race"])
@@ -355,7 +355,7 @@ class FilesystemTests(unittest.TestCase):
         self.assertEqual(commands["release-build"][-1], "./cmd/zerb")
         self.assertIn("test_*.py", commands["python-boundaries"])
         self.assertEqual(commands["parser-pin"], ["/measured/python3", "scripts/check_parser_pin.py", "--go", "/measured/go"])
-        self.assertEqual(commands["parser-upstream-race"], ["/measured/go", "-C", "third_party/go-toml", "test", "-race", "-count=1", "./..."])
+        self.assertEqual(commands["parser-upstream-race"], ["/measured/go", "-C", "third_party/go-toml", "test", "-json", "-race", "-count=1", "./..."])
 
 
 class SourceTests(unittest.TestCase):
@@ -381,6 +381,31 @@ class SourceTests(unittest.TestCase):
             clean = cloud.source_identity(repo, git, env)
             self.assertFalse(clean["dirty"])
             self.assertEqual(clean, cloud.source_identity(repo, git, env))
+            (repo / "go.mod").write_text("module example.test/snapshot\n")
+            (repo / "snapshot_test.go").write_text("package snapshot\nfunc TestBefore(t *testing.T) {}\n")
+            (repo / ".git" / "hidden_test.go").write_text("func TestSecret(t *testing.T) {}\n")
+            diagnostic_sources = {}
+            measured = cloud.source_identity(repo, git, env, diagnostic_sources)
+            self.assertEqual(measured, cloud.source_identity(repo, git, env))
+            self.assertEqual(set(diagnostic_sources), {"go.mod", "snapshot_test.go"})
+            catalog = cloud.source_catalog(diagnostic_sources)
+            actual_identity = cloud.file_identity
+
+            def grow_before_open(path, *args, **kwargs):
+                if path.name == "snapshot_test.go" and kwargs.get("contents") is not None:
+                    path.write_bytes(diagnostic_sources["snapshot_test.go"] + b"\n")
+                return actual_identity(path, *args, **kwargs)
+
+            bounded_capture = {}
+            with mock.patch.object(cloud, "MAX_CATALOG_BYTES", sum(map(len, diagnostic_sources.values()))), \
+                    mock.patch.object(cloud, "file_identity", side_effect=grow_before_open):
+                with self.assertRaises(cloud.EvidenceError):
+                    cloud.source_identity(repo, git, env, bounded_capture)
+            self.assertNotIn("snapshot_test.go", bounded_capture)
+            (repo / "snapshot_test.go").write_text("package snapshot\nfunc TestAfter(t *testing.T) {}\n")
+            self.assertEqual(catalog["example.test/snapshot"]["tests"], {"TestBefore"})
+            (repo / "snapshot_test.go").unlink()
+            (repo / "go.mod").unlink()
             (repo / "input").write_text("two")
             dirty = cloud.source_identity(repo, git, env)
             self.assertTrue(dirty["dirty"])
