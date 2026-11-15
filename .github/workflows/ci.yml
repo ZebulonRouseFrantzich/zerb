@@ -26,10 +26,13 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version-file: go.mod
 
       - name: Run vet
         run: go vet ./...
+
+      - name: Check dependency vulnerabilities
+        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
       - name: Run tests
         run: go test -race -coverprofile=coverage.out ./...
@@ -49,11 +52,11 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version-file: go.mod
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
           # Pin to v2.x to match .golangci.yml version: "2" format
           # Keep in sync with local development version
-          version: v2.6.1
+          version: v2.15.0
