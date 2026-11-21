@@ -74,6 +74,7 @@ type AddOptions struct {
 type Chezmoi interface {
 	Add(ctx context.Context, path string, opts AddOptions) error
 	HasFile(ctx context.Context, path string) (bool, error)
+	Remove(ctx context.Context, path string) error
 }
 
 // Client implements the Chezmoi interface.
@@ -202,6 +203,69 @@ func pathToChezmoiSource(relPath string) string {
 	}
 
 	return filepath.Join(parts...)
+}
+
+// Remove removes a path from chezmoi's managed state using 'chezmoi forget'.
+// Per HR-3: Returns nil (not an error) if the chezmoi source file doesn't exist.
+// This enables cleanup scenarios where the config entry exists but source was manually deleted.
+func (c *Client) Remove(ctx context.Context, path string) error {
+	args := []string{
+		"--source", c.src,
+		"--config", c.conf,
+		"forget",
+		path,
+	}
+
+	// Create command with context for cancellation/timeout support
+	cmd := exec.CommandContext(ctx, c.bin, args...)
+
+	// Scrub environment for complete isolation
+	cmd.Env = []string{
+		"HOME=" + os.Getenv("HOME"),
+		"PATH=" + os.Getenv("PATH"),
+		"USER=" + os.Getenv("USER"),
+		"LANG=" + os.Getenv("LANG"),
+	}
+
+	// Capture combined output for error reporting
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		// Check if this is a "not in source state" error (file already removed or never existed)
+		// Per HR-3: This is not an error for remove operations - just log warning and return nil
+		stderrLower := strings.ToLower(string(out))
+		if strings.Contains(stderrLower, "is not in the source state") ||
+			strings.Contains(stderrLower, "not managed") ||
+			strings.Contains(stderrLower, "no such file") {
+			// This is OK for remove - the file was already gone
+			return nil
+		}
+
+		return translateChezmoiRemoveError(err, string(out))
+	}
+
+	return nil
+}
+
+// translateChezmoiRemoveError maps chezmoi forget errors to user-friendly ZERB errors.
+func translateChezmoiRemoveError(err error, stderr string) error {
+	// Check for context cancellation/timeout first
+	if errors.Is(err, context.Canceled) {
+		return fmt.Errorf("operation cancelled: %w", context.Canceled)
+	}
+	if errors.Is(err, context.DeadlineExceeded) || strings.Contains(err.Error(), "deadline exceeded") {
+		return fmt.Errorf("operation timed out: %w", context.DeadlineExceeded)
+	}
+
+	// Map common chezmoi errors to user-friendly messages
+	stderrLower := strings.ToLower(stderr)
+
+	if strings.Contains(stderrLower, "permission denied") {
+		return fmt.Errorf("failed to remove configuration: permission denied")
+	}
+
+	// Generic fallback - redact sensitive info
+	sanitized := redactSensitiveInfo(stderr)
+	return fmt.Errorf("failed to remove configuration: %s", sanitized)
 }
 
 // translateChezmoiError maps chezmoi errors to user-friendly ZERB errors.

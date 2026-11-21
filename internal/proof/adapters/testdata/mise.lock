@@ -1,0 +1,10 @@
+# Independently authored exact P1-MISE-CORE-NODE lock fixture.
+# Reviewed provenance: https://nodejs.org/dist/v24.4.1/SHASUMS256.txt
+[[tools.node]]
+version = "24.4.1"
+backend = "core:node"
+
+[tools.node."platforms.linux-x64"]
+checksum = "sha256:063f2eb299ba60e3fc9b424d8e87d0e2f6be84b39bdeadc421ee2865914c498b"
+url = "https://nodejs.org/dist/v24.4.1/node-v24.4.1-linux-x64.tar.gz"
+size = 56893304

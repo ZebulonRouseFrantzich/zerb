@@ -1,0 +1,23 @@
+diff --git a/unmarshaler.go b/unmarshaler.go
+--- a/unmarshaler.go
++++ b/unmarshaler.go
+@@ -16,9 +16,8 @@ import (
+ 	"github.com/pelletier/go-toml/v2/unstable"
+ )
+ 
+-// decoderPool recycles decoders (and their internal buffers: parser arena,
+-// seen-tracker entries, scratch buffers) across calls to Unmarshal and
+-// Decode.
++// decoderPool reuses only decoder shells; released decoders retain no input
++// references or input-dependent backing storage.
+ var decoderPool = sync.Pool{
+ 	New: func() interface{} { return &decoder{} },
+ }
+@@ -32,6 +31,7 @@ func getDecoder(strictMode, unmarshalerInterface bool) *decoder {
+ }
+ 
+ func putDecoder(d *decoder) {
++	*d = decoder{}
+ 	decoderPool.Put(d)
+ }
+ 

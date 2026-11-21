@@ -1,0 +1,12 @@
+//go:build never
+
+package source_test
+
+import (
+	_ "github.com/ZebulonRouseFrantzich/zerb/internal/source"
+	alias "github.com/ZebulonRouseFrantzich/zerb/internal/config/sub"
+	. "github.com/ZebulonRouseFrantzich/zerb/internal/testutil"
+	_ "github.com/ZebulonRouseFrantzich/zerb/internal/proof/process"
+	_ "github.com/ZebulonRouseFrantzich/zerb/internal/app"
+	_ "github.com/ZebulonRouseFrantzich/zerb/internal/testenv"
+)

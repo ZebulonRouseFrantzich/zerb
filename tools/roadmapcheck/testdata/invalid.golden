@@ -1,0 +1,10 @@
+docs/roadmap/broken.md:3: error: local link "absent.md": target unavailable
+docs/roadmap/broken.md:4: error: local link "product-contract.md#absent": anchor "absent" not found
+docs/roadmap/broken.md:5: error: ARCH-404 has no owning definition
+docs/roadmap/broken.md:5: error: PC-404 has no owning definition
+docs/roadmap/broken.md:5: error: VAL-404 has no owning definition
+docs/roadmap/broken.md:6: error: undefined link reference missing
+docs/roadmap/broken.md:7: error: local link "../../../outside.md": target escapes repository
+docs/roadmap/broken.md:8: error: invalid link "bad%ZZ.md"
+docs/roadmap/broken.md:9: error: fragment in non-Markdown target "assets/a\\(b\\).txt#absent" is unsupported
+docs/roadmap/broken.md:10: error: unsupported or malformed inline link (use one line)

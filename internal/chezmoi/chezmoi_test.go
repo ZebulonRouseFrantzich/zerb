@@ -550,3 +550,157 @@ func TestRedactedError_NilError(t *testing.T) {
 		t.Errorf("newRedactedError(nil) = %v, want nil", result)
 	}
 }
+
+func TestClient_Remove(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	tests := []struct {
+		name       string
+		setupStub  func() string
+		path       string
+		wantErr    bool
+		wantErrMsg string
+	}{
+		{
+			name: "successful remove",
+			setupStub: func() string {
+				stubBin := filepath.Join(tmpDir, "chezmoi_success")
+				script := `#!/bin/bash
+echo "ARGS: $@"
+exit 0
+`
+				os.WriteFile(stubBin, []byte(script), 0755)
+				return stubBin
+			},
+			path:    "~/.zshrc",
+			wantErr: false,
+		},
+		{
+			name: "file not found in source (returns nil per HR-3)",
+			setupStub: func() string {
+				stubBin := filepath.Join(tmpDir, "chezmoi_notfound")
+				script := `#!/bin/bash
+echo "is not in the source state" >&2
+exit 1
+`
+				os.WriteFile(stubBin, []byte(script), 0755)
+				return stubBin
+			},
+			path:    "~/.nonexistent",
+			wantErr: false, // Per HR-3: return nil for not-found
+		},
+		{
+			name: "permission denied",
+			setupStub: func() string {
+				stubBin := filepath.Join(tmpDir, "chezmoi_perms")
+				script := `#!/bin/bash
+echo "permission denied" >&2
+exit 1
+`
+				os.WriteFile(stubBin, []byte(script), 0755)
+				return stubBin
+			},
+			path:       "~/.zshrc",
+			wantErr:    true,
+			wantErrMsg: "permission denied",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			stubBin := tt.setupStub()
+			client := &Client{
+				bin:  stubBin,
+				src:  filepath.Join(tmpDir, "source"),
+				conf: filepath.Join(tmpDir, "config.toml"),
+			}
+
+			ctx := context.Background()
+			err := client.Remove(ctx, tt.path)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Remove() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			if tt.wantErr && tt.wantErrMsg != "" {
+				if !strings.Contains(err.Error(), tt.wantErrMsg) {
+					t.Errorf("Remove() error = %q, want substring %q", err.Error(), tt.wantErrMsg)
+				}
+			}
+
+			// Verify chezmoi is not mentioned
+			if err != nil && strings.Contains(strings.ToLower(err.Error()), "chezmoi") {
+				t.Errorf("Remove() error should not mention 'chezmoi', got: %q", err.Error())
+			}
+		})
+	}
+}
+
+func TestClient_Remove_ContextCancellation(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	stubBin := filepath.Join(tmpDir, "chezmoi")
+	script := `#!/bin/bash
+sleep 10
+`
+	if err := os.WriteFile(stubBin, []byte(script), 0755); err != nil {
+		t.Fatalf("cannot create stub: %v", err)
+	}
+
+	client := &Client{
+		bin:  stubBin,
+		src:  filepath.Join(tmpDir, "source"),
+		conf: filepath.Join(tmpDir, "config.toml"),
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := client.Remove(ctx, "~/.zshrc")
+	if err == nil {
+		t.Error("Remove() with cancelled context should return error")
+	}
+}
+
+func TestClient_Remove_UsesForgetCommand(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a stub that captures and validates the command
+	stubBin := filepath.Join(tmpDir, "chezmoi")
+	argsFile := filepath.Join(tmpDir, "args.txt")
+	script := `#!/bin/bash
+echo "$@" > ` + argsFile + `
+exit 0
+`
+	if err := os.WriteFile(stubBin, []byte(script), 0755); err != nil {
+		t.Fatalf("cannot create stub: %v", err)
+	}
+
+	client := &Client{
+		bin:  stubBin,
+		src:  filepath.Join(tmpDir, "source"),
+		conf: filepath.Join(tmpDir, "config.toml"),
+	}
+
+	ctx := context.Background()
+	if err := client.Remove(ctx, "~/.zshrc"); err != nil {
+		t.Fatalf("Remove() failed: %v", err)
+	}
+
+	// Verify the args contain "forget"
+	args, err := os.ReadFile(argsFile)
+	if err != nil {
+		t.Fatalf("failed to read args file: %v", err)
+	}
+
+	if !strings.Contains(string(args), "forget") {
+		t.Errorf("Remove() should use 'forget' command, got args: %s", string(args))
+	}
+	if !strings.Contains(string(args), "--source") {
+		t.Errorf("Remove() should use --source flag, got args: %s", string(args))
+	}
+	if !strings.Contains(string(args), "--config") {
+		t.Errorf("Remove() should use --config flag, got args: %s", string(args))
+	}
+}
