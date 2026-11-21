@@ -392,6 +392,29 @@ observation, namespace classification, recovery or completion permission. Earlie
 pending/currentless relations and unsupported-recognition precedence remain
 separate. Retain focused race/fuzz tests and independent fit/security review.
 
+### Selected precommit-control correspondence
+
+Under ARCH-024/025/026/027/031, bind the actual five-role layouts and live
+wrapper/preflight/comparison work to the subordinate
+[precommit representation](precommit-control-representation.md) before coding.
+Preserve committed-boundary validation while sharing reservation work. Resource
+and invalid-record refusals stay distinct, zero-output and non-authorizing;
+every visible capacity and complete decoder schedule is reserved before decode.
+
+Cover currentless later/max held owners, exact zero versus partial current,
+fresh and transferred generation distances, maximum arithmetic, exact/ahead
+journal binding, independently fresh operation fields, and same/different A/B.
+Prior RA must match its own candidate/digest/completion facts; its Previous is
+historical. Test all four precommit phases and exact execution checkpoints,
+full target coverage, nil versus empty roles, missing/extra/duplicate alias roles,
+distinct pending receipt only at pending phase and complete static/Previous/
+observation match. Earlier RA presence must never become a pending link; matching
+RA may be reused at pending phase only. Exercise false/subset pending facts as
+scalar-codec-valid but semantically refused here; ArtifactAvailable stays
+independent. Include capacity/budget/overlap refusals, zero upfront allocation,
+caller preservation, race/fuzz and independent security review. No fixture may
+claim full graph recognition, completion authority or artifact/host qualification.
+
 ### Private canonical candidate, pending and journal codecs
 
 The approved ARCH-024 mechanism preserves PC-042/050 bytes and accepted values

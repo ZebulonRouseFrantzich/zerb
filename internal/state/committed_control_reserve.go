@@ -17,8 +17,9 @@ var (
 	errCommittedControlResource = errors.New("committed control resources unavailable")
 )
 
-// Only nil means an absent selected object. Slot zero is current; slot one is a
-// distinct prior object. This is not a namespace inventory or filesystem proof.
+// Only nil means an absent selected object. Slot zero is B; slot one is prior A.
+// Current is committed B or prior A according to the selected entrypoint.
+// This is not a namespace inventory or filesystem proof.
 type committedControlInput struct {
 	Current    currentRecord
 	Writer     writerOwner
@@ -67,12 +68,17 @@ func committedControlWire(in *committedControlInput, index int) ([]byte, codecKi
 // This complete fixed-role reservation is independent of any Store/history
 // envelope. Keep all retained inputs and decoder schedules charged together.
 func reserveCommittedControl(in committedControlInput) (committedControlCounters, error) {
-	var counter committedControlCounters
 	if !currentMatchesWriter(in.Current, in.Writer) {
-		return counter, errCommittedControlRecords
+		return committedControlCounters{}, errCommittedControlRecords
 	}
+	return reserveSelectedControl(&in)
+}
+
+// Share wire accounting only; each entrypoint retains its own typed relation.
+func reserveSelectedControl(in *committedControlInput) (committedControlCounters, error) {
+	var counter committedControlCounters
 	for counter.Index = 0; counter.Index < len(counter.Present); counter.Index++ {
-		wire, kind := committedControlWire(&in, counter.Index)
+		wire, kind := committedControlWire(in, counter.Index)
 		counter.Kind = kind
 		counter.Present[counter.Index] = wire != nil
 		if uint64(len(wire)) > codecReservationLimit || uint64(cap(wire)) > committedControlWireBudget-counter.Borrowed {
@@ -84,7 +90,7 @@ func reserveCommittedControl(in committedControlInput) (committedControlCounters
 		if !counter.Present[counter.Index] {
 			continue
 		}
-		wire, kind := committedControlWire(&in, counter.Index)
+		wire, kind := committedControlWire(in, counter.Index)
 		counter.Kind = kind
 		plan := preflightCommittedControlWire(wire, kind)
 		if !plan.GrammarValid {

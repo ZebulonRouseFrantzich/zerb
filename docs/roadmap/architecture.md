@@ -757,6 +757,19 @@ Completion identity cross-validation uses these closed relations after ordinary 
 
 A fresh held owner acquired from a released owner has an empty predecessor token and cannot satisfy the completed-held relation against an older current, regardless of their generation gap; that exact journal-less graph is pre-journal repair input. An admitted cleanup transfer has a nonempty predecessor token. Current binds the exact writer/operation at commit, and every admitted transfer validates the immediate predecessor plus retained current identity. Deleted historical owner generations are not reconstructed or claimed as independently retained evidence.
 
+For a journalled new operation before current commit, prior Current instead binds
+the journal's exact `previous` and independent `previous_receipt`. Both the new
+operation ID and its token must individually differ from their corresponding
+retained prior Current fields. A changed pair alone is insufficient; no historical
+identity registry is introduced. The old committing writer token differs from
+the new held writer token and any nonempty immediate predecessor token, and from
+an ahead journal's new writer token. After the mandatory prior release and fresh
+acquisition, a held owner with empty predecessor token is at least two generations
+after prior Current; one with a nonempty predecessor token is at least three
+after it. Compare the retained owner independently even when the journal is one
+generation ahead, using ordered subtraction without overflow. These retained-field
+relations neither reconstruct deleted history nor prove liveness or authority.
+
 The private current-to-writer value predicate first validates both scalar records
 and their instance equality, then applies only this table's held/released rows.
 It compares generations and predecessor fields without addition or overflow.
@@ -795,6 +808,22 @@ fixed private errors and zero returned links; neither error grants cleanup or
 classification. Complete protected-graph recognition and all external verification
 remain separately required before any routing, mutation or stable publication.
 
+#### Selected precommit-control record correspondence
+
+The separate private precommit seam implements the new-operation relation above
+over the [selected representation](precommit-control-representation.md), from
+prepared through pending-receipt, never cleanup or committed-current recognition.
+It binds held Writer and canonical Journal/B, optional exact prior Current/A/RA,
+and optional distinct or exactly reused pending RB. Completed prior RA retains
+its independent historical Previous. Currentless has no prior objects; later
+scalar-valid held generations remain allowed without historical/liveness proof.
+Return only protected links and journal operation fields; an absent pending role
+returns an empty receipt link. No classification, lease, publication, recovery
+or completion authority follows. The same selected logical reservation applies
+only after actual layout/control-flow fit and independent review; it is no
+whole-Store, history or runtime-memory cap. Full graph admission and external
+authentication remain separate gates.
+
 ### ARCH-025 — Prepared, mutating, dirty, and stable truth
 
 Host mutation follows this durable sequence under the complete `A-X+W-X` ownership relation:
@@ -817,7 +846,7 @@ Stable current publication atomically replaces candidate, receipt and completed 
 
 Candidate `B` and its journal, including the active writer generation/token and independent prior candidate/receipt references, are written and synced before mutation. Existing immutable candidate or receipt objects are reused only after exact canonical-byte/digest/schema equality and are never overwritten. The exact phase byte `"prepared"` is written and synced before the first possible external mutation. The exact phase bytes `"mutating-tool-install"` and `"mutating-home-apply"` are each written and synced immediately before their corresponding possible external mutation. The exact phase byte `"pending-receipt"` is written and synced immediately before pending-receipt publication. After stable current publication, the holder publishes `"cleanup"`; the narrow crash interval containing stable `B` plus the exact pre-cleanup journal is also `CLEANUP(B)`. Under that journal authority it removes and parent-syncs the prior candidate only when its digest differs from `B`, then removes and parent-syncs the prior receipt only when its digest differs from receipt `B`, then removes and parent-syncs the journal last. First bootstrap has empty prior candidate/receipt digests and no prior objects. Repeated exact reapply may therefore reuse both objects without unlinking current authority. Shell and command environments are reconstructed from stable candidate/receipt/tool observations; no shell-metadata phase exists. ARCH-031 ownership is revalidated before each boundary. After journal publication, any abnormal exit before current commit is truthful dirty state naming the exact persisted phase; after current it is `CLEANUP(B)` until exact residue cleanup and verified released-owner publication complete.
 
-Receipt `B` is fully written/synced pending before current commit; existence alone does not complete it. After possible mutation, startup exposes only `{current=A, dirty(A,B,phase,journal)}` or `{current=B, cleanup(B,exact-residue)}`/`{current=B, stable(B)}`. An unrelated pending receipt is orphan evidence. No cleanup step can make a receipt temporarily unreferenced.
+Receipt `B` is fully written/synced pending before current commit; existence alone does not complete it. Both completed phases and the four necessary completion checks in ARCH-026 are required before immutable pending-receipt publication, not only before current commit. A distinct new pending receipt may appear only after the `pending-receipt` journal phase. An already valid prior receipt may exist throughout earlier phases; exact reuse as pending `B` additionally requires the complete candidate/predecessor/observation facts to match. After possible mutation, startup exposes only `{current=A, dirty(A,B,phase,journal)}` or `{current=B, cleanup(B,exact-residue)}`/`{current=B, stable(B)}`. An unrelated pending receipt is orphan evidence. No cleanup step can make a receipt temporarily unreferenced.
 
 #### Journal observations and execution checkpoints
 
@@ -854,7 +883,7 @@ The approved `DestinationObservation` wire conventions are exact: `Kind` is `abs
 
 `ToolObservation.Integrity` denotes the checksum of the authenticated authored archive, equal to the candidate's exact artifact lock. Populate that observation only after actual archive authentication and the complete independent installed-tree verification required by ARCH-013/021: entry set, modes, file hashes, permitted semantic symlink transformations, npm wrapper and executable identity. The archive checksum alone proves none of those checks; no separate installed-tree digest or preimage is introduced. State validates the exact candidate/tool/current relation before stable publication. A pure receipt digest validates representation but cannot authenticate the archive, inspect an installation, prove candidate/current correspondence or grant completion authority. The independent dimension booleans remain facts, not implicit substitutes for one another; encoding a false dimension does not complete a receipt.
 
-Stable publication requires both mutation phases and independently verified
+Immutable pending-receipt publication and stable publication each require both mutation phases and independently verified
 `InputsPinned`, `ArtifactIntegrity`, `HostCompatible` and `ConvergenceVerified`.
 `ArtifactAvailable` remains an independent observation: an unavailable upstream
 artifact alone does not invalidate intact authenticated installed facts, while

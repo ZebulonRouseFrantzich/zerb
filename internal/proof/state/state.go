@@ -1517,7 +1517,8 @@ func readCurrentJournal(s string, uid int, instance string, entry os.DirEntry, w
 	currentWriter := journal.WriterGeneration == writer.Generation &&
 		journal.WriterToken == writer.Token && journal.WriterPreviousToken == writer.PreviousToken
 	journalAhead := isGenerationSuccessor(writer.Generation, journal.WriterGeneration) &&
-		journal.WriterPreviousToken == writer.Token
+		journal.WriterPreviousToken == writer.Token && journal.WriterToken != writer.Token &&
+		journal.WriterToken != writer.Instance && journal.WriterToken != writer.PreviousToken
 	if (!currentWriter && !journalAhead) || !validJournalPrefix(journal) ||
 		!validCandidate(filepath.Join(s, "candidates", string(journal.Candidate)+".json"), instance, string(journal.Candidate)) {
 		return journalRecord{}, false
@@ -1637,19 +1638,32 @@ func exactCurrent(s, d string, uid int) string {
 		return "TRANSITION(∅,B)"
 	}
 	committedOperation := currentMatchesJournal(current, journal)
-	beforeCommit := !committedOperation && current.OperationID != journal.OperationID &&
-		current.OperationToken != journal.OperationToken && current.WriterGeneration < writer.Generation &&
-		current.Candidate == journal.Previous && current.Receipt == journal.PreviousReceipt && journal.Previous != ""
+	beforeCommit := !committedOperation && priorCurrentMatchesNewOperation(current, writer, journal)
 	if beforeCommit {
 		return exactPriorTransition(s, root.Instance, journal, nextReceipt, nextReceiptExists)
 	}
-	if !committedOperation || current.Candidate != journal.Candidate || current.Receipt != nextReceipt.Digest ||
+	if !committedOperation || !currentMatchesHeldWriter(current, writer) ||
+		current.Candidate != journal.Candidate || current.Receipt != nextReceipt.Digest ||
 		currentReceipt.Facts.Previous != journal.Previous ||
 		(journal.Phase != phasePending && journal.Phase != phaseCleanup) {
 		return ""
 	}
 	return exactCommittedCleanup(s, root.Instance, journal, nextReceipt)
 }
+
+// ARCH-024/025/031: a new operation follows release and fresh acquisition;
+// a nonempty retained predecessor adds at least one held-owner transfer.
+func priorCurrentMatchesNewOperation(current currentRecord, writer writerOwnerRecord, journal journalRecord) bool {
+	if writer.Status != "held" || current.OperationID == journal.OperationID || current.OperationToken == journal.OperationToken ||
+		current.WriterGeneration >= writer.Generation || current.WriterToken == writer.Token ||
+		current.WriterToken == writer.PreviousToken || current.WriterToken == journal.WriterToken ||
+		current.Candidate != journal.Previous || current.Receipt != journal.PreviousReceipt || journal.Previous == "" {
+		return false
+	}
+	distance := writer.Generation - current.WriterGeneration
+	return distance >= 2 && (writer.PreviousToken == "" || distance >= 3)
+}
+
 func safeRootDir(p string, uid int) bool {
 	i, e := os.Lstat(p)
 	return e == nil && safeDirectoryInfo(i, uid)
