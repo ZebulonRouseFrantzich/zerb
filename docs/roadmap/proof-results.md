@@ -754,3 +754,112 @@ Every field below is explicitly a **Phase 1 evidence field**. A result is inconc
 - **Actual regression checks:** Eight stream tests cover aliased originals with distinct close-on-exec duplicates; regular shared-offset and status preservation; blocking/nonblocking raw pipes and real Go-managed pipes; nil/closed failure at every position; sparse descriptors; original close racing actual number reuse; successful owned I/O after caller closure; concurrent/repeated owner close; and retained cleanup failure without closing a later file that reused a released number. Disposable resource children fill a finite descriptor allowance to actual EMFILE and free zero, one or two slots before acquisition; every partial transaction refuses without leaks, and the original resource limit restores before assertions/coverage finalization. These are observed controlled kernel operations, not a whole-Runner resource envelope.
 - **Negative-control sensitivity and observed checks:** The real Go-managed pipe fixture rejected a temporary `File.Fd` borrowing variant for changing O_NONBLOCK. Exact correct production bytes were restored before replacement checks. The corrected full execenv race/coverage suite produced 40 pass events, zero failures/skips, in 2.073 seconds, reporting 88.6 percent package statement coverage; private Close reached 100 percent. A subsequent focused race check passed the added explicit caller-close/owned-I/O assertion. Scoped vet/lint passed with zero lint issues. Roadmap checking passed with its two existing proof-anchor warnings. Counts and coverage are local code evidence, not qualification rows or process-release proof.
 - **Review and remaining gates:** Independent Sol security/correctness review covers ownership, rollback, descriptor reuse and the five exact signature sites; final committed-source conformance and actual PR CI remain separate. This foundation requires three explicit nonnil endpoints; the future trusted null owner must supply omitted Runner endpoints before this private seam. It neither opens a null/proc/device path nor narrows application I/O through an implicit cast/bridge. No production Runner/Dispatch, PTY cancellation/restoration, process-wide reaping/topology, class-root authority, release or host qualification is implemented. Twelve safefs, 46 initialization and ten initialized-observation topology skip entries, full crash/storage/mount/proc/namespace/cgroup/installed acceptance and actual pinned Nix build/inventory/fit remain open. Phase 2, MVP and the ten-slice program remain incomplete; no dependencies, public CLI, host/security settings or owner machine changed.
+
+
+### CLOUD-RUNNER-STATUS-CUSTODY-SUBSET-2026-10-27
+
+- **Authority and scope:** ARCH-009/010; VAL-019/020 local Linux amd64 kernel subset. The owner approved narrow device/terminal and reaping direction plus bounded proof work, not production Runner activation. An isolated test subprocess C becomes a subreaper, starts O, and O starts the fixture child G. Five O-death gates (before observation, before status send, before root acknowledgement, after acknowledgement and after consumption) cross normal exits 0, 11 and 137 plus SIGKILL. This is not authenticated role registration, a real death guard, complete control-role topology or a retained process-class invocation.
+- **Actual observations:** All twenty rows passed with zero skips under the focused race command in 1.673 seconds. Repeated WNOWAIT observations preserve the exact SIGCHLD code/status; C records those facts before acknowledgement, adopts and consumes unconsumed G after O is killed, or retains its own recorded facts after consumption. Eventual wait4 agrees with the raw observed status, including the exit-137 versus SIGKILL distinction; each row reaches ECHILD. O's zombie pins its cleanup group until the joined watchdog is stopped and cleanup completes. The ten-second fixture watchdog fails the row if fired and is not a product cleanup timeout.
+- **Sensitivity and checks:** A temporary premature-consumption variant failed before-send/0 with ECHILD in 0.045 seconds, demonstrating that C cannot recover a status consumed before it was recorded. Exact correct bytes were restored in a finally block before the final race run. Scoped lint reported zero issues; roadmap checking reported zero errors and its two existing proof-anchor warnings. Full exact-source conformance and final independent review are separate observations.
+- **Bounds and limits:** The sequential fixture has four simultaneous processes including the outer test runner, one custody socketpair, 512-byte frame reads and an 8-KiB diagnostic prefix. These are fixture bounds, not a complete Runner memory/FD/CPU/cgroup envelope. C-death failure-latched cleanup, transitive status acknowledgement, interrupted/unregistered birth, authenticated dispatch, physical terminal/device policy, composed resource fit and all host/installed matrices remain unexercised here. No missing status is inferred to be guard success.
+- **Blocking analysis:** Independent review found that surviving descendant O leaves S alive when root C dies; L's immediate parent-death relation therefore cannot exclude S/L releasing candidate code before root-death watchers run. Another root-liveness check or token does not close that schedule. This is source analysis, not a passing death-before-release proof or host observation. Production activation remains blocked pending an explicit ancestry or release-contract decision and subsequent proofs. Twelve safefs, 46 initialization and ten initialized-observation topology skip entries and the real pinned Nix artifact/inventory/fit gate remain open. No production code/API, package, CLI, host or security setting changed.
+
+
+### CLOUD-STRICT-ANCESTRY-INVESTIGATION-2026-10-27
+
+- **Authority and scope:** ARCH-009/010; PC-015; VAL-019/020 local Linux amd64 subsets. The owner approved investigation of an ancestor reaper with a launcher directly parented by the caller while preserving strict death exclusion. No production topology, public-PID interpretation, relaxed authorization-commit semantics, device capability or Runner activation was adopted.
+- **Direct-parent observations:** Disposable O is a subreaper above C and L; C pins the launcher-creating OS thread through actual process exit. Two enabled rows hold L before or after its final C check. O kills C, observes its exact SIGKILL terminal status with WNOWAIT, attempts the held continuation, then observes L's exact SIGKILL status before any cleanup kill; no target marker is observed. The otherwise-identical final-gap signal-disabled control actually execs the same test binary and emits its exact PID marker, as does a live-C positive control. Every row reaps to ECHILD; C's unreaped identity pins cleanup group addressing until the failing watchdog is stopped/joined.
+- **Observed fixture correction:** An initial run exposed that Go goroutine migration can observe a zero inherited parent-death signal on a different runtime thread. The final L fixture locks its OS thread, accepts only zero or the expected signal, conditionally installs that signal when zero, and immediately rechecks its parent before proceeding, matching the existing child-side ARCH-009 direction. Disabled controls still require zero and install no signal. Creator inherited descriptors are marked close-on-exec before explicit remapping; this is not a product descriptor-sanitation proof.
+- **Session constraint and controls:** A separate disposable original group leader starts one child retaining its original PGID and one new-group helper. After the original process joins the helper's group and is no longer a group leader, setsid still refuses with EPERM because its original numeric PGID remains occupied. After both children are reaped, the same process successfully calls setsid and verifies its new session/group. This excludes a blanket permission failure. No physical terminal, shell job table, owner host or device policy was exercised.
+- **Actual checks and review:** The direct-parent race matrix passed ten repetitions (forty hierarchy rows) before the final inherited-descriptor cleanup. After that cleanup, the final combined race run passed all four direct-parent rows plus the session experiment, zero skips, in 1.161 seconds. Scoped lifecycle lint reported zero issues. Independent Sol review cleared both test sources and the final descriptor cleanup; independent Astra analysis identified the unresolved startup constraints. Final exact-source conformance remains a separate observation.
+- **Remaining constraints:** Keeping the original public PID as the isolated ancestor, retaining its old foreground PGID in C, and moving that ancestor into a separate session do not compose in the demonstrated arrangement. Introducing a new public shim does not automatically give its death a direct L death relation; redefining caller/root identity, public signal/status routing or terminal/session guarantees requires a concrete contract decision. L's old supervisor-session equality and immediate-parent socket authentication also cannot simply be copied into a new ancestry. No extra shim, root-identity redefinition or weaker exclusion was implemented.
+- **Limits:** These are ordered completed-C-death/continuation and marker-entry observations, not proof of zero candidate instructions across every concurrent death/exec schedule. Parent-death arming races, creator-thread exit, full authenticated dispatch, guard/status handoff, owner death, terminal startup/authority, class-root/cgroup placement and complete resource/cleanup fit remain open. Four simultaneous hierarchy processes including the shared test runner, two control pairs, one marker pipe and bounded diagnostic/frame reads are fixture resources, not a Runner envelope. All previous twelve safefs, 46 initialization and ten initialized-observation qualification gaps and pinned Nix artifact/inventory/fit remain unqualified; no host/security/package/CLI/production setting changed.
+
+
+### CLOUD-COOPERATING-ANCESTOR-PEER-INVESTIGATION-2026-10-27
+
+- **Authority and scope:** ARCH-009/010; PC-015; VAL-019/020 local Linux amd64 peer-identity subset. The owner authorized investigation of a cooperating ancestor established before the actual public caller, not a service installation, new dependency, production activation, relaxed reaping/status guarantee or renamed hidden caller. A fresh coordinated worktree retains the previous strict-ancestry and custody checkpoints.
+- **Actual kernel observations:** In a disposable O(subreaper) → C → L hierarchy, O exists before C. Both views of the O-created O/C socketpair identify O, not launched C; O separately checks its spawned C PID and the existing exact executable comparison while C is held alive. When C creates L's socketpair, the existing immediate-parent verifier accepts C. When O creates that pair and C merely forwards it, L's verifier rejects O's peer PID even though O and C run the same executable and UID. This is not symmetric mutual authentication, a fresh-nonce/stage handshake, authenticated role registration, a production ancestor capability or target release.
+- **Checks and review:** Both real rows passed the focused race test in 1.154 seconds with zero skips; scoped lifecycle lint reported zero issues and the parser pin preparation passed. Independent Sol correctness/security review cleared the test, its creator-versus-holder distinction and cleanup lifetime. The failing watchdog addresses only C's owned group, joins before C's unreaped identity is released and cannot authorize success. Final exact-source conformance is a separate observation.
+- **Launch-model analysis:** A service contacted after C starts is not thereby C's ancestor. An external one-invocation front door can conditionally establish F → O → actual public C, retaining C's ordinary argv and direct launcher death fence; F's PID or shell job identity is not C, and asynchronous F-death forwarding is not strict C-death exclusion. Keeping F's foreground group occupied by C while distinct-PID O detaches avoids the specific original-PID setsid obstruction, but actual terminal/job-control composition is untested. A dedicated session-wide invocation host is broader; an ordinary shell or generic service manager is not the required registered-status protocol. No launch approach, companion executable, new public router, hidden argv mode or host trust identity was adopted.
+- **Status and activation boundaries:** To retain exact already-consumed results after C dies, O must receive and retain raw status before C consumes the corresponding wait, while C's required live receipt also remains intact; adoption recovers only unconsumed children. This is a proposed necessary custody direction, not an implemented mirrored ledger or owner-survival proof. Exact birth registration, acknowledgement and failure/death matrices, ancestor trust/bootstrap, public PID/signal/status semantics, parse-before-activation ordering, terminal ownership, cgroup placement and the composed resource envelope remain open. Simultaneous loss of every status custodian cannot be represented as retained process-local evidence.
+- **Limits:** The sequential fixture uses four hierarchy processes including the shared test runner, at most two socketpairs, bounded frames/diagnostics and existing proc/executable observations. It neither operates a real terminal nor contacts an owner host or service. It does not qualify a host, installed tuple, process class or complete launch experience. All previous twelve safefs, 46 initialization and ten initialized-observation topology gaps and the real Nix artifact/inventory/fit gate remain open. No package, public API, CLI, host/security setting or production process path changed.
+
+### CLOUD-DIRECT-PARENT-GO-CLONE-2026-10-28
+
+- **Authority:** ARCH-009/010; PC-015; VAL-018/019/020. The owner approved
+  CLONE_PARENT observer investigation, separate control-role/native-descendant
+  status evidence and qualified parent/reaper contexts for bounded proof. One
+  distributed ZERB image and original-caller F are preserved; production stays disabled.
+- **Go birth subset:** Go 1.24.9 on Linux 6.18.55 amd64 returned an actual usable
+  CLOEXEC pidfd from the reviewed legacy-clone path. M creates S with natural
+  parent F, inherited SID=M, PGID=S and zero parent-death setting. F-created socket
+  provenance passes the existing narrow parent/executable check; it is not a
+  complete nonce/stage/role protocol. The ordinary-fork control leaves S under M
+  and rejects the F-created peer. Wrong nonzero creator-based parent-death setup
+  produces actual SIGKILL and no observer frame. Failed exec returns no creator
+  PID/pidfd while F still consumes the interrupted child's exit 253; M has ECHILD.
+- **Composed subset:** An explicit cooperating surrogate reaper R retains the
+  preheld M/S pidfds. S transitions to the observed full-identity strace 6.13 and
+  attaches before M release; held M threads and S's retained SID/PGID are checked.
+  Live payload entry returns raw exit 17. Ordered actual F death produces M
+  SIGKILL while S survives and returns zero. Delayed R consumption leaves EXIT
+  absent despite R's WNOWAIT terminal observation; actual consumption then exposes
+  raw SIGKILL. S's zero is not M's status. M reinstalls/rechecks SIGKILL on its
+  locked release/exec thread; the payload initial thread verifies ordinary
+  same-image exec preserved it. Package-init observation alone was insufficient.
+- **Checks:** The seven rows passed ten repetitions under the race detector;
+  a retained JSON run independently records all seven passing with zero skips.
+  Lifecycle lint reports zero issues. Independent Sol security/correctness review
+  resolved wait-error/zero confusion, swallowed cleanup failures, thread-specific
+  parent-death observation, trace-thread coverage, identity-mask checks and
+  executable identity. The reviewer read source/evidence, not a second execution.
+  Exact-source full conformance has not yet run at this focused checkpoint and
+  will be recorded separately after a clean commit.
+- **Actual context refusal:** A separate single cloud-context experiment inserted
+  no surrogate subreaper, checked driver subreaper zero and M's configured/rechecked
+  direct death relation, consumed actual F SIGKILL, and received ECHILD for M.
+  No stored M EXIT appeared during its eight-second fixture watchdog. This is
+  unresolved external reaping, not proof it never occurs. That experiment did
+  not independently observe M terminal readiness and did not retain private M/
+  namespace identity or elapsed duration; none is inferred retroactively. It was
+  not retried, and no host setting or external reaper was changed.
+- **Evidence and limits:** The exact helper sources are nonsensitive reviewed
+  code; their hashes and source-bound reports remain in private typed proof
+  artifacts. R's cooperative consumption does not qualify actual ancestry. These
+  rows contain no independent G, real cgroup cleanup, authenticated production
+  dispatch, sealed-image substitution race, native whole tree, resource closure,
+  physical terminal, arbitrary kernel/LSM or global death/exec linearization proof.
+  All prior filesystem/topology, artifact-build/inventory/fit and frozen-host
+  gates remain open. No production, dependency, public API, service or security
+  setting changed; cloud/phase/support completion is not claimed.
+
+### CLOUD-DIRECT-PARENT-CI-REFUSAL-2026-10-28
+
+- **Observed CI failures:** The first PR-45 CI run at the preceding checkpoint
+  denied separate strace attachment with actual PTRACE_SEIZE EPERM. Its covered
+  custody rows also observed SIGPIPE instead of intended normal guard exits.
+  These were failures, not qualification or a reason to change host policy.
+- **Coverage fixture correction:** `io.Discard` made os/exec create pipes whose
+  readers belonged to O. Killing O could make G's coverage-exit diagnostics hit
+  a closed pipe and change its raw status. The failure reproduced ten times
+  locally with coverage enabled. Direct inherited stdout/stderr files retain
+  the surviving capture reader. All exact wait/status/ACK assertions and coverage
+  settings remain intact; no signal was ignored and no expected status relaxed.
+- **Explicit unsupported-context result:** Only the bounded, exact M-matched
+  strace EPERM diagnostic and actual S exit 1 can enter the refusal path. F and
+  R require held M SIGKILL, exact retained S/M status, no payload entry and
+  completed child cleanup before returning an unexercised capability result.
+  Generic attachment errors, timeout, changed status or cleanup failure still
+  fail. A new exercised control uses a competing owned F tracer to produce real
+  kernel EPERM; it changes no host security setting and is not itself skipped.
+- **Affected checks:** Eight birth/trace rows and twenty custody rows passed ten
+  repetitions with both race and coverage instrumentation (280 cases). A retained
+  JSON run observes all eight birth/trace rows passing with zero skips in this
+  cloud context. Scoped lint reports zero issues. Independent Sol review accepts
+  both narrow fixes. New committed-source conformance and replacement CI remain
+  separate pending observations, rather than relabeling the original failed run.
+- **Unchanged gates:** An unsupported CI context's positive tracing rows remain
+  unexercised, never implementation-qualified. The separate actual-cloud reaper
+  result remains unresolved. Guard/cgroup, complete authentication/tree/resource,
+  global race, terminal, artifact and frozen-host/installed gates remain open.
