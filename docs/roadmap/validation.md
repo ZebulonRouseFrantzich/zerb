@@ -346,6 +346,33 @@ misses and every intermediate publication maximum. Neither per-codec success nor
 active reference counts supplies that outer proof. These graph rows remain
 planned and unexercised until actual implementation/evidence exists.
 
+### Selected committed-control correspondence
+
+The ARCH-024/025/026 subset verifies only the selected committed records described
+in [the closed representation](committed-control-representation.md). Bind actual
+input/value/output/counter/preflight layouts to its 8,493-byte outer reservation;
+preflight all five visible capacities and per-codec schedules together before
+materialization. Exercise the exact capacity boundary, one over, real overlapping
+views, empty nonnil views, late schema/grammar/resource refusals, checked arithmetic,
+zero allocation on upfront refusals and zero output/caller preservation. No test
+may infer a whole-Store or RSS bound from the selected-record envelope.
+
+Use independently encoded canonical fixtures to mutate each current/candidate/
+receipt/journal/writer link. Cover canonical component/file/tree and source
+identity mismatches, targets with matching observation inventories, exact authored
+artifact locks, static executable identities, all required completion dimensions,
+availability independence, empty inventories, and fields with no cross-record
+counterpart. Current must match both journal and retained writer across same,
+immediate, older and maximum generation cases; journal-ahead cannot admit future
+current. Exercise mixed operation identity changes, prior receipt historical
+Previous, distinct/reused candidate/receipt roles, all cleanup deletion prefixes
+and the commit-before-cleanup interval where no prior object may be missing.
+Map journal execution order and receipt lexical phase order explicitly. All these
+checks are private value correspondence, with no liveness/syscall/source/install
+observation, namespace classification, recovery or completion permission. Earlier
+pending/currentless relations and unsupported-recognition precedence remain
+separate. Retain focused race/fuzz tests and independent fit/security review.
+
 ### Private canonical candidate, pending and journal codecs
 
 The approved ARCH-024 mechanism preserves PC-042/050 bytes and accepted values

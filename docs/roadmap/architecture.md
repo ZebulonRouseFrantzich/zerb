@@ -766,6 +766,35 @@ writer/completion authority, or classify a root. Those remain state-owned
 integration obligations. Journal correspondence is not implemented by this
 bounded writer/current increment.
 
+#### Selected committed-control record correspondence
+
+The bounded private committed-control seam verifies canonical selected candidate,
+pending-receipt and optional journal wires against scalar-valid Current/Writer
+values. Its [closed representation and reservation](committed-control-representation.md)
+are reviewed independently. Current must match Writer even in the journal-ahead
+interval; a future-generation current cannot be inferred from an ahead journal.
+Current's candidate/receipt digests, exact static facts, necessary completed
+checks, committed operation tuple and same/immediate/older writer-token relation
+must all match. With a journal, require the exact active/one-ahead held owner,
+current operation, pending-receipt/cleanup phase, target coverage and current
+receipt predecessor/observations. Before cleanup-phase publication every distinct
+prior object remains; cleanup permits candidate-first then receipt-second removal,
+including a retained prior receipt after its distinct candidate is gone. Prior
+candidate and prior receipt digests remain independent; the latter's historical
+Previous is not inferred or traversed. Aliased prior roles reuse current objects.
+
+This pure result has no Classification, Acquisition, lease, liveness, filesystem,
+source/install or completion authority. Currentless, precommit and pending-only
+incomplete records are outside its committed boundary; refusal does not classify
+them corrupt. General A/B value correspondence grants no PC-071 update admission.
+All selected visible wire capacities, retained models and serial decode workspace
+are reserved together before materialization. The derived 80,008,493-byte logical
+selected-record envelope changes no 8,000,000-byte codec limit and is not a Store,
+history or RSS cap. Resource refusal and invalid correspondence have distinct
+fixed private errors and zero returned links; neither error grants cleanup or
+classification. Complete protected-graph recognition and all external verification
+remain separately required before any routing, mutation or stable publication.
+
 ### ARCH-025 — Prepared, mutating, dirty, and stable truth
 
 Host mutation follows this durable sequence under the complete `A-X+W-X` ownership relation:

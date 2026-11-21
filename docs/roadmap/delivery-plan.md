@@ -230,6 +230,14 @@ is recorded without inventing a whole-graph numeric envelope or partial Store.
 Complete source/tree/toolchain/install validation, composed scan/resource fit,
 future owned file-to-codec integration and qualification remain separate gates.
 
+The subsequent selected committed-control increment composes the existing pure
+codecs with exact current/candidate/receipt/writer/journal and cleanup-residue
+correspondence, after independent fixed-role fit review. It has no filesystem,
+source/install, liveness, Classification/AcquireFor or mutation authority and
+adds no public schema/API. Its derived selected-record reservation is not a
+whole-Store envelope. Currentless/precommit relations, complete data authentication,
+namespace/history scanning, artifact fit and qualification stay separately gated.
+
 ### Work
 
 1. Enforce the exact ARCH-030 one-way DAG and forbidden old-package seam for every package introduced in this phase. Phase 2 completes only `paths`, `safefs`, `profile`, `receipt`, `execenv`, `source`, `toolchain`, `state`, and test-only `testenv`; it does not create compile-only `mise`, `home`, `plan`, `recovery`, `app`, or `host` scaffolds. The DAG gate scans production and `_test.go`, rejects imports of every full old package tree including `internal/testutil`, and permits `internal/testenv` only from `_test.go`. No bridge, alias, re-export, registry, fallback, production `testenv` import, or old CLI route is permitted.
