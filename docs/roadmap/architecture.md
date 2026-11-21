@@ -289,6 +289,36 @@ Recognizable evidence includes every reserved ARCH-016 state/data path or filena
 
 A supported current relation is complete only when the owner pair, all stable synchronization inodes, released or exactly held writer-owner publication, and every present durable record cross-validate. `READY(∅)` has no current or transition. `STABLE(A)` has exactly one current reference whose candidate and completed receipt validate, no journal, and no unreferenced receipt. `TRANSITION(A,B)` has exactly one permitted prepared/mutating/dirty journal graph; `A` may be the explicit empty baseline only when no prior current/candidate/receipt exists. `CLEANUP(B)` is stable `B` plus its one exact writer-bound cleanup journal and only the journal-named prior candidate/receipt objects not yet removed, or the exact committed-and-cleaned held-owner relation with no journal and only writer release remaining; first bootstrap has no prior objects. Cleanup removes/syncs the exact prior candidate when distinct, then the exact prior completed receipt when distinct, and removes/syncs the journal last, so every remaining receipt is referenced by current or journal at every crash boundary. Independently published and fully authenticated immutable candidate/source/tree/toolchain objects may otherwise be unreferenced; a receipt, writer-owner publication, or current record may not. A dead-process `held` owner publication with a supported relation is recoverable only by ARCH-031 compare-transfer.
 
+#### Bounded existing initialized observation
+
+The bounded existing-empty-initialized observation is a private descriptor-owned
+helper, not an exhaustive classifier or command admission API. From a typed
+intent it takes only minimum safe role/state/admission-inode observations,
+chooses the ARCH-031 A-S/A-X mode, acquires it nonblockingly, and retains that exact
+OFD through all semantic reads, revalidation and close. It neither acquires I-X
+or W-X nor returns an `Acquisition`, classification, writer ownership or completion
+authority. The unchanged existing-lock primitive synchronizes its inode; no
+namespace/content write, creation, owner publication or repair is performed.
+
+Its narrow physical precondition is exactly the eight freshly initialized state
+entries, empty candidates/journals/receipts, canonical initialized root and
+general writer-owner values, matching data owner with no other data entries, and
+the matching owner-only cache instance. It pins bounded full regular-file facts
+and all retained directory/name identities, under unchanged directory admission.
+Held owner facts give no liveness or ordinary-operation permission. No parity or
+generation-headroom rule is added. Unrelated cache siblings are not inventoried
+or adopted. Missing/poisoned cache, lazy branches and independently authenticated
+unreferenced immutable content are outside this helper; refusal never labels
+them BAD or changes their durable classification. Later complete routing still
+requires ARCH-018/027/031 under its retained intent lease.
+
+Copied observation handles share one serialized lifetime. Failure yields zero
+facts and revokes/releases owned resources without semantic cleanup; construction
+failure closes all owned descriptors and reports cleanup errors. Close never
+releases a published writer owner or removes evidence. Reopening/checks detect
+observed substitutions, not invisible restored same-UID cycles or an atomic
+snapshot of arbitrary concurrent writers.
+
 ### ARCH-019 — Untrusted cache
 
 Only the owner-validated `instances/<instance-id>` cache subtree may be used. ZERB validates owner/type/mode and no-follow topology on every cache access and authenticates and hashes every byte before parsing, extraction, or execution. It never adopts, relabels, trusts, or deletes unrelated cache content. A missing or poisoned cache is a cache miss, not durable truth.

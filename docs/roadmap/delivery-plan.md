@@ -177,6 +177,16 @@ security checks plus source-bound conformance precede publication. READY graph
 reopening/admission and all archive/host/MVP acceptance dependencies remain
 separate subsequent work.
 
+The subsequent approved existing-empty-initialized observation retains the exact
+intent-selected admission OFD while reopening and revalidating its narrow complete
+physical graph. It is a private observation, not a partial Store, classifier,
+command admission, liveness check or recovery executor. Broader valid durable
+content and cache misses stay outside this helper without being classified as
+corruption. Focused graph/lifetime/substitution/race/fuzz tests and independent
+security review plus exact-source conformance precede its stacked draft PR.
+Positive absolute-path checks may remain unexercised in Cloud; all existing host,
+archive and installed acceptance gates remain unchanged.
+
 ### Work
 
 1. Enforce the exact ARCH-030 one-way DAG and forbidden old-package seam for every package introduced in this phase. Phase 2 completes only `paths`, `safefs`, `profile`, `receipt`, `execenv`, `source`, `toolchain`, `state`, and test-only `testenv`; it does not create compile-only `mise`, `home`, `plan`, `recovery`, `app`, or `host` scaffolds. The DAG gate scans production and `_test.go`, rejects imports of every full old package tree including `internal/testutil`, and permits `internal/testenv` only from `_test.go`. No bridge, alias, re-export, registry, fallback, production `testenv` import, or old CLI route is permitted.
