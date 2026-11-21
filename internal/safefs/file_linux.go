@@ -3,7 +3,6 @@
 package safefs
 
 import (
-	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"os"
@@ -221,44 +220,11 @@ func (s *fileState) read(collect bool) ([]byte, string, error) {
 	if !validReadLimit(size) {
 		return nil, "", errDirectory
 	}
-	var data []byte
-	if collect {
-		data = []byte{}
+	data, hash, err := readFileContents(s.reader, size, collect, s.metadata, nil)
+	if err != nil {
+		return nil, "", errDirectory
 	}
-	h := sha256.New()
-	var buffer [32 << 10]byte
-	for offset := int64(0); ; {
-		if s.metadata() != nil {
-			return nil, "", errDirectory
-		}
-		want := size - offset
-		if want > int64(len(buffer)) {
-			want = int64(len(buffer))
-		}
-		if want == 0 {
-			want = 1
-		}
-		n, err := unix.Pread(int(s.reader.Fd()), buffer[:int(want)], offset)
-		if err != nil || n < 0 || n > int(want) || s.metadata() != nil {
-			return nil, "", errDirectory
-		}
-		if offset == size {
-			if n != 0 {
-				return nil, "", errDirectory
-			}
-			return data, hex.EncodeToString(h.Sum(nil)), nil
-		}
-		if n == 0 {
-			return nil, "", errDirectory
-		}
-		if _, err := h.Write(buffer[:n]); err != nil {
-			return nil, "", errDirectory
-		}
-		if collect {
-			data = append(data, buffer[:n]...)
-		}
-		offset += int64(n)
-	}
+	return data, hex.EncodeToString(hash[:]), nil
 }
 
 func (s *fileState) revalidate() error {

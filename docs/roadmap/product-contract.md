@@ -446,6 +446,14 @@ A clean first use exists only when the product state and data directories are in
 6. `BAD corrupt` is the fallback for every other namespace containing recognizable ZERB evidence: any required path/record is absent, malformed, partial, mismatched, unsafe, duplicated, aliased, improperly unreferenced, cross-related incorrectly, or accompanied by an unrecognized extra state/data entry. A broken initialized relation is never reclassified as `INIT` merely because the permanent `init.lock` remains.
 7. Cache is not durable truth. A missing or poisoned owned per-instance cache is a cache miss; entries outside the validated cache subtree remain unrelated and are neither adopted nor deleted. Source/candidate operation staging is confined to this cache and cannot create a state/data relation. ARCH-020's exact protected-record replacement stage and metadata record are the sole durable staging exception; they require independent state authority and never grant source/candidate trust.
 
+Resource exhaustion during required complete validation is an operational refusal,
+not evidence of corruption. It grants no mutation or deletion authority and may
+leave a large valid immutable history operationally unavailable. Preserve bytes,
+evidence and any already-owned intent lease; do not return an unproved supported
+classification, manufacture a new state class, or use move-aside/cleanup guidance.
+Reviewed operation-wide representation and verification-work limits are required
+before graph admission; the PC-042 codec budget does not already supply them.
+
 `INIT`, `BAD`, `READY(∅)`, `STABLE(A)`, `TRANSITION(A,B)`, and `CLEANUP(B)` receive exactly the command/lease row in PC-016. Initialization repair uses only stable initialization exclusion and token compare-transfer over a listed `INIT` prefix. Writer-owner repair or stale takeover uses ARCH-031. `doctor` never repairs implicitly.
 
 **Scenarios.**
