@@ -166,6 +166,17 @@ review precede source-bound conformance. Existing initialization validators,
 archive build/inventory/fit prerequisites and host/public-cutover gates remain
 unchanged; a valid private current value is not evidence of a completed receipt.
 
+The next owner-approved private increment completes general writer-owner value
+validation/codecs and ARCH-024's current-to-held/released-writer correspondence.
+It preserves FreshInit's narrower accepted set, concrete record tags, wire bytes
+and errors. Closed predecessor-shape consequences add no history reconstruction,
+parity or generation-headroom policy. This is not lock acquisition, liveness,
+takeover, publication, recovery, completion authority or a partial AcquireFor.
+Focused generation/token/JSON/FreshInit-preservation, race/fuzz and independent
+security checks plus source-bound conformance precede publication. READY graph
+reopening/admission and all archive/host/MVP acceptance dependencies remain
+separate subsequent work.
+
 ### Work
 
 1. Enforce the exact ARCH-030 one-way DAG and forbidden old-package seam for every package introduced in this phase. Phase 2 completes only `paths`, `safefs`, `profile`, `receipt`, `execenv`, `source`, `toolchain`, `state`, and test-only `testenv`; it does not create compile-only `mise`, `home`, `plan`, `recovery`, `app`, or `host` scaffolds. The DAG gate scans production and `_test.go`, rejects imports of every full old package tree including `internal/testutil`, and permits `internal/testenv` only from `_test.go`. No bridge, alias, re-export, registry, fallback, production `testenv` import, or old CLI route is permitted.

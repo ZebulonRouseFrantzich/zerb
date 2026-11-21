@@ -429,11 +429,17 @@ func TestReplacementProcAndAncestorSubstitutionRefuse(t *testing.T) {
 				s.chain[0].fd = oldFD
 				requirePublicationPhaseRefusal(t, err)
 			case "parent-mode":
+				originalMode := parent.id.Mode & 0o7777
+				defer func() {
+					if err := unix.Fchmod(parent.fd, originalMode); err != nil {
+						t.Error("parent mode restoration failed")
+					}
+				}()
 				if err := os.Chmod(root, 0o500); err != nil {
 					t.Fatal(err)
 				}
 				err := s.validateContents()
-				if err := os.Chmod(root, 0o700); err != nil {
+				if err := unix.Fchmod(parent.fd, originalMode); err != nil {
 					t.Fatal(err)
 				}
 				requirePublicationPhaseRefusal(t, err)
