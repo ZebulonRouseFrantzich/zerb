@@ -1,7 +1,7 @@
 # ZERB Roadmap
 
-**Status:** Phase 1 qualification outstanding; owner-approved split gate permits reviewed non-release implementation after cloud conformance; product not implemented
-**Last updated:** 2026-10-22
+**Status:** pre-alpha source integration only; Phase 1 qualification and freeze outstanding; no supported installed product
+**Last updated:** 2026-11-21
 
 ZERB is a declarative, profile-based developer-environment restoration tool for mutable workstations. It converges declared user-space tools and dotfiles through pinned, isolated native adapters. It is not an operating-system image, backup system, package manager, transactional rollback engine, hermetic build system, or machine snapshot.
 
@@ -81,4 +81,6 @@ The provisional Phase 2 increments add `profile` declaration values/static selec
 
 The bounded `Dir.PublishNoReplace` increment adds anonymous same-parent staging and descriptor-owned atomic no-replace publication with synchronization and exact verification. A publication error may leave a final entry and grants no cleanup or state-completion authority. Full role validation, state initialization/admission and host qualification remain outstanding.
 
-The branch remains pre-alpha. Its reachable binary is the obsolete pre-cutover product while reviewed non-release foundations proceed under the source-bound cloud gate. Reports and reviews apply only to their recorded source and scope; split-gate approval alone establishes none, and frozen-host Phase 1 qualification remains outstanding. Do not install or run this branch against a real workstation, home directory, credentials, manager state, or destination before Phase 6 installed-binary acceptance. See the [root branch-status README](../../README.md) and the baseline in [proof results](proof-results.md).
+The source-integration milestone collects those private foundations, additional state and process ownership components, and disposable lifecycle evidence. It does not complete Phase 2 or qualify the target runner. The [unexplained held-assembly proof-race failure](proof-results.md#cloud-held-assembly-conformance-failure-2026-10-28) remains open; subsequent passes are separate observations, not a resolution. Reports and reviews apply only to their recorded source and scope.
+
+The reachable binary remains the obsolete pre-cutover product. Source integration is not public cutover, activation, distribution, or support approval. Do not install or run it against a real workstation, home directory, credentials, manager state, or destination before complete frozen-host Phase 1 qualification and freeze approval and final Phase 6 installed-binary acceptance. See the [root README](../../README.md) and the baseline in [proof results](proof-results.md).

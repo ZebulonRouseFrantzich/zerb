@@ -1,7 +1,6 @@
 # ZERB
 
-**Branch status:** pre-alpha architecture refocus and security hard cutover
-**Refocus branch:** `project_refocus_and_security_fixes` and isolated continuation branches
+**Milestone:** pre-alpha source integration (not a release)
 
 ZERB's target is a declarative, profile-based developer-environment restoration tool for mutable workstations. It will coordinate pinned native Git, mise, and chezmoi behavior while owning source selection, trust, collision policy, orchestration, durable state, and recovery.
 
@@ -12,6 +11,14 @@ The currently reachable binary is the obsolete pre-cutover implementation. It do
 Do not install or run this branch against a real workstation, real home directory, credentials, existing manager state, or real destinations until Phase 6 installed-binary acceptance is complete. Development and proof work must use disposable HOME/XDG roots and dedicated non-sensitive fixtures.
 
 There are no supported users or compatibility guarantees. The final release will be a hard cutover, not a migration layer over the reachable old product.
+
+## What the refocus delivered
+
+- A provisional product contract and architecture for public embedded profiles, digest-bound trust, separate mutation approval, and explicit recovery boundaries.
+- Internal foundations for profile parsing and receipt encoding, protected filesystem and state handling, and process stream ownership. These are components, not an integrated public runner.
+- Disposable Linux lifecycle proofs and improved cloud failure diagnostics. The [proof ledger](docs/roadmap/proof-results.md#cloud-held-assembly-conformance-failure-2026-10-28) still records an unexplained held-assembly proof-race failure. Passing later runs do not resolve it. The [macOS spike](docs/roadmap/native-macos-plan.md) is diagnostic only, not platform support.
+
+Integrating this source into `main` does not complete Phase 2, turn on the target CLI, or change the release gates. Frozen-host Phase 1 qualification and freeze approval, followed by Phase 6 installed-binary acceptance, are still required.
 
 ## Roadmap authority
 
