@@ -81,3 +81,10 @@ The MVP process boundary remains governed by [ARCH-009](architecture.md#arch-009
 Any future user-facing surface must preserve parent-shell non-mutation and the frozen environment matrix. It must specify descriptor inheritance, terminal control, process/session topology, signal forwarding, cancellation grace and escalation, descendant reaping, hard-death behavior, environment export lifetime, manager credential/state exposure, and durable diagnosis. Arbitrary user commands continue to have user authority; stronger lifecycle control must not be described as a security sandbox unless a separately reviewed containment design proves that claim.
 
 Behavior excluded rather than deferred is recorded in the [hard-cutover crosswalk](hard-cutover.md#former-authority-requirement-crosswalk). See the [roadmap index](README.md) and [redacted proof ledger](proof-results.md) for authority and evidence boundaries.
+
+## Native macOS alongside Linux
+
+The owner requested a [native macOS backend plan](native-macos-plan.md), with
+implementation deferred until after MVP. Use a dedicated Linux guest on the Mac
+for current MVP engineering; it manages the guest, not native macOS host state.
+The linked plan preserves platform qualification and existing Linux safeguards.

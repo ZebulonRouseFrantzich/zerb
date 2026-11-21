@@ -23,6 +23,8 @@ import time
 
 sys.dont_write_bytecode = True
 
+from cloud_diagnostics import failure_diagnostics, source_catalog, MAX_CATALOG_BYTES, MAX_CATALOG_FILES, MAX_SOURCE_BYTES
+
 SCHEMA = "zerb-cloud-conformance-v1"
 CA_PATH = "internal/proof/adapters/testdata/reviewed-ca-bundle.pem"
 CA_SIZE = 472033
@@ -91,7 +93,7 @@ def no_symlink_components(path):
     return path
 
 
-def file_identity(path, limit=256 * 1024 * 1024, strict_path=False):
+def file_identity(path, limit=256 * 1024 * 1024, strict_path=False, contents=None):
     """Hash one no-follow descriptor and verify path and descriptor after read."""
     original = Path(path)
     canonical = no_symlink_components(original) if strict_path else original.resolve(strict=True)
@@ -110,6 +112,8 @@ def file_identity(path, limit=256 * 1024 * 1024, strict_path=False):
             if count > limit:
                 raise EvidenceError("file-size-limit")
             digest.update(data)
+            if contents is not None:
+                contents.append(data)
         after = os.fstat(fd)
         if metadata(before) != metadata(after) or metadata(after) != metadata(canonical.lstat()):
             raise EvidenceError("file-identity-changed")
@@ -217,7 +221,7 @@ def tool_inventory(repo, env):
     return result
 
 
-def source_identity(repo, git, env):
+def source_identity(repo, git, env, diagnostic_sources=None):
     commit = capture([git, "rev-parse", "--verify", "HEAD"], repo, env).decode().strip()
     if not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", commit):
         raise EvidenceError("source-commit-malformed")
@@ -233,6 +237,7 @@ def source_identity(repo, git, env):
     names = capture([git, "ls-files", "--cached", "--others", "-z"], repo, env).split(b"\0")
     digest = hashlib.sha256()
     count = 0
+    catalog_bytes = 0
     for raw in sorted(set(names) - {b""}):
         path = repo / os.fsdecode(raw)
         if not inside(Path(os.path.abspath(path)), repo):
@@ -252,7 +257,16 @@ def source_identity(repo, git, env):
             # the bytes they would consume. Never read an external link target.
             raise EvidenceError("symlink-source-entry")
         elif stat.S_ISREG(info.st_mode):
-            identity = file_identity(path, strict_path=True)
+            chunks = [] if diagnostic_sources is not None and (path.suffix == ".go" or path.name == "go.mod") else None
+            if chunks is not None:
+                if len(diagnostic_sources) >= MAX_CATALOG_FILES:
+                    raise EvidenceError("diagnostic-source-bound")
+            limit = min(MAX_SOURCE_BYTES, MAX_CATALOG_BYTES - catalog_bytes) if chunks is not None else 256 * 1024 * 1024
+            identity = file_identity(path, limit=limit,
+                                     strict_path=True, contents=chunks)
+            if chunks is not None:
+                catalog_bytes += identity["size"]
+                diagnostic_sources[os.fsdecode(raw)] = b"".join(chunks)
             binding = {key: identity[key] for key in ("sha256", "size", "mode", "device", "inode", "mtime_ns", "ctime_ns")}
         else:
             raise EvidenceError("source-nonregular-entry")
@@ -357,7 +371,7 @@ def host_inventory(repo, output_parent, temp):
 def commands(tools, repo, temp):
     go = tools["go"]["identity"]["path"]
     return (
-        ("proof-race", [go, "test", "-race", "-count=1", "./internal/proof/..."]),
+        ("proof-race", [go, "test", "-json", "-race", "-count=1", "./internal/proof/..."]),
         ("vet", [go, "vet", "./..."]),
         ("lint", [tools["golangci-lint"]["identity"]["path"], "run"]),
         ("modules", [go, "mod", "verify"]),
@@ -365,15 +379,17 @@ def commands(tools, repo, temp):
         ("python-boundaries", [tools["python3"]["identity"]["path"], "-m", "unittest", "discover",
                                "-s", "scripts", "-p", "test_*.py"]),
         ("foundation-imports", [go, "run", "./tools/importcheck"]),
-        ("foundation-race", [go, "test", "-race", "-count=1", "./internal/paths", "./internal/safefs", "./internal/profile", "./internal/receipt", "./internal/toolchain", "./internal/state", "./internal/execenv", "./tools/importcheck"]),
+        ("foundation-race", [go, "test", "-json", "-race", "-count=1", "./internal/paths", "./internal/safefs", "./internal/profile", "./internal/receipt", "./internal/toolchain", "./internal/state", "./internal/execenv", "./tools/importcheck"]),
         ("parser-pin", [tools["python3"]["identity"]["path"], "scripts/check_parser_pin.py", "--go", go]),
-        ("parser-upstream-race", [go, "-C", "third_party/go-toml", "test", "-race", "-count=1", "./..."]),
+        ("parser-upstream-race", [go, "-C", "third_party/go-toml", "test", "-json", "-race", "-count=1", "./..."]),
     )
 
 
-def run_check(name, argv, repo, env, temp):
+def run_check(name, argv, repo, env, temp, checkpoint=None, catalog=None):
     start = time.monotonic()
-    # Private, disposable logs may contain raw tool diagnostics; the JSON never does.
+    if checkpoint is not None:
+        checkpoint({"event": "check-start", "name": name})
+    # Raw output stays disposable; only source-bound/typed observations survive.
     with tempfile.TemporaryFile(dir=temp) as log:
         try:
             result = subprocess.run(argv, cwd=repo, env=env, stdin=subprocess.DEVNULL,
@@ -384,9 +400,26 @@ def run_check(name, argv, repo, env, temp):
             code, reason = None, "command-unavailable-or-timeout"
         log.seek(0, os.SEEK_END)
         size = log.tell()
-    return {"name": name, "status": "passed" if code == 0 else "failed", "argv": argv,
+        diagnostics = "omitted-success"
+        if code != 0:
+            try:
+                diagnostics = failure_diagnostics(log, catalog or {})
+            except (OSError, ValueError, UnicodeError, RecursionError):
+                diagnostics = {"status": "incomplete", "reason": "safe-catalog-unavailable"}
+    row = {"name": name, "status": "passed" if code == 0 else "failed", "argv": argv,
             "exit_code": code, "reason": reason, "diagnostic_bytes": size,
-            "elapsed_seconds": round(time.monotonic() - start, 3), "diagnostics": "omitted"}
+            "elapsed_seconds": round(time.monotonic() - start, 3), "diagnostics": diagnostics}
+    if checkpoint is not None:
+        checkpoint({"event": "check-complete", "check": {key: value for key, value in row.items() if key != "argv"}})
+    return row
+
+
+def diagnostic_checkpoint(stream, record):
+    """Append before the next check; a started-only row remains unresolved."""
+    json.dump(record, stream, sort_keys=True)
+    stream.write("\n")
+    stream.flush()
+    os.fsync(stream.fileno())
 
 
 def valid_identity(entry):
@@ -463,6 +496,8 @@ def valid_capabilities(inventory):
 def gate_status(report):
     """Fail closed on omitted/malformed evidence; statuses are never imported."""
     try:
+        if "failure" in report:
+            return "failed"
         if report["schema"] != SCHEMA or report["host_qualified"] is not False or report["release_supported"] is not False:
             return "failed"
         if report["inventory"].get("status") != "passed" or report["stability"].get("status") != "passed":
@@ -555,13 +590,20 @@ def reserve_output(path, repo):
         held_path = Path(os.readlink("/proc/self/fd/" + str(directory)))
         if any(inside(held_path, root) for root in forbidden):
             raise EvidenceError("output-parent-moved-into-protected-root")
-        return os.open(raw.name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
-                       0o600, dir_fd=directory)
+        result = os.open(raw.name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC,
+                         0o600, dir_fd=directory)
+        try:
+            os.fchmod(result, 0o600)
+            os.fsync(directory)
+        except OSError:
+            os.close(result)
+            raise
+        return result
     finally:
         os.close(directory)
 
 
-def collect(repo, output_parent, temp, inventory_only):
+def collect(repo, output_parent, temp, inventory_only, checkpoint=None):
     try:
         env = environment(temp, os.environ.get("PATH", os.defpath), repo)
     except (OSError, EvidenceError):
@@ -572,7 +614,7 @@ def collect(repo, output_parent, temp, inventory_only):
               "execution_policy": {"dependencies": "readonly-existing-only", "go_flags": "-mod=readonly -buildvcs=false",
                 "buildvcs": False, "buildvcs_reason": "process-local linked-cloud-worktree metadata workaround",
                 "network_dependency_resolution": False, "child_roots": "disposable",
-                "logs": "private-disposable-outside-repository; raw diagnostics omitted"},
+                "logs": "raw-disposable; source-catalogued failure observations checkpointed outside repository"},
               "source": {}, "tools": {}, "ca": {}, "inventory": {"status": "failed"},
               "stability": {"status": "failed"},
               "checks": [{"name": name, "status": "not-exercised"} for name in REQUIRED_CHECKS],
@@ -580,12 +622,19 @@ def collect(repo, output_parent, temp, inventory_only):
     try:
         if env is None:
             raise EvidenceError("build-cache-environment-invalid")
+        if not inventory_only and checkpoint is None:
+            raise EvidenceError("durable-diagnostic-journal-required")
         report["tools"]["before"] = tool_inventory(repo, env)
         report["ca"]["before"] = ca_identity(repo)
         git = report["tools"]["before"].get("git", {}).get("identity", {}).get("path")
         if git is None:
             raise EvidenceError("git-unavailable")
-        report["source"]["before"] = source_identity(repo, git, env)
+        diagnostic_sources = {}
+        report["source"]["before"] = source_identity(repo, git, env, diagnostic_sources)
+        catalog = source_catalog(diagnostic_sources)
+        del diagnostic_sources
+        if checkpoint is not None:
+            checkpoint({"event": "source-before", "source": report["source"]["before"]})
         report["inventory"] = host_inventory(repo, output_parent, temp)
         ready = (all(valid_identity(report["tools"]["before"].get(name)) for name in REQUIRED_TOOLS)
                  and report["ca"]["before"]["status"] == "passed")
@@ -594,7 +643,7 @@ def collect(repo, output_parent, temp, inventory_only):
             report["execution_policy"]["cc"] = env["CC"]
             report["execution_policy"]["build_cache_paths"] = {key: env[key] for key in ("GOPATH", "GOCACHE")}
         if not inventory_only and ready:
-            report["checks"] = [run_check(name, argv, repo, env, temp)
+            report["checks"] = [run_check(name, argv, repo, env, temp, checkpoint, catalog)
                                 for name, argv in commands(report["tools"]["before"], repo, temp)]
         report["source"]["after"] = source_identity(repo, git, env)
         report["ca"]["after"] = ca_identity(repo)
@@ -604,6 +653,9 @@ def collect(repo, output_parent, temp, inventory_only):
     except (OSError, ValueError, EvidenceError, subprocess.SubprocessError):
         report["failure"] = "critical-inventory-or-identity-unavailable"
     report["status"] = gate_status(report)
+    if checkpoint is not None:
+        checkpoint({"event": "collection-complete", "status": report["status"],
+                    "source_after": report["source"].get("after"), "stability": report["stability"]})
     return report
 
 
@@ -613,18 +665,32 @@ def main(argv=None):
     parser.add_argument("--inventory-only", action="store_true")
     args = parser.parse_args(argv)
     repo = Path(__file__).resolve().parent.parent
+    fd = None
+    journal_fd = None
     try:
         temporary_base = no_symlink_components(Path("/tmp"))
         if any(inside(temporary_base, root) for root in [repo, *protected_roots()]):
             raise EvidenceError("temporary-root-overlaps-protected-root")
         fd = reserve_output(args.output, repo)
+        if not args.inventory_only:
+            journal_fd = reserve_output(args.output + ".checks.jsonl", repo)
     except (OSError, EvidenceError):
+        if fd is not None:
+            os.close(fd)
         print("cloud conformance: output and temporary roots must be safe and outside repository and HOME/XDG roots", file=sys.stderr)
         return 1
     with os.fdopen(fd, "w", encoding="utf-8") as stream:
+        journal = os.fdopen(journal_fd, "w", encoding="utf-8") if journal_fd is not None else None
         # Explicit /tmp avoids an ambient TMPDIR pointing inside the repository.
-        with tempfile.TemporaryDirectory(prefix="zerb-cloud-", dir="/tmp") as directory:
-            report = collect(repo, Path(args.output).absolute().parent, Path(directory), args.inventory_only)
+        try:
+            with tempfile.TemporaryDirectory(prefix="zerb-cloud-", dir="/tmp") as directory:
+                checkpoint = (lambda row: diagnostic_checkpoint(journal, row)) if journal is not None else None
+                report = collect(repo, Path(args.output).absolute().parent, Path(directory), args.inventory_only, checkpoint)
+                if journal is not None:
+                    report["execution_policy"]["diagnostic_journal"] = args.output + ".checks.jsonl"
+        finally:
+            if journal is not None:
+                journal.close()
         json.dump(report, stream, indent=2, sort_keys=True)
         stream.write("\n")
         stream.flush()
