@@ -863,3 +863,49 @@ Every field below is explicitly a **Phase 1 evidence field**. A result is inconc
   unexercised, never implementation-qualified. The separate actual-cloud reaper
   result remains unresolved. Guard/cgroup, complete authentication/tree/resource,
   global race, terminal, artifact and frozen-host/installed gates remain open.
+
+### CLOUD-PIDFD-GROUP-AUTHORITY-2026-10-28
+
+- **Scope:** ARCH-009/010 and VAL-019 owned-group addressing subset, not production
+  execution or complete Gate 1 qualification. The new Go test uses the existing
+  same-image proof helpers and an explicitly cooperating isolated driver R.
+  R owns session/group leader L and unrelated control C; L creates member H with
+  CLONE_PARENT so R can perform the exact consuming waits. All addressed pidfds
+  originate atomically at those births and remain close-on-exec and retained.
+- **Observed transition:** H acknowledges a group SIGTERM before and after R's
+  actual L exit-17 wait, using the same held L pidfd. After that wait, individual
+  L signalling returns ESRCH while the group still reaches H. A nonleader H
+  group request returns ESRCH; conflicting scope flags return EINVAL. Group
+  SIGKILL produces exact H raw SIGKILL and an actual consuming wait; the empty
+  retained group then returns ESRCH. C remains responsive and is actually reaped
+  with raw zero. A separate individual C SIGTERM control produces actual raw
+  SIGTERM, verifying the negative-control sensitivity instead of assuming Go's
+  default SIGUSR1 behavior would terminate it.
+- **Interrupted registration:** H is observed alive before R receives its birth
+  pidfd. Closing R's sole member-control endpoint gives H EOF and R actually
+  consumes H zero, L exit 17 and C zero. No late numeric PID/group signal is used.
+  Every successful row ends with actual ECHILD; readiness is not called reaping.
+- **Cleanup checks:** Owned sockets are shut down through SyscallConn.Control
+  before close, without a borrowed-descriptor reuse window. A concurrent pending
+  reader check requires both endpoint reads to finish and repeated revocation to
+  succeed. Its start markers do not prove deterministic kernel-syscall entry.
+  Execution caught and corrected RawConn's internal closed-error versus
+  File.Close's public ErrClosed distinction. Watchdog expiry always fails; group
+  EINVAL/ENOSYS is unexercised only after verified owned cleanup. Other errors or
+  cleanup failures remain failure. No host policy repair is attempted.
+- **Focused validation:** Three real-process rows passed thirty repetitions with
+  race and coverage instrumentation (90 cases), together with thirty socket
+  revocation checks. A retained JSON run records all three rows and the socket
+  check passing with zero skips; scoped lint reports zero issues. Independent
+  Sol security/correctness review resolved negative-control and blocking-socket
+  cleanup findings; the reviewer inspected code/evidence, not a second execution.
+  Clean committed-source full conformance and exact-head CI are separate later
+  observations, not claimed at this focused checkpoint.
+- **Unchanged limits:** No forced numeric PID reuse, external-reaper qualification,
+  full authenticated role registration, strace lookup/race closure, real guard or
+  cgroup containment, whole-tree/resource accounting, physical terminal or global
+  caller-death/exec proof. The actual cloud reaper remains unresolved. Existing
+  filesystem/topology, authenticated pinned-artifact inventory/fit and frozen-host
+  gates remain open. Production execution, Phase 2, MVP and release/support stay
+  incomplete. No production package, dependency, exported API or host setting
+  changes are part of this proof.
