@@ -196,9 +196,12 @@ predecode/canonicalization reservation and round-trip fit remain separate; no
 arbitrary wire cap or whole-graph accumulation envelope is introduced. Phase 2
 acceptance, actual artifact inventory and frozen-host qualification remain open.
 
-The separately reviewed process increment adds only private opened-executable
-fingerprints and updates the actual lifecycle proof candidate to the approved
-single graceful window. It includes cumulative forced termination before waiting,
+The separately reviewed process increment adds private opened-executable
+fingerprints, transactional supplied-file stream duplication lifetimes and their
+permanent tests, and updates the actual lifecycle proof candidate to the approved
+single graceful window. Stream ownership accepts three explicit nonnil files,
+retains caller originals and shares their open-file descriptions; it adds no
+trusted null acquisition, generic application-I/O bridge, PTY or release authority. The lifecycle proof includes cumulative forced termination before waiting,
 complete post-kill cleanup/guard verification and explicit cleanup-failure status
 precedence. The full production Runner/Dispatch, per-class environment assembly,
 cgroup admission, full retained invocation matrix and host qualification remain
