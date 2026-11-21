@@ -3,7 +3,6 @@
 package safefs
 
 import (
-	"crypto/sha256"
 	"errors"
 	"os"
 
@@ -44,40 +43,15 @@ func treeRead(s *stageState, parent edge, name string, limit int64, collect, syn
 	if err != nil || pin.validate() != nil {
 		return nil, fileStamp{}, digest, errDirectory
 	}
-	size := pin.before.identity.Size
-	if collect {
-		data = make([]byte, int(size))
-	}
-	hash := sha256.New()
-	var scratch [32 << 10]byte
-	for offset := int64(0); ; {
-		want := min(int64(len(scratch)), size-offset)
-		if want == 0 {
-			want = 1
+	data, digest, err = readFileContents(reader, pin.before.identity.Size, collect, func() error {
+		after, failure := observeFile(int(reader.Fd()), "")
+		if failure != nil || after != pin.before || pin.validate() != nil || proc.validate() != nil {
+			return errDirectory
 		}
-		if s.readCharge(uint64(want)) != nil || pin.validate() != nil {
-			return nil, fileStamp{}, digest, errDirectory
-		}
-		n, failure := unix.Pread(int(reader.Fd()), scratch[:int(want)], offset)
-		if failure != nil || n < 0 || n > int(want) || pin.validate() != nil {
-			return nil, fileStamp{}, digest, errDirectory
-		}
-		if offset == size {
-			if n != 0 {
-				return nil, fileStamp{}, digest, errDirectory
-			}
-			break
-		}
-		if n == 0 {
-			return nil, fileStamp{}, digest, errDirectory
-		}
-		if _, failure := hash.Write(scratch[:n]); failure != nil {
-			return nil, fileStamp{}, digest, errDirectory
-		}
-		if collect {
-			copy(data[int(offset):], scratch[:n])
-		}
-		offset += int64(n)
+		return nil
+	}, s.readCharge)
+	if err != nil {
+		return nil, fileStamp{}, digest, errDirectory
 	}
 	if synchronize && unix.Fsync(int(reader.Fd())) != nil {
 		return nil, fileStamp{}, digest, errDirectory
@@ -86,7 +60,6 @@ func treeRead(s *stageState, parent edge, name string, limit int64, collect, syn
 	if failure != nil || after != pin.before || pin.validate() != nil || proc.validate() != nil {
 		return nil, fileStamp{}, digest, errDirectory
 	}
-	copy(digest[:], hash.Sum(nil))
 	return data, pin.before, digest, nil
 }
 

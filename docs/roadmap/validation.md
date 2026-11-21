@@ -318,6 +318,34 @@ source/candidate identity, installed integrity, liveness, lease, graph, mutation
 publication or current authority. Strict codecs and complete graph resource
 admission remain separate required work.
 
+### Observed-length protected reads and future graph resources
+
+ARCH-020's approved collection protocol requires measurement before exact result
+allocation, same-descriptor reread, equal lengths/SHA256, all existing metadata/
+proc/ancestor/cleanup checks and zero failure results. Cover ordinary ReadFile,
+retained PinFile and TreeStage collection, with exact-capacity outputs, preserved
+descriptor offsets and the unchanged own-unlink reader behavior. Hash-only reads
+stay one pass. The existing sparse-size/truncation test must still reject before
+allocating from the prior claimed size. Test empty/chunk-boundary/short reads,
+first/second-pass and EOF failures, size/content substitutions, measurement-end
+validation failure and close/concurrent-close handling. Charge every requested
+read and probe in each TreeStage pass; test second-pass/EOF exhaustion without
+changing its frozen lifetime limit or preserve-only lifecycle. Distinguish
+callback boundary tests from actual disposable kernel/proc paths and skipped
+exported paths. The [representation note](state-resource-representation.md)
+records the implemented read storage/pass schedule and separately deferred graph
+accounting; it establishes no Store, classification or host qualification.
+
+For future complete graph admission, retain PC-061's valid unused immutable
+history and test operational refusal on incomplete resource-limited validation,
+with unchanged evidence and continuously held intent lease. Before any numeric
+freeze or implementation, prove composed storage/FD/name capacities and cumulative
+scan/read/hash/revalidation work, including short reads, deep ancestors, large
+names/history, active exact reuse, unsupported-after-corrupt precedence, cache
+misses and every intermediate publication maximum. Neither per-codec success nor
+active reference counts supplies that outer proof. These graph rows remain
+planned and unexercised until actual implementation/evidence exists.
+
 ### Private canonical candidate, pending and journal codecs
 
 The approved ARCH-024 mechanism preserves PC-042/050 bytes and accepted values

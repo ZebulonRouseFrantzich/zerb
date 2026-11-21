@@ -220,6 +220,16 @@ reviewed independently. It does not activate a Store, graph classifier, writer,
 filesystem publication or completion authority; full graph resource policy and
 future file-read ownership accounting remain required before that integration.
 
+The observed-read prerequisite applies the approved bounded measurement then
+exact-capacity reread to all three existing safefs collection routes. Its shared
+content core adds no FD, package, API or larger TreeStage allowance; hash-only
+verification and all identity/cleanup/lifetime rules remain. Exact read/pass and
+resource-refusal tests and independent review precede publication. PC-061's valid
+unused immutable history remains legal; the approved operational-refusal policy
+is recorded without inventing a whole-graph numeric envelope or partial Store.
+Complete source/tree/toolchain/install validation, composed scan/resource fit,
+future owned file-to-codec integration and qualification remain separate gates.
+
 ### Work
 
 1. Enforce the exact ARCH-030 one-way DAG and forbidden old-package seam for every package introduced in this phase. Phase 2 completes only `paths`, `safefs`, `profile`, `receipt`, `execenv`, `source`, `toolchain`, `state`, and test-only `testenv`; it does not create compile-only `mise`, `home`, `plan`, `recovery`, `app`, or `host` scaffolds. The DAG gate scans production and `_test.go`, rejects imports of every full old package tree including `internal/testutil`, and permits `internal/testenv` only from `_test.go`. No bridge, alias, re-export, registry, fallback, production `testenv` import, or old CLI route is permitted.

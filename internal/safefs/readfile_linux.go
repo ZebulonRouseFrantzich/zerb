@@ -3,8 +3,8 @@
 package safefs
 
 import (
+	"crypto/sha256"
 	"errors"
-	"io"
 	"os"
 	"strconv"
 
@@ -162,14 +162,83 @@ func (p *procAccess) reopen(pin *pinnedFile) (_ *os.File, err error) {
 }
 
 func readContents(file *os.File, size int64) ([]byte, error) {
+	data, _, err := readFileContents(file, size, true, nil, nil)
+	return data, err
+}
+
+func readFileContents(file *os.File, size int64, collect bool, validate func() error, charge func(uint64) error) ([]byte, [32]byte, error) {
 	if file == nil || !validReadLimit(size) {
-		return nil, errDirectory
+		return nil, [32]byte{}, errDirectory
 	}
-	data, err := io.ReadAll(io.LimitReader(file, size+1))
-	if err != nil || int64(len(data)) != size {
-		return nil, errDirectory
+	return readObservedContents(size, collect, func(buffer []byte, offset int64) (int, error) {
+		return unix.Pread(int(file.Fd()), buffer, offset)
+	}, validate, charge)
+}
+
+// Measure actual bytes before allocating, retaining one reader and bounded scratch.
+func readObservedContents(size int64, collect bool, readAt func([]byte, int64) (int, error), validate func() error, charge func(uint64) error) ([]byte, [32]byte, error) {
+	if !validReadLimit(size) || readAt == nil {
+		return nil, [32]byte{}, errDirectory
 	}
-	return data, nil
+	hash := sha256.New()
+	var scratch [32 << 10]byte
+	pass := func(data []byte) (digest [32]byte, err error) {
+		hash.Reset()
+		for offset := int64(0); ; {
+			want := min(int64(len(scratch)), size-offset)
+			if want == 0 {
+				want = 1
+			}
+			if validate != nil && validate() != nil {
+				return digest, errDirectory
+			}
+			if charge != nil && charge(uint64(want)) != nil {
+				return digest, errDirectory
+			}
+			n, failure := readAt(scratch[:int(want)], offset)
+			var post error
+			if validate != nil {
+				post = validate()
+			}
+			if failure != nil || n < 0 || n > int(want) || post != nil {
+				return digest, errDirectory
+			}
+			if offset == size {
+				if n != 0 {
+					return digest, errDirectory
+				}
+				break
+			}
+			if n == 0 {
+				return digest, errDirectory
+			}
+			if _, failure := hash.Write(scratch[:n]); failure != nil {
+				return digest, errDirectory
+			}
+			if data != nil {
+				copy(data[int(offset):], scratch[:n])
+			}
+			offset += int64(n)
+		}
+		if validate != nil && validate() != nil {
+			return digest, errDirectory
+		}
+		_ = hash.Sum(digest[:0])
+		return digest, nil
+	}
+	measured, err := pass(nil)
+	if err != nil {
+		return nil, [32]byte{}, errDirectory
+	}
+	if !collect {
+		return nil, measured, nil
+	}
+	data := make([]byte, int(size))
+	reread, err := pass(data)
+	if err != nil || reread != measured {
+		return nil, [32]byte{}, errDirectory
+	}
+	return data, reread, nil
 }
 
 func finishFileRead(file *os.File, data []byte, id Identity, primary error) ([]byte, Identity, error) {
@@ -205,7 +274,13 @@ func readFile(parent edge, name string, limit int64) (data []byte, id Identity, 
 	if err != nil || pin.validate() != nil {
 		return nil, Identity{}, errDirectory
 	}
-	data, err = readContents(reader, pin.before.identity.Size)
+	data, _, err = readFileContents(reader, pin.before.identity.Size, true, func() error {
+		stamp, failure := observeFile(int(reader.Fd()), "")
+		if failure != nil || stamp != pin.before || pin.validate() != nil || proc.validate() != nil {
+			return errDirectory
+		}
+		return nil
+	}, nil)
 	if err != nil {
 		return nil, Identity{}, errDirectory
 	}
