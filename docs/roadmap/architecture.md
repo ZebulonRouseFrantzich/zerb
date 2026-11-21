@@ -78,6 +78,24 @@ Phase 1 freezes, for native Git, acquisition/extraction, mise and backend descen
 Each retained exact executable/argv process-class tuple MUST be exercised and observed not to daemonize, call `setsid`/successful group escape, or leave the cumulative lifecycle boundary; evidence does not generalize to another version, argv, backend, or arbitrary payload. Git uses the exact ARCH-006 no-auto-maintenance policy and mise install uses exact `--raw` mode to avoid their observed detached/group-changing paths. The authenticated FD-only supervisor and launcher release protocol are mandatory for every class. The exact Phase 1 cgroup-v2 limits are `memory.max=805306368`, `memory.swap.max=0`, `pids.max=96`, and `cpu.max="100000 100000"`; any OOM or OOM-kill event fails the invocation even when a child otherwise exits successfully. The 768 MiB value is the exact observed finite passing bound, not a proved minimal bound; lower-memory diagnostic failures are not retained qualification evidence. Phase 1 hard-kills before launcher spawn; after launcher start while the target remains unreleased; after actual descriptor, parent-death, group/session, and second-parent validations; immediately before exec release; and after first descendant observation. The Go fork lock, full-lifetime locked creator thread, authenticated child-side parent-death setup, and immediate parent recheck cover the internal fork/exec interval without assigning a false injectable label to it. After release, the authenticated death guard holds an opened identity-checked cgroup directory descriptor, kills the managed group, writes `1` to descriptor-relative `cgroup.kill`, and waits on descriptor-relative `pids.current` until zero. The outer subreaper reaps every adopted child and job-control group while preserving the guard status. The exact shell tuple is Bash 5.3.15 invoked as `--noprofile --norc -i` on a fresh PTY with `setsid`, `TIOCSCTTY`, and `TIOCSPGRP`; its foreground and background job-control groups remain inside the same cumulative cgroup and are reaped after catchable cancellation and hard wrapper death. Any uncovered race removes the process/platform tuple; the cgroup is cumulative around the mandatory supervisor and never replaces it. Catchable cancellation and wrapper hard death leave no managed descendant for the retained invocation; durable startup state diagnoses interrupted mutation.
 Ordinary completion and catchable cancellation use the supervisor as the primary cgroup cleanup authority: after it opens and records the delegated cgroup directory identity, launcher placement, membership observation, `cgroup.kill`, `pids.current`, and emptiness verification are all descriptor-relative and never reopen a retained pathname. Phase 1 changes every remaining cgroup pathname field to a distinct sibling after opening the original authority, proves the managed PID appears only in the original descriptor and the sibling retains its identity and remains empty, and records that the candidate cgroupfs rejected directory rename; no infeasible rename claim is retained. The supervisor reaps the resulting children, verifies original-descriptor emptiness, then disarms and reaps the guard. The guard is the independent hard-parent-death authority. Every path MUST observe the guard's exact wait status; zero is required for success, and a missing, signaled, or nonzero guard status is an operational failure even when the cgroup later appears empty.
 
+The owner-approved provisional termination policy forwards only SIGHUP, SIGINT,
+SIGQUIT and SIGTERM through the managed boundary; context cancellation sends
+SIGTERM. The first termination request starts one shared monotonic 750 ms grace
+window for the leader and covered descendants. A normal leader exit with surviving
+descendants starts that cleanup window; an existing window is never restarted by
+leader exit, later cleanup stages or repeated requests. At expiry, escalate with
+SIGKILL and the existing descriptor-relative cgroup kill boundary. Post-kill
+emptiness verification, all-adopted-child reaping and the exact zero guard status
+remain mandatory; 750 ms is not a total cleanup timeout or authority to return
+with survivors. Hard-parent-death guard behavior remains immediate. The value
+matches the proof candidate and is provisional, not optimality or qualification.
+While the managed lifecycle remains open, the first observed forwarded POSIX
+signal determines the signal-derived status, taking precedence over context-only
+cancellation; repeated signals do not change that first signal or extend grace.
+Without a POSIX termination request, context cancellation returns 1; otherwise
+normal child status propagates under PC-015. Signal/context/exit race tests must
+exercise that arbitration without manufacturing a real-time total-order claim.
+
 For a normally exiting `exec` or `shell` child, PC-015 owns status propagation. Catchable wrapper signals are forwarded under the frozen policy, followed by escalation and reaping, and return the PC-015 signal-derived status. Context cancellation without an associated POSIX signal uses the same termination/reaping policy and returns the operational-failure status. An uncatchable wrapper death has no return. Deliberate detachment by arbitrary user payloads is outside orchestration only if PC-015 states that limit and validation proves ZERB supplies no manager credentials or manager-state paths to the detached process.
 
 ### ARCH-011 — Complete process environments
@@ -733,6 +751,31 @@ Candidate `B` and its journal, including the active writer generation/token and 
 
 Receipt `B` is fully written/synced pending before current commit; existence alone does not complete it. After possible mutation, startup exposes only `{current=A, dirty(A,B,phase,journal)}` or `{current=B, cleanup(B,exact-residue)}`/`{current=B, stable(B)}`. An unrelated pending receipt is orphan evidence. No cleanup step can make a receipt temporarily unreferenced.
 
+#### Journal observations and execution checkpoints
+
+The owner approved this exact `CompletedPhases` table. `tool` denotes
+`mutating-tool-install`; `home` denotes `mutating-home-apply`.
+
+| Durable journal phase | Permitted execution checkpoint |
+|---|---|
+| `prepared` | `[]` |
+| `mutating-tool-install` | `[]` or `[tool]` |
+| `mutating-home-apply` | `[tool]` or `[tool,home]` |
+| `pending-receipt` | `[tool,home]` |
+| `cleanup` | `[tool,home]` |
+
+Journal checkpoints remain execution order, distinct from sorted receipt facts.
+Preconditions and Results each cover every canonical candidate target throughout
+all these stages. Results are the latest actual post-authorization observations,
+initially permitted to equal preconditions, refreshed/revalidated at their owned
+boundaries. They never assert that home apply ran or succeeded. A no-op phase is
+completed only after verifying that no action applies. Missing completion is not
+proof of no effect: an interruption can follow an effect and precede checkpoint
+persistence. Recovery revalidates and converges that unfinished phase using the
+qualified repeat/partial-state native behavior, or preserves dirty evidence and
+stops; it never blindly replays a completed phase. No observation or checkpoint
+substitutes for writer/lease/source/tool/destination authority.
+
 ### ARCH-026 — Receipts and repeatability
 
 A protected receipt records only required non-secret facts: canonical source and component identities, candidate/tree digest, ZERB and exact Git/mise/chezmoi identities, schema/policy versions, observed platform tuple, authored tool requests and observed versions/integrity facts, managed target inventory, completed mutation phases, and post-apply observations. Public diagnostics and exported evidence redact or replace sensitive metadata and digest oracles under ARCH-028; protected identity remains exact.
@@ -742,6 +785,17 @@ Receipts report independent dimensions—inputs pinned, artifact integrity estab
 The approved `DestinationObservation` wire conventions are exact: `Kind` is `absent`, `file` or `directory`. `Exists=false` requires `Kind="absent"`, empty `ContentHash` and zero `Mode`, `Owner`, `Device`, `Inode` and `Links`. An existing file or directory carries the actual post-authorization owner/device/inode/link observations. `Mode` is Unix permission and special bits (`stat.Mode & 07777`), not full type bits or Go's `FileMode` representation; `Kind` separately carries the type. A file has the SHA256 token for its exact observed bytes; a directory has an empty hash, with no invented directory-content digest. Symlinks and unsupported types remain rejected. Preconditions and results each contain exactly one actual observation per candidate target, sorted by target, including directory targets; an empty target inventory has `[]` in all three collections. Ancestor validation remains independently mandatory and is not replaced by these observations.
 
 `ToolObservation.Integrity` denotes the checksum of the authenticated authored archive, equal to the candidate's exact artifact lock. Populate that observation only after actual archive authentication and the complete independent installed-tree verification required by ARCH-013/021: entry set, modes, file hashes, permitted semantic symlink transformations, npm wrapper and executable identity. The archive checksum alone proves none of those checks; no separate installed-tree digest or preimage is introduced. State validates the exact candidate/tool/current relation before stable publication. A pure receipt digest validates representation but cannot authenticate the archive, inspect an installation, prove candidate/current correspondence or grant completion authority. The independent dimension booleans remain facts, not implicit substitutes for one another; encoding a false dimension does not complete a receipt.
+
+Stable publication requires both mutation phases and independently verified
+`InputsPinned`, `ArtifactIntegrity`, `HostCompatible` and `ConvergenceVerified`.
+`ArtifactAvailable` remains an independent observation: an unavailable upstream
+artifact alone does not invalidate intact authenticated installed facts, while
+an operation needing that missing artifact still refuses. This does not waive
+archive authentication/installed-tree verification, runtime protections or host
+qualification. Pure scalar codecs continue to represent all Boolean combinations;
+these necessary completion checks are not the full candidate/receipt/current
+relation or permission to publish. Current publication remains the sole completion
+authority, and later availability changes never rewrite an immutable receipt.
 
 ### ARCH-027 — Command admission and forward recovery
 

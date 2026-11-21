@@ -1324,10 +1324,11 @@ func exactCompletedPhases(completed []string) []phase {
 }
 
 func transitionJournalRecord(r graphRefs, state, oldPhase string, completed []string, generation uint64, writerToken string) journalRecord {
-	preconditions := receiptFactsFor(r.b, receiptDigest(r.a)).Preconditions
-	results := receiptFactsFor(r.b, receiptDigest(r.a)).Results
-	if len(completed) == 0 {
-		results = []receiptDestinationObservation{}
+	facts := receiptFactsFor(r.b, receiptDigest(r.a))
+	preconditions := facts.Preconditions
+	results := preconditions
+	if slicesEqual(completed, mutationPhases) {
+		results = facts.Results
 	}
 	return journalRecord{
 		Schema: 1, Domain: "zerb.journal", Instance: r.instance, OperationID: r.journal, OperationToken: r.operationToken,
@@ -1865,7 +1866,8 @@ func validCompletedReceipt(facts receiptCompleted, candidate string, previous re
 		facts.Platform.Architecture != "" && facts.Platform.Filesystem != "" &&
 		slicesEqual(facts.Tools, want.Tools) && slicesEqual(facts.Targets, candidateRecord.Targets) &&
 		slicesEqual(facts.Preconditions, want.Preconditions) && slicesEqual(facts.Results, want.Results) &&
-		slicesEqual(facts.Phases, receiptPhases()) && facts.Dimensions == want.Dimensions
+		slicesEqual(facts.Phases, receiptPhases()) && facts.Dimensions.InputsPinned &&
+		facts.Dimensions.ArtifactIntegrity && facts.Dimensions.HostCompatible && facts.Dimensions.ConvergenceVerified
 }
 
 func strictlySorted(values []string) bool {
@@ -1883,6 +1885,8 @@ func validPendingReceiptFor(p, candidate string, previous receiptDigest) bool {
 		return false
 	}
 	want := pendingReceiptFor(candidate, previous)
+	want.Facts.Dimensions.ArtifactAvailable = value.Facts.Dimensions.ArtifactAvailable
+	want.Digest = receiptDigest("sha256:" + recordDigest(want.Facts))
 	return value.Digest == want.Digest && validCompletedReceipt(value.Facts, candidate, previous) &&
 		value.Digest == receiptDigest("sha256:"+recordDigest(value.Facts)) && exactRecordBytes(p, want)
 }
@@ -1903,8 +1907,8 @@ func currentDigestsMatch(state string, current currentRecord) bool {
 
 func validJournalPrefix(journal journalRecord) bool {
 	facts := receiptFactsFor(string(journal.Candidate), journal.Previous)
-	expectedResults := []receiptDestinationObservation{}
-	if len(journal.CompletedPhases) > 0 {
+	expectedResults := facts.Preconditions
+	if slicesEqual(journal.CompletedPhases, []phase{phaseToolInstall, phaseHomeApply}) {
 		expectedResults = facts.Results
 	}
 	if journal.OperationToken == "" || journal.OperationToken == journal.OperationID ||
@@ -8306,6 +8310,9 @@ func receiptValidationCoverage() (int, int, bool) {
 		func(f *receiptCompleted) { f.Preconditions[0].Kind = "directory" },
 		func(f *receiptCompleted) { f.Results[0].ContentHash = "" },
 		func(f *receiptCompleted) { f.Phases = f.Phases[:1] },
+		func(f *receiptCompleted) { f.Dimensions.InputsPinned = false },
+		func(f *receiptCompleted) { f.Dimensions.ArtifactIntegrity = false },
+		func(f *receiptCompleted) { f.Dimensions.HostCompatible = false },
 		func(f *receiptCompleted) { f.Dimensions.ConvergenceVerified = false },
 	}
 	executables := []func(*receiptCompleted) *receiptExecutable{
