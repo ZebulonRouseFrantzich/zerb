@@ -71,6 +71,16 @@ For `exec` and `shell`, the Phase 1-qualified managed image is a regular Linux x
 
 The production runner MUST NOT rely on `exec.CommandContext` or equivalent kill-the-leader behavior as its cancellation policy. It owns the supervisor/group/session setup, parent-death behavior, signal forwarding, grace and escalation, complete waiting/reaping, and orphan detection required by ARCH-010.
 
+The first private production `execenv` increment observes already-open regular
+file content with positional reads, fixed scratch, before/after full metadata
+including group, and exact SHA256. Caller ownership and shared offsets remain
+unchanged; failures return zero facts, and zero/unsupported facts cannot compare
+as a match. This is executable observation only, not ELF/path/owner policy,
+AF_UNIX peer authentication, dispatch, execution permission or a runner. The
+complete authenticated supervisor and every mandatory protection above remain
+required before managed execution; no incomplete exported Runner/Dispatch or
+ambient fallback is supplied by this increment.
+
 ### ARCH-010 — Lifecycle policy by process class
 
 Phase 1 freezes, for native Git, acquisition/extraction, mise and backend descendants, chezmoi/template descendants, `exec`, and `shell`, the exact Linux supervisor, process group/session/subreaper model; forwarded signal set; catchable-signal and context-cancellation grace period; escalation signal and timing; leader and descendant reaping; exit mapping; and orphan detection.

@@ -117,6 +117,7 @@ type wireResult struct {
 	Escalated           bool `json:"escalated"`
 	GuardStatus         int  `json:"guard_status"`
 	GuardStatusObserved bool `json:"guard_status_observed"`
+	CleanupFailed       bool `json:"cleanup_failed"`
 }
 type launcherCheckpoint struct {
 	Name          string `json:"name,omitempty"`
@@ -367,18 +368,8 @@ func superviseInCgroup(ctx context.Context, proofExecutable string, spec Spec) (
 			return obs, fmt.Errorf("inject wrapper signal: %w", killErr)
 		}
 	}
-	var requested syscall.Signal
-	select {
-	case <-wait:
-	case sig := <-forward:
-		requested = sig.(syscall.Signal)
-		obs.Forwarded = syscall.Kill(cmd.Process.Pid, requested) == nil
-		<-wait
-	case <-ctx.Done():
-		obs.Forwarded = syscall.Kill(cmd.Process.Pid, syscall.SIGTERM) == nil
-		<-wait
-		requested = -1
-	}
+	requested, canceled, forwarded := awaitSupervisor(ctx, cmd.Process, wait, forward)
+	obs.Forwarded = forwarded
 	var result wireResult
 	if decodeErr := dec.Decode(&result); decodeErr != nil {
 		return obs, fmt.Errorf("read supervisor result: %w", decodeErr)
@@ -399,13 +390,59 @@ func superviseInCgroup(ctx context.Context, proofExecutable string, spec Spec) (
 		obs.SurvivorsDetected++
 		obs.Orphans++
 	}
-	if requested == -1 {
-		obs.Status = 1
+	obs.Status, err = supervisorExitStatus(result, requested, canceled)
+	return obs, err
+}
+
+func supervisorExitStatus(result wireResult, requested syscall.Signal, canceled bool) (int, error) {
+	if !result.GuardStatusObserved || result.GuardStatus != 0 {
+		return 1, fmt.Errorf("death guard status unverified: observed=%t status=%d", result.GuardStatusObserved, result.GuardStatus)
 	}
-	if !obs.GuardStatusObserved || obs.GuardStatus != 0 {
-		return obs, fmt.Errorf("death guard status unverified: observed=%t status=%d", obs.GuardStatusObserved, obs.GuardStatus)
+	if result.CleanupFailed {
+		return 1, errors.New("managed lifecycle cleanup failed")
 	}
-	return obs, nil
+	if requested != 0 {
+		return 128 + int(requested), nil
+	}
+	if canceled {
+		return 1, nil
+	}
+	return result.Status, nil
+}
+
+func awaitSupervisor(ctx context.Context, process *os.Process, wait <-chan error, sigs <-chan os.Signal) (requested syscall.Signal, canceled, forwarded bool) {
+	cancel := ctx.Done()
+	forward := func(sig syscall.Signal) {
+		if syscall.Kill(process.Pid, sig) == nil {
+			forwarded = true
+		}
+	}
+	for {
+		select {
+		case sig := <-sigs:
+			if requested == 0 {
+				requested = sig.(syscall.Signal)
+			}
+			forward(sig.(syscall.Signal))
+		case <-cancel:
+			canceled = true
+			cancel = nil
+			forward(syscall.SIGTERM)
+		case <-wait:
+			// A queued POSIX signal takes status precedence over cancellation.
+			for remaining := len(sigs); remaining > 0; remaining-- {
+				select {
+				case sig := <-sigs:
+					if requested == 0 {
+						requested = sig.(syscall.Signal)
+					}
+				default:
+					remaining = 0
+				}
+			}
+			return requested, canceled || ctx.Err() != nil, forwarded
+		}
+	}
 }
 
 func observeWrapperHardDeath(cmd *exec.Cmd, wait <-chan error, ready wireReady, spec Spec, obs Observation) (Observation, error) {
@@ -833,31 +870,98 @@ func createCgroupPathSubstitute(cgroupPath string, cgroupID cgroupIdentity) (*os
 	return substitutionFile, substitutionID, nil
 }
 
+type managedTermination struct {
+	deadline  time.Time
+	requested syscall.Signal
+}
+
+func (termination *managedTermination) begin(now time.Time) {
+	if termination.deadline.IsZero() {
+		termination.deadline = now.Add(GracePeriod)
+	}
+}
+
+func (termination *managedTermination) expired(now time.Time) bool {
+	return !now.Before(termination.deadline)
+}
+
+func (termination *managedTermination) forward(group int, sig syscall.Signal) {
+	termination.begin(time.Now())
+	if termination.requested == 0 {
+		termination.requested = sig
+	}
+	_ = syscall.Kill(-group, sig)
+}
+
+func (termination *managedTermination) pending(group int, sigs <-chan os.Signal) {
+	for remaining := len(sigs) + 1; remaining > 0; remaining-- {
+		select {
+		case sig, ok := <-sigs:
+			if !ok {
+				return
+			}
+			termination.forward(group, sig.(syscall.Signal))
+		default:
+			return
+		}
+	}
+}
+
 func finishManagedProcess(control, cgroupFile, substitutionFile *os.File, substitutionID cgroupIdentity, cmd *exec.Cmd, sigs <-chan os.Signal, cgroupInherited bool, closeGuard func(...bool) (int, error)) int {
+	guardClosed, guardStatus := false, 0
+	var guardErr error
+	finishGuard := func(kill ...bool) (int, error) {
+		if !guardClosed {
+			guardStatus, guardErr = closeGuard(kill...)
+			guardClosed = true
+		}
+		return guardStatus, guardErr
+	}
 	wait := make(chan error, 1)
 	go func() { wait <- cmd.Wait() }()
 	var childErr error
-	var requested syscall.Signal
+	var termination managedTermination
+	var grace <-chan time.Time
+	var timer *time.Timer
+	defer func() {
+		if timer != nil {
+			timer.Stop()
+		}
+	}()
 	escalated := false
-	select {
-	case childErr = <-wait:
-	case s := <-sigs:
-		requested = s.(syscall.Signal)
-		_ = syscall.Kill(-cmd.Process.Pid, requested)
-		select {
-		case childErr = <-wait:
-		case <-time.After(GracePeriod):
-			escalated = true
-			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-			childErr = <-wait
+	var cgroupKillErr error
+	forceKill := func() {
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		if !cgroupInherited {
+			if err := killCgroupDescriptor(cgroupFile); err != nil {
+				if cgroupKillErr == nil {
+					cgroupKillErr = err
+				}
+				_, _ = finishGuard(true)
+			}
 		}
 	}
-	result := wireResult{Status: waitStatus(childErr), Forwarded: requested != 0, Escalated: escalated}
-	if requested != 0 {
-		result.Status = 128 + int(requested)
+waiting:
+	for {
+		select {
+		case childErr = <-wait:
+			break waiting
+		case s := <-sigs:
+			termination.forward(cmd.Process.Pid, s.(syscall.Signal))
+			if timer == nil {
+				timer = time.NewTimer(time.Until(termination.deadline))
+				grace = timer.C
+			}
+		case <-grace:
+			escalated = true
+			forceKill()
+			grace = nil
+		}
 	}
+	termination.pending(cmd.Process.Pid, sigs)
+	result := wireResult{Status: waitStatus(childErr), Escalated: escalated}
 	var cleanupEscalated bool
-	result.Reaped, result.Orphans, cleanupEscalated = terminateAndReap(cmd.Process.Pid)
+	result.Reaped, result.Orphans, cleanupEscalated = terminateAndReap(cmd.Process.Pid, &termination, sigs, forceKill)
 	result.Escalated = result.Escalated || cleanupEscalated
 	var substitutionErr error
 	if substitutionFile != nil {
@@ -873,21 +977,28 @@ func finishManagedProcess(control, cgroupFile, substitutionFile *os.File, substi
 	if !cgroupInherited {
 		hasMembers, membershipErr := cgroupDescriptorHasMembers(cgroupFile)
 		if membershipErr == nil && hasMembers {
-			killFD, killErr := unix.Openat(int(cgroupFile.Fd()), "cgroup.kill", unix.O_WRONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
-			if killErr == nil {
-				_, killErr = syscall.Write(killFD, []byte("1"))
-				_ = syscall.Close(killFD)
-			}
-			deadline := time.Now().Add(GracePeriod)
-			for killErr == nil && time.Now().Before(deadline) {
-				hasMembers, membershipErr = cgroupDescriptorHasMembers(cgroupFile)
-				if membershipErr != nil || !hasMembers {
-					break
-				}
+			termination.begin(time.Now())
+			for hasMembers && membershipErr == nil && !termination.expired(time.Now()) {
+				termination.pending(cmd.Process.Pid, sigs)
 				result.Reaped += reapAvailable()
 				time.Sleep(time.Millisecond)
+				hasMembers, membershipErr = cgroupDescriptorHasMembers(cgroupFile)
 			}
-			result.Escalated = true
+			var killErr error
+			if membershipErr == nil && hasMembers {
+				killErr = killCgroupDescriptor(cgroupFile)
+				result.Escalated = true
+				// The deadline bounds grace, not post-KILL reaping or emptiness verification.
+				for killErr == nil {
+					termination.pending(cmd.Process.Pid, sigs)
+					hasMembers, membershipErr = cgroupDescriptorHasMembers(cgroupFile)
+					if membershipErr != nil || !hasMembers {
+						break
+					}
+					result.Reaped += reapAvailable()
+					time.Sleep(time.Millisecond)
+				}
+			}
 			if membershipErr == nil {
 				hasMembers, membershipErr = cgroupDescriptorHasMembers(cgroupFile)
 			}
@@ -902,7 +1013,7 @@ func finishManagedProcess(control, cgroupFile, substitutionFile *os.File, substi
 				}
 			}
 			if killErr != nil || membershipErr != nil || hasMembers {
-				result.GuardStatus, cleanupGuardErr = closeGuard(true)
+				result.GuardStatus, cleanupGuardErr = finishGuard(true)
 				if cleanupGuardErr == nil {
 					switch {
 					case killErr != nil:
@@ -914,29 +1025,56 @@ func finishManagedProcess(control, cgroupFile, substitutionFile *os.File, substi
 					}
 				}
 			} else {
-				result.GuardStatus, cleanupGuardErr = closeGuard()
+				result.GuardStatus, cleanupGuardErr = finishGuard()
 			}
 		} else if membershipErr != nil {
-			result.GuardStatus, cleanupGuardErr = closeGuard(true)
+			result.GuardStatus, cleanupGuardErr = finishGuard(true)
 			if cleanupGuardErr == nil {
 				cleanupGuardErr = membershipErr
 			}
 		} else {
-			result.GuardStatus, cleanupGuardErr = closeGuard()
+			result.GuardStatus, cleanupGuardErr = finishGuard()
 		}
 	} else {
-		result.GuardStatus, cleanupGuardErr = closeGuard()
+		result.GuardStatus, cleanupGuardErr = finishGuard()
 	}
-	result.GuardStatusObserved = cleanupGuardErr == nil
+	remaining, reapErr := reapManagedChildren(cgroupInherited)
+	result.Reaped += remaining
+	cleanupGuardErr = errors.Join(cleanupGuardErr, reapErr)
+	termination.pending(cmd.Process.Pid, sigs)
+	result.Forwarded = termination.requested != 0
+	if termination.requested != 0 {
+		result.Status = 128 + int(termination.requested)
+	}
+	result.GuardStatusObserved = guardErr == nil
+	if cleanupGuardErr == nil {
+		cleanupGuardErr = cgroupKillErr
+	}
 	if cleanupGuardErr == nil {
 		cleanupGuardErr = substitutionErr
 	}
 	if cleanupGuardErr != nil || result.GuardStatus != 0 {
 		result.Status = 1
-
 	}
+	result.CleanupFailed = cleanupGuardErr != nil
 	_ = json.NewEncoder(control).Encode(result)
 	return result.Status
+}
+
+func killCgroupDescriptor(cgroup *os.File) error {
+	fd, err := unix.Openat(int(cgroup.Fd()), "cgroup.kill", unix.O_WRONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return err
+	}
+	n, writeErr := syscall.Write(fd, []byte("1"))
+	closeErr := syscall.Close(fd)
+	if writeErr != nil {
+		return writeErr
+	}
+	if n != 1 {
+		return io.ErrShortWrite
+	}
+	return closeErr
 }
 
 func awaitLauncherCheckpoints(launcherControl *os.File, spec wireSpec, childPID int, gate func(string, int, int, bool)) (bool, error) {
@@ -1075,20 +1213,25 @@ func sendReadyError(f *os.File, msg string) int {
 	_ = json.NewEncoder(f).Encode(wireReady{Error: msg})
 	return 1
 }
-func terminateAndReap(group int) (reaped, orphans int, escalated bool) {
+func terminateAndReap(group int, termination *managedTermination, sigs <-chan os.Signal, forceKill func()) (reaped, orphans int, escalated bool) {
+	termination.pending(group, sigs)
 	if processGroupExists(group) {
-		_ = syscall.Kill(-group, syscall.SIGTERM)
-		deadline := time.Now().Add(GracePeriod)
-		for processGroupExists(group) && time.Now().Before(deadline) {
+		if termination.deadline.IsZero() {
+			termination.begin(time.Now())
+			_ = syscall.Kill(-group, syscall.SIGTERM)
+		}
+		for processGroupExists(group) && !termination.expired(time.Now()) {
+			termination.pending(group, sigs)
 			reaped += reapAvailable()
 			time.Sleep(time.Millisecond)
 		}
 	}
 	if processGroupExists(group) {
 		escalated = true
-		_ = syscall.Kill(-group, syscall.SIGKILL)
+		forceKill()
 	}
 	for processGroupExists(group) {
+		termination.pending(group, sigs)
 		reaped += reapAvailable()
 		time.Sleep(time.Millisecond)
 	}
@@ -1113,6 +1256,29 @@ func reapAvailable() int {
 			return count
 		}
 		count++
+	}
+}
+
+func reapManagedChildren(inherited bool) (int, error) {
+	if inherited {
+		// The outer proof owns final cleanup of this shared cgroup scope.
+		return reapAvailable(), nil
+	}
+	count := 0
+	// Leader and guard have completed their owned waits before this drain.
+	for {
+		var status syscall.WaitStatus
+		pid, err := syscall.Wait4(-1, &status, 0, nil)
+		switch {
+		case err == syscall.EINTR:
+			continue
+		case err == syscall.ECHILD:
+			return count, nil
+		case err != nil:
+			return count, fmt.Errorf("reap remaining managed children: %w", err)
+		case pid > 0:
+			count++
+		}
 	}
 }
 func processGroupExists(group int) bool {

@@ -140,6 +140,18 @@ emptiness/exact-zero guard status after forced termination. Do not count a
 post-kill verification wait as a renewed graceful window or promise a 750 ms
 end-to-end return. Real kernel/cgroup/PTY and frozen-host positives remain required.
 
+The private production descriptor-fingerprint core additionally checks real
+regular-file observations, native metadata comparison including group, exact
+content hashing, independent/shared-OFD offsets, nil/closed/nonregular/read-error
+inputs, content/metadata/close races, zero-fact refusal and caller ownership.
+These are descriptor/value tests, not an authenticated launch or a platform tuple.
+The shared-grace proof regressions use isolated disposable process groups and
+explicitly labeled ordinary-file stand-ins only for descriptor cleanup sequencing;
+the latter do not exercise cgroupfs or establish containment. Deterministic exact
+deadline/expiry checks establish no renewal; real-process elapsed durations are
+observations, not scheduler upper bounds. Cleanup failure must win status
+arbitration independently of an observed zero guard wait status.
+
 ## Protected roots, filesystem, archives, and destinations
 
 | ID | Requirements proved | Scenario and required evidence |
