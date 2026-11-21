@@ -318,6 +318,39 @@ source/candidate identity, installed integrity, liveness, lease, graph, mutation
 publication or current authority. Strict codecs and complete graph resource
 admission remain separate required work.
 
+### Private canonical candidate, pending and journal codecs
+
+The approved ARCH-024 mechanism preserves PC-042/050 bytes and accepted values
+within the unchanged 8,000,000-byte conservative reservation. Permanently bind
+actual private layouts to [the accounting table](state-codec-representation.md),
+and independently review allocation paths; layout arithmetic alone is not a
+memory-enforcement or complete-invocation proof for filesystem/state integration.
+Reject before materialization when either the decode schedule or reconstructed
+minimum-capacity existing canonicalizer schedule does not fit. Exercise the last
+accepted large escaped value and next-value refusal with zero rejection
+allocations, hidden caller capacities, checked arithmetic, exact-capacity returned
+collections and large-to-small history independence. The budget is neither a
+cumulative Go-allocation limit nor a hard runtime-memory ceiling.
+
+Compare decoded candidate/pending values, exact bytes and digests against strict
+standard decoding plus the existing receipt canonicalizers and exact-byte
+comparison. Compare direct pending/journal encoding against independent JSON
+encoding; the pending wrapper adds exactly 128 bytes and authenticates its digest
+over facts alone. Reject duplicate/unknown/aliased/missing fields, null collections,
+noncanonical ordering/escapes/numbers, integer overflow, invalid UTF-8, trailing
+bytes and tree/digest substitutions, returning zero facts without changing caller
+input. Raw hashes precede private-buffer unescaping. Retain differential arbitrary
+wire, valid-model and string fuzz targets. Candidate-only string limits must not
+leak into completed facts; all independent dimension combinations, phase subsets
+and optional previous-receipt forms retain pure-codec acceptance.
+
+Journal arrays retain execution-prefix order. Scalar codecs may validate fixed
+domains, token/digest spelling, declared distinctness, paired previous references,
+ordered matching observation sets and legal progress; they never infer a writer
+history, candidate coverage, observation freshness, liveness, lease or completion
+relation. Complete graph recognition, resource accumulation, filesystem exact-read
+ownership transfer, publication/recovery and qualification remain separately gated.
+
 ### Private existing initialized observation
 
 ARCH-016/018/019/020/024/031's narrow descriptor-owned helper is exercised
