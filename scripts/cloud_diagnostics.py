@@ -164,12 +164,14 @@ def failure_diagnostics(log, catalog):
                             dropped += 1
                     else:
                         dropped += 1
-                elif line.lstrip().startswith("ZERB_ASSEMBLY_TRACE "):
+                elif (trace_line := line.lstrip()).startswith("ZERB_ASSEMBLY_TRACE "):
+                    trace = None
                     try:
-                        trace = json.loads(line.lstrip().removeprefix("ZERB_ASSEMBLY_TRACE "), object_pairs_hook=unique_object)
+                        if len(trace_line.encode()) <= 512:
+                            trace = json.loads(trace_line.removeprefix("ZERB_ASSEMBLY_TRACE "), object_pairs_hook=unique_object)
                     except (ValueError, RecursionError):
-                        trace = None
-                    if len(line.lstrip().encode()) <= 512 and assembly_record(trace):
+                        pass
+                    if assembly_record(trace):
                         value = {**base, "kind": "assembly-observation", "observation": trace}
                     else:
                         dropped += 1

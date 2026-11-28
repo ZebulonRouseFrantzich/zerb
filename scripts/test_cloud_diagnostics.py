@@ -84,6 +84,27 @@ class DiagnosticTests(unittest.TestCase):
         self.assertEqual(len(result["failures"]), 1)
         self.assertNotIn("XXXX", json.dumps(result))
 
+    def test_malformed_trace_unicode_cannot_interrupt_failure_checkpoint(self):
+        records = [self.record("output", Output='ZERB_ASSEMBLY_TRACE {"phase":"private' + chr(0xd800) + '"}'),
+                   self.record("output", Output="fixture_test.go:3: private"),
+                   self.record("fail")]
+        script = "import sys;sys.stdout.write(" + repr("".join(json.dumps(row) + "\n" for row in records)) + ");sys.exit(7)"
+        path = self.root / "failure.checks.jsonl"
+        fd = cloud.reserve_output(path, self.repo)
+        with os.fdopen(fd, "w") as stream:
+            result = cloud.run_check("proof-race", [sys.executable, "-c", script], self.repo,
+                                     cloud.environment(self.root, os.defpath), self.root,
+                                     lambda row: cloud.diagnostic_checkpoint(stream, row), self.catalog)
+        self.assertEqual(result["exit_code"], 7)
+        evidence = result["diagnostics"]
+        self.assertEqual(evidence["status"], "incomplete")
+        self.assertEqual(evidence["dropped_records"], 1)
+        self.assertEqual(evidence["failures"][0]["location_ordinals"], [2])
+        journal = path.read_text()
+        self.assertNotIn("private", journal)
+        self.assertEqual([json.loads(line)["event"] for line in journal.splitlines()],
+                         ["check-start", "check-complete"])
+
     def test_typed_records_reject_extra_fields_types_bounds_and_duplicates(self):
         for key, value in (("role", "secret"), ("phase", {}), ("subject", []),
                            ("sequence", True), ("sequence", 2**64), ("raw_status", -1),
