@@ -603,6 +603,13 @@ def reserve_output(path, repo):
         os.close(directory)
 
 
+def unverified_prerequisites(tools, ca):
+    names = [name for name in REQUIRED_TOOLS if not valid_identity(tools.get(name))]
+    if ca["status"] != "passed":
+        names.append("reviewed CA bundle")
+    return names
+
+
 def collect(repo, output_parent, temp, inventory_only, checkpoint=None):
     try:
         env = environment(temp, os.environ.get("PATH", os.defpath), repo)
@@ -636,8 +643,7 @@ def collect(repo, output_parent, temp, inventory_only, checkpoint=None):
         if checkpoint is not None:
             checkpoint({"event": "source-before", "source": report["source"]["before"]})
         report["inventory"] = host_inventory(repo, output_parent, temp)
-        ready = (all(valid_identity(report["tools"]["before"].get(name)) for name in REQUIRED_TOOLS)
-                 and report["ca"]["before"]["status"] == "passed")
+        ready = not unverified_prerequisites(report["tools"]["before"], report["ca"]["before"])
         if ready:
             env["CC"] = report["tools"]["before"]["cc"]["identity"]["path"]
             report["execution_policy"]["cc"] = env["CC"]
@@ -696,6 +702,12 @@ def main(argv=None):
         stream.flush()
         os.fsync(stream.fileno())
     print("cloud conformance: " + report["status"])
+    # Keep the CLI actionable without copying private paths or tool output.
+    if (not args.inventory_only and "failure" not in report and report["status"] == "failed"
+            and all(check["status"] == "not-exercised" for check in report["checks"])):
+        names = unverified_prerequisites(report["tools"]["before"], report["ca"]["before"])
+        if names:
+            print("cloud conformance: checks not run; unverified prerequisites: " + ", ".join(names))
     return 1 if report["status"] == "failed" else 0
 
 

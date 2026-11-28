@@ -1,6 +1,8 @@
 """Boundary tests for local cloud evidence; these do not exercise host proofs."""
 
+from contextlib import redirect_stdout
 import copy
+import io
 import json
 import os
 from pathlib import Path
@@ -70,6 +72,26 @@ class GateTests(unittest.TestCase):
         self.assertEqual(cloud.gate_status(report), "failed")
         report["checks"] = [{"name": name, "status": "not-exercised"} for name in cloud.REQUIRED_CHECKS]
         self.assertEqual(cloud.gate_status(report), "not-exercised")
+
+    def test_cli_names_unverified_prerequisites_without_printing_private_evidence(self):
+        report = valid_report()
+        report["status"] = "failed"
+        report["execution_policy"] = {}
+        report["tools"]["before"]["go"] = {"status": "failed", "reason": "private tool details"}
+        report["tools"]["before"]["golangci-lint"] = {"status": "failed"}
+        report["ca"]["before"] = {"status": "failed", "reason": "private CA path"}
+        report["checks"] = [{"name": name, "status": "not-exercised"} for name in cloud.REQUIRED_CHECKS]
+        with tempfile.TemporaryDirectory(dir="/tmp") as directory:
+            output = str(Path(directory) / "report.json")
+            stdout = io.StringIO()
+            with mock.patch.object(cloud, "collect", return_value=report), redirect_stdout(stdout):
+                self.assertEqual(cloud.main(["--output", output]), 1)
+            self.assertEqual(stdout.getvalue().splitlines(), [
+                "cloud conformance: failed",
+                "cloud conformance: checks not run; unverified prerequisites: go, golangci-lint, reviewed CA bundle",
+            ])
+            self.assertTrue(Path(output).is_file())
+            self.assertTrue(Path(output + ".checks.jsonl").is_file())
 
     def test_missing_unknown_failed_and_lying_check_statuses_fail(self):
         for value in (None, "unknown", "pass", "failed", "not-exercised", True):
